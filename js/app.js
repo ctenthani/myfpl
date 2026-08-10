@@ -31,7 +31,7 @@ const MERCHANT_TILLS = {
 };
 
 // Owner sign-in: use this email (any Team ID)
-const OWNER_EMAIL = "owner@myfpl.local";
+const OWNER_EMAIL = "ctenthani@gmail.com";
 
 // Paid subscribers — you add a row after each payment (email lowercased)
 // plan: "pro" | "ultra"
