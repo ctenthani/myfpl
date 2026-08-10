@@ -21,7 +21,7 @@
       <div class="tm"><span class="tm-label">Team Rating</span><span class="tm-val" id="mRating">–</span></div>
       <div class="tm"><span class="tm-label">Predicted</span><span class="tm-val" id="mPred">–</span></div>
       <div class="tm"><span class="tm-label">In the bank</span><span class="tm-val" id="mBank">£0.0m</span></div>
-      <div class="tm"><span class="tm-label">Squad cost</span><span class="tm-val" id="mCost">£0.0m</span></div>
+      <div class="tm"><span class="tm-label">Team value</span><span class="tm-val" id="mCost">£0.0m</span></div>
     </div>
     <div class="topbar-right">
       <span id="planBadge" class="plan-badge starter" title="Current plan">Starter</span>
@@ -38,6 +38,7 @@
     <button class="nav-btn active" data-view="pick">Pick</button>
     <button class="nav-btn" data-view="transfers">AI Transfers</button>
     <button class="nav-btn" data-view="teams">AI Teams</button>
+    <button class="nav-btn" data-view="matchday">Matchday</button>
     <button class="nav-btn" data-view="rank">Live Rank</button>
     <button class="nav-btn" data-view="chips">Chips</button>
   </nav>
@@ -133,6 +134,62 @@
 
 
   <!-- ========== LIVE RANK ========== -->
+
+  <!-- ========== MATCHDAY VIEW ========== -->
+  <div id="view-matchday" class="view">
+    <div class="matchday-grid">
+      <section class="md-card">
+        <h2>Captain poll · Top 10 prospects</h2>
+        <p class="muted">Automated ranking from predicted points (xG, fixtures, FDR, availability). Tap to set captain on Pick.</p>
+        <div id="captainPoll" class="poll-list"></div>
+      </section>
+
+      <section class="md-card">
+        <h2>Chip poll</h2>
+        <p class="muted">AI recommendation for this gameweek based on fixtures, blanks/doubles proxy and your squad.</p>
+        <div id="chipPoll" class="chip-poll"></div>
+      </section>
+
+      <section class="md-card md-wide">
+        <h2>Fixtures · FDR</h2>
+        <p class="muted">Next gameweek fixtures with difficulty (1 easy → 5 hard). Home / Away shown for each side.</p>
+        <div id="fixtureBoard" class="fixture-board"></div>
+      </section>
+
+      <section class="md-card md-wide">
+        <h2>Live scoring</h2>
+        <p class="muted">How players are earning points during the gameweek (goals, assists, CS, bonus). Updates when FPL publishes live data.</p>
+        <div class="md-toolbar">
+          <button id="refreshLiveBtn" class="btn btn-pink">Refresh live</button>
+          <span id="liveStatus" class="muted"></span>
+        </div>
+        <div id="liveBoard" class="live-board"></div>
+      </section>
+
+      <section class="md-card md-wide">
+        <h2>xG · Clean sheets · Key metrics</h2>
+        <p class="muted">Highest xG/xA and clean-sheet leaning defenders/GKs for the next GW.</p>
+        <div id="metricsBoard" class="metrics-board"></div>
+      </section>
+
+      <section class="md-card md-wide">
+        <h2>Mini-league rival radar</h2>
+        <p class="muted">Enter a classic league ID. We compare your squad to rivals’ last published picks (best after deadline / during GW).</p>
+        <div class="md-toolbar">
+          <label>League ID <input type="number" id="rivalLeagueId" placeholder="e.g. 123456" style="width:140px;padding:6px;border-radius:8px;border:1px solid var(--border)" /></label>
+          <button id="rivalScanBtn" class="btn btn-blue">Scan rivals</button>
+        </div>
+        <div id="rivalBoard" class="metrics-board" style="margin-top:12px"></div>
+      </section>
+
+      <section class="md-card md-wide">
+        <h2>Price change watchlist</h2>
+        <p class="muted">Likely rises / falls from net transfers this GW (proxy — official changes run overnight ~1:30 UK).</p>
+        <div id="priceBoard" class="metrics-board"></div>
+      </section>
+    </div>
+  </div>
+
   <div id="view-rank" class="view">
     <div class="page-wrap">
       <div class="card">
@@ -260,6 +317,10 @@
         <input type="number" id="loginTeamId" placeholder="e.g. 3748215" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border)" />
       </label>
       <input type="hidden" id="loginCode" value="" />
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.9rem">
+        <input type="checkbox" id="loginMatchdayEmail" />
+        Email me Matchday digests (captain poll, chip tip, fixtures)
+      </label>
       <p id="loginMsg" style="margin-top:10px;font-size:0.85rem"></p>
       <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
         <button type="button" class="btn btn-ghost" id="loginCancelBtn">Cancel</button>

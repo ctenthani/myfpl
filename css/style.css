@@ -698,3 +698,75 @@ body {
 .ai-bench .pcard {
   transform: scale(0.92);
 }
+
+
+/* Matchday */
+.matchday-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 12px 16px 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.md-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+.md-card.md-wide { grid-column: 1 / -1; }
+.md-card h2 { margin: 0 0 6px; font-size: 1.1rem; }
+.poll-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.poll-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f8fafc;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.poll-row:hover { border-color: var(--blue, #3b82f6); }
+.poll-row .rank { font-weight: 700; color: var(--muted); }
+.poll-row .bar {
+  height: 6px; border-radius: 99px; background: #e2e8f0; margin-top: 4px; overflow: hidden;
+}
+.poll-row .bar > i {
+  display: block; height: 100%; background: linear-gradient(90deg,#3b82f6,#8b5cf6);
+}
+.chip-poll { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.chip-poll-item {
+  padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: #f8fafc;
+}
+.chip-poll-item.top { border-color: #16a34a; background: #f0fdf4; }
+.chip-poll-item .pct { font-size: 1.4rem; font-weight: 700; }
+.fixture-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.fix-card {
+  padding: 10px 12px; border-radius: 12px; background: #0f172a; color: #e2e8f0; font-size: 0.9rem;
+}
+.fix-card .fdr {
+  display: inline-block; min-width: 22px; text-align: center; border-radius: 6px;
+  font-weight: 700; font-size: 0.75rem; padding: 2px 6px; margin-left: 4px;
+}
+.fdr-1 { background: #16a34a; color: #fff; }
+.fdr-2 { background: #86efac; color: #14532d; }
+.fdr-3 { background: #e2e8f0; color: #0f172a; }
+.fdr-4 { background: #fb923c; color: #fff; }
+.fdr-5 { background: #dc2626; color: #fff; }
+.live-board, .metrics-board { margin-top: 12px; overflow-x: auto; }
+.live-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.live-table th, .live-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+.live-table th { color: var(--muted); font-weight: 600; }
+.md-toolbar { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
+@media (max-width: 800px) {
+  .matchday-grid { grid-template-columns: 1fr; }
+  .chip-poll { grid-template-columns: 1fr; }
+}

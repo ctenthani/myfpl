@@ -2,7 +2,7 @@
 
 const API = "/api/fpl?path=";
 const DEFAULT_TEAM_ID = null; // public site: no default team
-const BUDGET = 100.0;
+const BUDGET = 100.0; // Starting budget only (£100.0m). Team *value* can rise above 100 as player prices rise.
 
 // ============================================================
 // PRICING (USD) + PAYPAL LINKS
@@ -31,7 +31,7 @@ const MERCHANT_TILLS = {
 };
 
 // Owner sign-in: use this email (any Team ID)
-const OWNER_EMAIL = "ctenthani@gmail.com";
+const OWNER_EMAIL = "owner@myfpl.local";
 
 // Paid subscribers — you add a row after each payment (email lowercased)
 // plan: "pro" | "ultra"
@@ -41,12 +41,91 @@ const PAID_USERS = [
 
 function moneyUsd(n) { return "$" + Number(n).toFixed(2); }
 
+function voterKey() {
+  try {
+    let k = localStorage.getItem("fpl_voter_v1");
+    if (!k) {
+      k = "v_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem("fpl_voter_v1", k);
+    }
+    return k;
+  } catch (_) {
+    return "anon_" + Date.now();
+  }
+}
+
+async function apiVotes(gw) {
+  try {
+    const r = await fetch("/api/votes?gw=" + encodeURIComponent(gw));
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (_) { return null; }
+}
+
+async function castVote(type, choice) {
+  try {
+    const r = await fetch("/api/votes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, gw: currentGw, choice: String(choice), voterKey: voterKey() }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
+
+async function setMatchdaySubscription(email, teamId, matchday) {
+  try {
+    const r = await fetch("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        teamId,
+        matchday: !!matchday,
+        plan: (authSession && authSession.plan) || "starter",
+      }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
+
+
 function $(id) { return document.getElementById(id); }
 function on(id, evt, fn) {
   const el = $(id);
   if (el) el.addEventListener(evt, fn);
 }
 function money(n) { return "£" + Number(n).toFixed(1) + "m"; }
+
+/** Current squad value at today's prices (can exceed £100.0m). */
+function squadValue() {
+  return squad.reduce((s, p) => s + (p.price || 0), 0);
+}
+
+/**
+ * FPL money model:
+ * - New / AI draft: total spend ≤ £100.0m, bank = 100 − spent
+ * - Loaded entry: team value can be >100 after price rises; bank comes from API (or estimated)
+ * Never force bank = 100 − value for a live team (that would go negative wrongly).
+ */
+function refreshBankAndValueDisplay() {
+  const cost = squadValue();
+  if (!squadLockedValue) {
+    // Draft / editor starting from scratch
+    bank = Math.max(0, BUDGET - cost);
+  } else if (entryBank != null) {
+    bank = entryBank;
+  }
+  // else keep existing bank (e.g. after local transfers)
+  const ratingEl = $("mRating");
+  // metrics updated by caller
+  return { cost, bank };
+}
+
 function setStatus(m) { const el = $("statusBar"); if (el) el.textContent = m; }
 function xpOf(p) { return horizon === 3 ? p.xp3 : p.xp; }
 
@@ -276,6 +355,8 @@ function buildPlayers() {
       clean_sheets: p.clean_sheets || 0,
       saves: p.saves || 0,
       bonus: p.bonus || 0,
+      transfers_in_event: p.transfers_in_event || 0,
+      transfers_out_event: p.transfers_out_event || 0,
       xp: 0, xp3: 0,
     };
     return pl;
@@ -800,13 +881,17 @@ function renderPitch() {
   const xiXp = xi.reduce((s, p) => s + xpOf(p), 0);
   const cap = squad.find(p => p.id === captainId);
   const pred = xiXp + (cap ? xpOf(cap) : 0);
-  const cost = squad.reduce((s, p) => s + p.price, 0);
-  bank = Math.max(0, BUDGET - cost);
+  const cost = squadValue();
+  if (!squadLockedValue) {
+    bank = Math.max(0, BUDGET - cost);
+  } else if (entryBank != null) {
+    bank = entryBank;
+  }
   const rating = Math.min(100, Math.round((pred / (horizon === 3 ? 90 : 55)) * 100));
   $("mRating").textContent = rating + "/100";
   $("mPred").textContent = pred.toFixed(1);
   $("mBank").textContent = money(bank);
-  $("mCost").textContent = money(cost);
+  $("mCost").textContent = money(cost); // Team value — may exceed £100.0m after price rises
   if (editMode) {
     document.querySelectorAll(".pcard").forEach(el => {
       el.classList.add("removable");
@@ -1031,6 +1116,7 @@ function renderAITeams() {
       const t = window.__aiTeams[+btn.dataset.idx].data;
       squad = t.squad; startingIds = t.startingIds; benchIds = t.benchIds;
       captainId = t.captainId; bank = t.bank;
+      squadLockedValue = false; entryBank = null; // AI draft starts under £100.0m
       renderPitch(); renderPlayerList();
       document.querySelector('[data-view="pick"]').click();
       setStatus("AI team applied — review on Pick tab (" + (squad.length) + " players)");
@@ -1131,9 +1217,18 @@ function loadDefaultSquad() {
 async function tryLoadUserTeam(teamId) {
   teamId = parseInt(teamId, 10);
   let teamName = null;
+  entryBank = null;
+  teamValueOverride = null;
+  squadLockedValue = false;
+
   try {
     const entry = await fetchJson(`entry/${teamId}/`);
-    if (entry && entry.name) teamName = entry.name;
+    if (entry) {
+      if (entry.name) teamName = entry.name;
+      // FPL stores bank/value in tenths of a million (e.g. 15 → £1.5m, 1000 → £100.0m)
+      if (entry.last_deadline_bank != null) entryBank = entry.last_deadline_bank / 10;
+      if (entry.last_deadline_value != null) teamValueOverride = entry.last_deadline_value / 10;
+    }
   } catch (_) {}
 
   // 1) Official picks for recent events
@@ -1149,19 +1244,23 @@ async function tryLoadUserTeam(teamId) {
       benchIds = ordered.filter(p => p.position > 11).map(p => p.element);
       const cap = ordered.find(p => p.is_captain);
       captainId = cap ? cap.element : startingIds[0];
-      bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
+      squadLockedValue = true;
+      // Bank from official entry; do NOT clamp to 100 − current prices (prices may have risen)
+      if (entryBank != null) bank = entryBank;
+      else bank = 0; // unknown ITB — show 0 rather than a fake 100−value figure
       return { source: "api", teamName };
     } catch (err) {
       // 404 pre-deadline is normal
     }
   }
 
-  // No public picks yet — empty squad (user edits or uses AI Teams)
+  // No public picks yet — empty squad (user edits or uses AI Teams) under £100.0m start
   squad = [];
   startingIds = [];
   benchIds = [];
   captainId = null;
   bank = BUDGET;
+  squadLockedValue = false;
   return { source: "empty", teamName };
 }
 
@@ -1171,7 +1270,7 @@ async function init(force = false) {
   if (!teamId) {
     setStatus("Enter a Team ID above and press Refresh to load a squad.");
     loadPlan(); updatePlanUI();
-    squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET;
+    squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null;
     try {
       if (!bootstrap) { await loadBootstrap(force); await loadFixtures(); buildPlayers(); }
       renderPitch(); renderPlayerList(); renderChips(); updatePlanUI();
@@ -1227,6 +1326,365 @@ async function loadEntryHistory(teamId) {
 function formatRank(n) {
   if (n == null || n === 0) return "–";
   return Number(n).toLocaleString();
+}
+
+
+// ---------- Matchday: Captain poll, Chip poll, Fixtures, Live ----------
+function fdrClass(d) {
+  const n = Math.min(5, Math.max(1, d || 3));
+  return "fdr fdr-" + n;
+}
+
+function teamName(id) {
+  const t = teamsMap[id];
+  return t ? (t.short_name || t.name) : "?";
+}
+
+function renderCaptainPoll() {
+  const box = $("captainPoll");
+  if (!box || !players.length) return;
+  const top = [...players]
+    .filter(p => p.availability >= 0.4 && !["u", "s"].includes(p.status))
+    .sort((a, b) => xpOf(b) - xpOf(a))
+    .slice(0, 10);
+  box.innerHTML = "<p class='muted'>Loading community votes…</p>";
+
+  apiVotes(currentGw).then(votes => {
+    const counts = (votes && votes.captain) || {};
+    const total = (votes && votes.captainTotal) || 0;
+    const maxXp = top[0] ? xpOf(top[0]) : 1;
+    box.innerHTML = top.map((p, i) => {
+      const v = counts[String(p.id)] || 0;
+      const pct = total ? (100 * v / total) : 0;
+      const modelPct = 100 * Math.pow(Math.max(xpOf(p), 0.5) / maxXp, 1.25);
+      return `<div class="poll-row" data-id="${p.id}">
+        <span class="rank">${i + 1}</span>
+        <div>
+          <strong>${p.web_name}</strong> <span class="muted">${p.team} · ${xpOf(p).toFixed(1)} xp</span>
+          <div class="bar"><i style="width:${(total ? pct : modelPct / 3).toFixed(1)}%"></i></div>
+        </div>
+        <span>${total ? v + " votes" : "no votes yet"}</span>
+        <button type="button" class="btn btn-outline vote-cap" data-id="${p.id}" style="padding:4px 8px;font-size:0.75rem">Vote</button>
+      </div>`;
+    }).join("") + (total ? `<p class="muted" style="margin-top:8px;font-size:0.8rem">${total} community captain votes this GW</p>` : `<p class="muted" style="margin-top:8px;font-size:0.8rem">Be the first to vote this GW</p>`);
+
+    box.querySelectorAll(".vote-cap").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        btn.disabled = true;
+        btn.textContent = "…";
+        const res = await castVote("captain", btn.dataset.id);
+        if (res && res.error) setStatus("Vote failed: " + res.error);
+        else setStatus("Captain vote recorded");
+        renderCaptainPoll();
+      });
+    });
+    box.querySelectorAll(".poll-row").forEach(row => {
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".vote-cap")) return;
+        const id = +row.dataset.id;
+        if (!squad.some(p => p.id === id)) {
+          setStatus("Add player to squad before setting captain");
+          return;
+        }
+        captainId = id;
+        renderPitch();
+        setStatus("Captain set on Pick tab");
+      });
+    });
+  });
+}
+
+function renderChipPoll() {
+  const box = $("chipPoll");
+  if (!box) return;
+  const items = [
+    { key: "tc", name: "Triple Captain", tip: "Premium in a good fixture / DGW" },
+    { key: "bb", name: "Bench Boost", tip: "When all 15 likely play" },
+    { key: "fh", name: "Free Hit", tip: "Blank-heavy one-week template" },
+    { key: "wc", name: "Wildcard", tip: "Rebuild for a fixture run" },
+    { key: "none", name: "Hold chips", tip: "No special edge this week" },
+  ];
+  box.innerHTML = "<p class='muted'>Loading chip votes…</p>";
+  apiVotes(currentGw).then(votes => {
+    const counts = (votes && votes.chip) || {};
+    const total = (votes && votes.chipTotal) || 0;
+    box.innerHTML = items.map(it => {
+      const v = counts[it.key] || 0;
+      const pct = total ? (100 * v / total) : 0;
+      return `<div class="chip-poll-item ${total && pct === Math.max(...items.map(x => total ? 100 * (counts[x.key] || 0) / total : 0)) ? "top" : ""}">
+        <div class="pct">${total ? pct.toFixed(0) + "%" : "—"}</div>
+        <strong>${it.name}</strong>
+        <div class="muted" style="font-size:0.8rem;margin-top:4px">${it.tip}</div>
+        <div class="muted" style="font-size:0.75rem;margin-top:4px">${v} vote${v === 1 ? "" : "s"}</div>
+        <button type="button" class="btn btn-outline vote-chip" data-key="${it.key}" style="margin-top:8px;padding:4px 8px;font-size:0.75rem">Vote</button>
+      </div>`;
+    }).join("");
+    box.querySelectorAll(".vote-chip").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const res = await castVote("chip", btn.dataset.key);
+        if (res && res.error) setStatus("Vote failed: " + res.error);
+        else setStatus("Chip vote recorded");
+        renderChipPoll();
+      });
+    });
+  });
+}
+
+function renderFixtureBoard() {
+  const box = $("fixtureBoard");
+  if (!box) return;
+  const list = (fixtures || [])
+    .filter(f => f.event === currentGw)
+    .sort((a, b) => (a.kickoff_time || "").localeCompare(b.kickoff_time || ""));
+  if (!list.length) {
+    box.innerHTML = `<p class="muted">No fixtures listed for GW ${currentGw} yet.</p>`;
+    return;
+  }
+  box.innerHTML = list.map(f => {
+    const ko = f.kickoff_time ? new Date(f.kickoff_time).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    const hs = f.team_h_score != null ? f.team_h_score : "–";
+    const as_ = f.team_a_score != null ? f.team_a_score : "–";
+    return `<div class="fix-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span>${teamName(f.team_h)} <span class="${fdrClass(f.team_h_difficulty)}">${f.team_h_difficulty || "?"}</span></span>
+        <strong>${hs} – ${as_}</strong>
+        <span><span class="${fdrClass(f.team_a_difficulty)}">${f.team_a_difficulty || "?"}</span> ${teamName(f.team_a)}</span>
+      </div>
+      <div class="muted" style="margin-top:6px;font-size:0.75rem;color:#94a3b8">${ko}${f.started && !f.finished_provisional ? " · LIVE" : f.finished ? " · FT" : ""}</div>
+    </div>`;
+  }).join("");
+}
+
+async function renderLiveBoard() {
+  const box = $("liveBoard");
+  const st = $("liveStatus");
+  if (!box) return;
+  box.innerHTML = `<p class="muted">Loading live data…</p>`;
+  try {
+    const live = await fetchJson(`event/${currentGw}/live/`);
+    const elements = (live && live.elements) || [];
+    if (!elements.length) {
+      box.innerHTML = `<p class="muted">Live breakdown not available yet for GW ${currentGw} (usual before matches start).</p>`;
+      if (st) st.textContent = "Waiting for match data";
+      return;
+    }
+    // Map stats
+    const rows = elements.map(el => {
+      const p = players.find(x => x.id === el.id);
+      if (!p) return null;
+      const stats = {};
+      (el.stats && typeof el.stats === "object" && !Array.isArray(el.stats)
+        ? Object.entries(el.stats)
+        : []).forEach(([k, v]) => { stats[k] = v; });
+      // older shape: el.stats as flat fields
+      const pts = el.stats?.total_points ?? el.stats?.points ?? stats.total_points ?? 0;
+      const minutes = el.stats?.minutes ?? stats.minutes ?? 0;
+      const goals = el.stats?.goals_scored ?? stats.goals_scored ?? 0;
+      const assists = el.stats?.assists ?? stats.assists ?? 0;
+      const cs = el.stats?.clean_sheets ?? stats.clean_sheets ?? 0;
+      const bonus = el.stats?.bonus ?? stats.bonus ?? 0;
+      const xg = el.stats?.expected_goals ?? stats.expected_goals ?? null;
+      const xa = el.stats?.expected_assists ?? stats.expected_assists ?? null;
+      return { p, pts, minutes, goals, assists, cs, bonus, xg, xa };
+    }).filter(Boolean)
+      .filter(r => r.minutes > 0 || r.pts > 0)
+      .sort((a, b) => b.pts - a.pts)
+      .slice(0, 40);
+
+    if (!rows.length) {
+      box.innerHTML = `<p class="muted">No player minutes yet this GW.</p>`;
+      if (st) st.textContent = "GW not started or no minutes";
+      return;
+    }
+    box.innerHTML = `<table class="live-table">
+      <thead><tr>
+        <th>Player</th><th>Pts</th><th>Min</th><th>G</th><th>A</th><th>CS</th><th>B</th><th>xG</th><th>xA</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td><strong>${r.p.web_name}</strong> <span class="muted">${r.p.team}</span></td>
+          <td><strong>${r.pts}</strong></td>
+          <td>${r.minutes}</td>
+          <td>${r.goals}</td>
+          <td>${r.assists}</td>
+          <td>${r.cs}</td>
+          <td>${r.bonus}</td>
+          <td>${r.xg != null ? Number(r.xg).toFixed(2) : "–"}</td>
+          <td>${r.xa != null ? Number(r.xa).toFixed(2) : "–"}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>`;
+    if (st) st.textContent = `GW ${currentGw} · top ${rows.length} by live points · ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    box.innerHTML = `<p class="muted">Live feed unavailable: ${e.message}</p>`;
+    if (st) st.textContent = "Error loading live";
+  }
+}
+
+function renderMetricsBoard() {
+  const box = $("metricsBoard");
+  if (!box || !players.length) return;
+  const attackers = [...players]
+    .filter(p => (p.position === "MID" || p.position === "FWD") && p.availability >= 0.4)
+    .sort((a, b) => (b.xg90 + b.xa90) - (a.xg90 + a.xa90))
+    .slice(0, 8);
+  const defenders = [...players]
+    .filter(p => (p.position === "DEF" || p.position === "GKP") && p.availability >= 0.4)
+    .sort((a, b) => {
+      const csA = Math.max(0.05, Math.min(0.55, 0.42 - 0.12 * (a.xgc90 || 1.3)));
+      const csB = Math.max(0.05, Math.min(0.55, 0.42 - 0.12 * (b.xgc90 || 1.3)));
+      return csB - csA;
+    })
+    .slice(0, 8);
+
+  const row = (p, extra) => `<tr>
+    <td><strong>${p.web_name}</strong> <span class="muted">${p.team}</span></td>
+    <td>${p.position}</td>
+    <td>${xpOf(p).toFixed(1)}</td>
+    <td>${extra}</td>
+  </tr>`;
+
+  box.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <h3 style="margin:0 0 8px;font-size:0.95rem">Attack · xG + xA / 90</h3>
+        <table class="live-table"><thead><tr><th>Player</th><th>Pos</th><th>XP</th><th>xG90 · xA90</th></tr></thead>
+        <tbody>${attackers.map(p => row(p, `${p.xg90.toFixed(2)} · ${p.xa90.toFixed(2)}`)).join("")}</tbody></table>
+      </div>
+      <div>
+        <h3 style="margin:0 0 8px;font-size:0.95rem">Defence · CS lean (via xGC)</h3>
+        <table class="live-table"><thead><tr><th>Player</th><th>Pos</th><th>XP</th><th>xGC90 · CS%</th></tr></thead>
+        <tbody>${defenders.map(p => {
+          const cs = Math.max(0.05, Math.min(0.55, 0.42 - 0.12 * (p.xgc90 || 1.3)));
+          return row(p, `${(p.xgc90 || 0).toFixed(2)} · ${(cs * 100).toFixed(0)}%`);
+        }).join("")}</tbody></table>
+      </div>
+    </div>`;
+}
+
+function renderPriceBoard() {
+  const box = $("priceBoard");
+  if (!box || !players.length) return;
+  // Net transfers this event as rise/fall pressure proxy
+  const withTx = players.map(p => {
+    const tin = p.transfers_in_event || 0;
+    const tout = p.transfers_out_event || 0;
+    return { p, net: tin - tout, tin, tout };
+  });
+  const rises = [...withTx].sort((a, b) => b.net - a.net).slice(0, 10);
+  const falls = [...withTx].sort((a, b) => a.net - b.net).slice(0, 10);
+  const row = (x, label) => `<tr>
+    <td><strong>${x.p.web_name}</strong> <span class="muted">${x.p.team}</span></td>
+    <td>${money(x.p.price)}</td>
+    <td>${x.tin}</td>
+    <td>${x.tout}</td>
+    <td style="color:${x.net >= 0 ? "#16a34a" : "#dc2626"}"><strong>${x.net >= 0 ? "+" : ""}${x.net}</strong></td>
+  </tr>`;
+  box.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <h3 style="margin:0 0 8px;font-size:0.95rem">Likely to rise</h3>
+      <table class="live-table"><thead><tr><th>Player</th><th>£</th><th>In</th><th>Out</th><th>Net</th></tr></thead>
+      <tbody>${rises.map(x => row(x)).join("")}</tbody></table>
+    </div>
+    <div>
+      <h3 style="margin:0 0 8px;font-size:0.95rem">Likely to fall</h3>
+      <table class="live-table"><thead><tr><th>Player</th><th>£</th><th>In</th><th>Out</th><th>Net</th></tr></thead>
+      <tbody>${falls.map(x => row(x)).join("")}</tbody></table>
+    </div>
+  </div>
+  <p class="muted" style="font-size:0.8rem;margin-top:8px">Not official FPL predictions — based on transfers_in/out this GW.</p>`;
+}
+
+async function renderRivalRadar() {
+  const box = $("rivalBoard");
+  if (!box) return;
+  const leagueId = parseInt($("rivalLeagueId") && $("rivalLeagueId").value, 10);
+  const myId = currentTeamId();
+  if (!leagueId) {
+    box.innerHTML = `<p class="muted">Enter a classic league ID to scan.</p>`;
+    return;
+  }
+  if (!myId) {
+    box.innerHTML = `<p class="muted">Set your Team ID in the header first.</p>`;
+    return;
+  }
+  box.innerHTML = `<p class="muted">Scanning league ${leagueId}…</p>`;
+  try {
+    const data = await fetchJson(`leagues-classic/${leagueId}/standings/?page_standings=1`);
+    const results = (data.standings && data.standings.results) || [];
+    const rivals = results.filter(r => r.entry !== myId).slice(0, 8);
+    if (!rivals.length) {
+      box.innerHTML = `<p class="muted">No rivals found (check league ID).</p>`;
+      return;
+    }
+    const myIds = new Set(squad.map(p => p.id));
+    const rows = [];
+    for (const r of rivals) {
+      let their = [];
+      try {
+        const picks = await fetchJson(`entry/${r.entry}/event/${currentGw}/picks/`);
+        their = (picks.picks || []).map(x => x.element);
+      } catch (_) {
+        try {
+          const picks = await fetchJson(`entry/${r.entry}/event/${Math.max(1, currentGw - 1)}/picks/`);
+          their = (picks.picks || []).map(x => x.element);
+        } catch (__) {}
+      }
+      if (!their.length) {
+        rows.push({ r, note: "Picks not public yet" });
+        continue;
+      }
+      const theirSet = new Set(their);
+      const theyHaveIDont = their.filter(id => !myIds.has(id))
+        .map(id => players.find(p => p.id === id))
+        .filter(Boolean)
+        .sort((a, b) => xpOf(b) - xpOf(a))
+        .slice(0, 4);
+      const iHaveTheyDont = [...myIds].filter(id => !theirSet.has(id))
+        .map(id => players.find(p => p.id === id))
+        .filter(Boolean)
+        .sort((a, b) => xpOf(b) - xpOf(a))
+        .slice(0, 4);
+      rows.push({ r, theyHaveIDont, iHaveTheyDont });
+    }
+    box.innerHTML = `<table class="live-table">
+      <thead><tr><th>Rival</th><th>Rank</th><th>They have · you don’t</th><th>You have · they don’t</th></tr></thead>
+      <tbody>
+        ${rows.map(row => {
+          if (row.note) return `<tr><td>${row.r.entry_name}</td><td>${row.r.rank}</td><td colspan="2" class="muted">${row.note}</td></tr>`;
+          return `<tr>
+            <td><strong>${row.r.entry_name}</strong><div class="muted" style="font-size:0.75rem">${row.r.player_name || ""}</div></td>
+            <td>${row.r.rank}</td>
+            <td>${(row.theyHaveIDont || []).map(p => p.web_name).join(", ") || "—"}</td>
+            <td>${(row.iHaveTheyDont || []).map(p => p.web_name).join(", ") || "—"}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    <p class="muted" style="font-size:0.8rem;margin-top:8px">Pre-deadline picks of other managers are often hidden by FPL — scan works best once picks are published.</p>`;
+  } catch (e) {
+    box.innerHTML = `<p class="muted">League scan failed: ${e.message}</p>`;
+  }
+}
+
+async function renderMatchday() {
+  if (!players.length) {
+    try {
+      if (!bootstrap) { await loadBootstrap(); await loadFixtures(); buildPlayers(); }
+    } catch (e) {
+      setStatus("Error loading matchday: " + e.message);
+      return;
+    }
+  }
+  renderCaptainPoll();
+  renderChipPoll();
+  renderFixtureBoard();
+  renderMetricsBoard();
+  renderPriceBoard();
+  await renderLiveBoard();
+  if ($("rivalLeagueId") && $("rivalLeagueId").value) await renderRivalRadar();
 }
 
 async function renderLiveRank() {
@@ -1338,6 +1796,7 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     $("view-" + btn.dataset.view).classList.add("active");
     if (btn.dataset.view === "transfers") renderTransfersUI();
     if (btn.dataset.view === "teams") { /* wait for button */ }
+    if (btn.dataset.view === "matchday") renderMatchday();
     if (btn.dataset.view === "rank") renderLiveRank();
     if (btn.dataset.view === "chips") renderChips();
   });
@@ -1357,6 +1816,12 @@ on("loginSubmitBtn", "click", async () => {
   const msg = $("loginMsg");
   if (msg) { msg.textContent = res.msg; msg.style.color = res.ok ? "#16a34a" : "#dc2626"; }
   if (res.ok) {
+    const wantMail = $("loginMatchdayEmail") && $("loginMatchdayEmail").checked;
+    if (email) {
+      const sub = await setMatchdaySubscription(email, tid, wantMail);
+      if (wantMail && sub && sub.ok) setStatus("Signed in · Matchday emails on");
+      else if (wantMail && sub && sub.error) setStatus("Signed in · email opt-in failed (deploy functions + Blobs)");
+    }
     const modal = $("loginModal");
     if (modal) modal.classList.add("hidden");
     await init(true);
@@ -1374,8 +1839,10 @@ if (tidInput) {
 }
 
 on("refreshRankBtn", "click", () => renderLiveRank());
+on("refreshLiveBtn", "click", () => renderLiveBoard());
+on("rivalScanBtn", "click", () => renderRivalRadar());
 on("optimiseBtn", "click", () => { const r = optimiseLineup(); if (r && r.error) setStatus(r.error); else { renderPitch(); renderPlayerList(); setStatus("Lineup optimised from your current squad (best XI + captain)"); } });
-on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; renderPitch(); renderPlayerList(); });
+on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null; renderPitch(); renderPlayerList(); });
 function setEditMode(on) {
   editMode = on;
   document.body.classList.toggle("editing", on);

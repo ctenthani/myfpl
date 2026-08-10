@@ -8,6 +8,24 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/api/votes"
+  to = "/.netlify/functions/votes"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/subscribe"
+  to = "/.netlify/functions/subscribe"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/matchday-digest"
+  to = "/.netlify/functions/matchday-digest"
+  status = 200
+  force = true
+
 [[headers]]
   for = "/*"
   [headers.values]
