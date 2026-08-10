@@ -586,3 +586,63 @@ body {
   margin-top: 12px;
   text-decoration: none;
 }
+
+/* Live Rank */
+.rank-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.rank-metric {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 12px;
+  text-align: center;
+}
+.rank-metric .rm-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+.rank-metric .rm-val {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--blue);
+}
+.rank-metric .rm-sub {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.rank-history table, .rank-leagues table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.rank-history th, .rank-leagues th,
+.rank-history td, .rank-leagues td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.rank-history th, .rank-leagues th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+.rank-delta-up { color: #16a34a; font-weight: 700; }
+.rank-delta-down { color: #dc2626; font-weight: 700; }
+.rank-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px dashed var(--border);
+}

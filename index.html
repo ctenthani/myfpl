@@ -35,6 +35,7 @@
     <button class="nav-btn active" data-view="pick">Pick</button>
     <button class="nav-btn" data-view="transfers">AI Transfers</button>
     <button class="nav-btn" data-view="teams">AI Teams</button>
+    <button class="nav-btn" data-view="rank">Live Rank</button>
     <button class="nav-btn" data-view="chips">Chips</button>
   </nav>
 
@@ -127,6 +128,36 @@
     </div>
   </div>
 
+
+  <!-- ========== LIVE RANK ========== -->
+  <div id="view-rank" class="view">
+    <div class="page-wrap">
+      <div class="card">
+        <h2>Live Rank</h2>
+        <p class="muted">Overall rank, gameweek points and mini-league standing from the official FPL API. Available once Gameweek 1 is live.</p>
+        <div class="controls-row" style="margin-bottom:12px">
+          <label>Team ID <input type="number" id="rankTeamId" value="1932256" /></label>
+          <button id="refreshRankBtn" class="btn btn-blue">Refresh rank</button>
+        </div>
+        <div id="rankSummary" class="rank-summary">
+          <p class="muted">Loading…</p>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Gameweek history</h2>
+        <div id="rankHistory" class="rank-history">
+          <p class="muted">History appears after the first scored gameweek.</p>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Classic leagues</h2>
+        <div id="rankLeagues" class="rank-leagues">
+          <p class="muted">Your classic leagues will show here.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ========== CHIPS ========== -->
   <div id="view-chips" class="view">
     <div class="page-wrap">
@@ -152,7 +183,7 @@
       </div>
       <div class="card" style="margin-top:16px">
         <h2>Plans & pricing</h2>
-        <p class="muted">Starter stays useful forever. Pro unlocks AI Transfers + AI Teams. Create Stripe Payment Links and paste the URLs into <code>js/app.js</code> (STRIPE_PRO_LINK / STRIPE_ULTRA_LINK).</p>
+        <p class="muted">Starter stays free forever. Pro unlocks AI Transfers + AI Teams. Pay via PayPal or Airtel Money / bank in Malawi. Prices in USD. Yearly plans save 20%.</p>
         <div class="price-grid">
           <div class="price-card">
             <h3>Starter</h3>
@@ -168,30 +199,43 @@
           <div class="price-card featured">
             <div class="badge">Most popular</div>
             <h3>Pro</h3>
-            <div class="price">£4.99<span>/mo</span></div>
+            <div class="price">$4.99<span>/mo</span></div>
+            <div class="price" style="font-size:1rem;margin-top:-6px;color:var(--muted)">or <strong>$47.90/yr</strong> <span style="color:#16a34a;font-size:0.8rem">save 20%</span></div>
             <ul>
               <li>Unlimited AI transfers & teams</li>
               <li>Improved projections (xG + FDR)</li>
               <li>Mini-league rival diffs</li>
               <li>Live rank (from GW1)</li>
             </ul>
-            <a id="upgradeProBtn" class="btn btn-blue" href="https://buy.stripe.com/test_REPLACE_PRO" target="_blank" rel="noopener">Upgrade to Pro</a>
+            <a id="upgradeProBtn" class="btn btn-blue" href="https://www.paypal.com/ncp/payment/J6DP32LZ7ZMZA" target="_blank" rel="noopener">PayPal · Pro monthly</a>
+            <a id="upgradeProYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/6BS7Z7XPV4FFL" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Pro yearly $47.90</a>
           </div>
           <div class="price-card">
             <h3>Ultra</h3>
-            <div class="price">£9.99<span>/mo</span></div>
+            <div class="price">$9.99<span>/mo</span></div>
+            <div class="price" style="font-size:1rem;margin-top:-6px;color:var(--muted)">or <strong>$95.90/yr</strong> <span style="color:#16a34a;font-size:0.8rem">save 20%</span></div>
             <ul>
               <li>Everything in Pro</li>
               <li>Multi-week transfer planner</li>
               <li>Draft + Challenge trackers</li>
               <li>Priority data refresh</li>
             </ul>
-            <a id="upgradeUltraBtn" class="btn btn-outline" href="https://buy.stripe.com/test_REPLACE_ULTRA" target="_blank" rel="noopener">Upgrade to Ultra</a>
+            <a id="upgradeUltraBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ZXB3XQA3BJG9A" target="_blank" rel="noopener">PayPal · Ultra monthly</a>
+            <a id="upgradeUltraYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ELGD2S687MS7Q" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Ultra yearly $95.90</a>
           </div>
         </div>
-        <p class="muted" style="margin-top:12px;font-size:0.85rem">
-          Testing without Stripe: open AI Transfers / AI Teams and use <strong>Demo unlock (local only)</strong>.
-          To reset plan open console: <code>localStorage.removeItem('fpl_plan_v1')</code> then Refresh.
+
+        <div class="manual-pay-box" style="margin-top:20px;padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0">
+          <h3 style="margin:0 0 8px;font-size:1rem">Pay via Airtel Money / Bank (Malawi)</h3>
+          <p class="muted" style="margin:0 0 8px;font-size:0.9rem">
+            Prefer mobile money? Send the monthly or yearly amount, then message proof of payment. Your plan will be unlocked manually.
+          </p>
+          <p id="manualPayDetails" style="margin:0;font-size:0.9rem"></p>
+        </div>
+
+        <p class="muted" style="margin-top:14px;font-size:0.85rem">
+          Testing: open AI Transfers / AI Teams → use <strong>Demo unlock (local only)</strong>.<br>
+          Reset plan: console → <code>localStorage.removeItem('fpl_plan_v1')</code> then Refresh.
         </p>
       </div>
     </div>

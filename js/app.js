@@ -4,11 +4,32 @@ const API = "/api/fpl?path=";
 const DEFAULT_TEAM_ID = 1932256;
 const BUDGET = 100.0;
 
-// Stripe Payment Links — replace with your own from https://dashboard.stripe.com/payment-links
-// After payment Stripe can redirect to ?plan=pro (or use a success page). For demo we also
-// support a local unlock so you can test gating before wiring live keys.
-const STRIPE_PRO_LINK = "https://buy.stripe.com/test_REPLACE_PRO";   // £4.99/mo Pro
-const STRIPE_ULTRA_LINK = "https://buy.stripe.com/test_REPLACE_ULTRA"; // £9.99/mo Ultra
+// ============================================================
+// PRICING (USD) + PAYPAL LINKS
+// Annual = monthly × 12 × 0.80  (20% discount)
+// ============================================================
+const PRICING = {
+  pro:   { monthly: 4.99, yearly: +(4.99 * 12 * 0.8).toFixed(2) },   // $4.99 / $47.90
+  ultra: { monthly: 9.99, yearly: +(9.99 * 12 * 0.8).toFixed(2) },   // $9.99 / $95.90
+};
+
+const PAYPAL_PRO_MONTHLY   = "https://www.paypal.com/ncp/payment/J6DP32LZ7ZMZA";
+const PAYPAL_ULTRA_MONTHLY = "https://www.paypal.com/ncp/payment/ZXB3XQA3BJG9A";
+const PAYPAL_PRO_YEARLY    = "https://www.paypal.com/ncp/payment/6BS7Z7XPV4FFL";
+const PAYPAL_ULTRA_YEARLY  = "https://www.paypal.com/ncp/payment/ELGD2S687MS7Q";
+
+const CHECKOUT_PRO_LINK   = PAYPAL_PRO_MONTHLY;
+const CHECKOUT_ULTRA_LINK = PAYPAL_ULTRA_MONTHLY;
+
+// Manual payment details (Airtel Money / bank) – edit these
+const MANUAL_PAYMENT = {
+  airtel: "088X XXX XXX",
+  name:   "Your Full Name",
+  bank:   "National Bank / Standard Bank – Account XXXXXXXX",
+  note:   "Send proof on WhatsApp / X (@ctenthani). Yearly: Pro $47.90 · Ultra $95.90 (20% off)."
+};
+
+function moneyUsd(n) { return "$" + Number(n).toFixed(2); }
 
 let bootstrap = null;
 let players = [];
@@ -81,10 +102,25 @@ function updatePlanUI() {
   document.querySelectorAll(".pro-only").forEach(el => {
     el.classList.toggle("locked", !isPro());
   });
+  // Wire checkout buttons (monthly + yearly)
   const proBtn = $("upgradeProBtn");
   const ultraBtn = $("upgradeUltraBtn");
-  if (proBtn) proBtn.href = STRIPE_PRO_LINK;
-  if (ultraBtn) ultraBtn.href = STRIPE_ULTRA_LINK;
+  const proY = $("upgradeProYearlyBtn");
+  const ultraY = $("upgradeUltraYearlyBtn");
+  if (proBtn) proBtn.href = PAYPAL_PRO_MONTHLY;
+  if (ultraBtn) ultraBtn.href = PAYPAL_ULTRA_MONTHLY;
+  if (proY) proY.href = PAYPAL_PRO_YEARLY;
+  if (ultraY) ultraY.href = PAYPAL_ULTRA_YEARLY;
+
+  // Fill manual payment details on Chips / pricing page
+  const man = $("manualPayDetails");
+  if (man) {
+    man.innerHTML = `
+      Airtel Money: <strong>${MANUAL_PAYMENT.airtel}</strong><br>
+      Name: ${MANUAL_PAYMENT.name}<br>
+      ${MANUAL_PAYMENT.bank ? "Bank: " + MANUAL_PAYMENT.bank + "<br>" : ""}
+      <span class="muted" style="font-size:0.85rem">${MANUAL_PAYMENT.note}</span>`;
+  }
 }
 
 async function loadBootstrap(force = false) {
@@ -582,12 +618,37 @@ function showUpgradePrompt(feature) {
         ? "AI Transfer suggestions (hits, bank, bench coverage) are available on <strong>Pro</strong> and <strong>Ultra</strong>."
         : "AI Teams generation (multiple optimised squads for WC / FH) is available on <strong>Pro</strong> and <strong>Ultra</strong>."}</p>
       <p class="muted">Starter keeps the pitch view, predicted points, optimise lineup and chip planner free.</p>
-      <div class="upgrade-actions">
-        <a class="btn btn-blue" href="${STRIPE_PRO_LINK}" target="_blank" rel="noopener">Upgrade to Pro · £4.99/mo</a>
-        <a class="btn btn-outline" href="${STRIPE_ULTRA_LINK}" target="_blank" rel="noopener">Ultra · £9.99/mo</a>
-        <button type="button" class="btn btn-ghost" id="demoUnlockBtn">Demo unlock (local only)</button>
+
+      <div style="margin-top:12px">
+        <strong style="font-size:0.9rem">Monthly</strong>
+        <div class="upgrade-actions" style="flex-wrap:wrap;gap:8px;margin-top:6px">
+          <a class="btn btn-blue" href="${PAYPAL_PRO_MONTHLY}" target="_blank" rel="noopener">Pro $${PRICING.pro.monthly}/mo</a>
+          <a class="btn btn-outline" href="${PAYPAL_ULTRA_MONTHLY}" target="_blank" rel="noopener">Ultra $${PRICING.ultra.monthly}/mo</a>
+        </div>
       </div>
-      <p class="muted" style="margin-top:10px;font-size:0.8rem">After you create real Stripe Payment Links, set success URL to this site with <code>?plan=pro</code>.</p>
+
+      <div style="margin-top:14px">
+        <strong style="font-size:0.9rem">Yearly · save 20%</strong>
+        <div class="upgrade-actions" style="flex-wrap:wrap;gap:8px;margin-top:6px">
+          <a class="btn btn-blue" href="${PAYPAL_PRO_YEARLY}" target="_blank" rel="noopener">Pro $${PRICING.pro.yearly}/yr</a>
+          <a class="btn btn-outline" href="${PAYPAL_ULTRA_YEARLY}" target="_blank" rel="noopener">Ultra $${PRICING.ultra.yearly}/yr</a>
+        </div>
+        <p class="muted" style="font-size:0.75rem;margin-top:4px">Save 20% with yearly billing (USD).</p>
+      </div>
+
+      <div class="manual-pay" style="margin-top:18px;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0">
+        <strong>Or pay via Airtel Money / Bank (Malawi)</strong>
+        <p style="margin:8px 0 4px;font-size:0.9rem">
+          Airtel: <strong>${MANUAL_PAYMENT.airtel}</strong><br>
+          Name: ${MANUAL_PAYMENT.name}<br>
+          ${MANUAL_PAYMENT.bank ? "Bank: " + MANUAL_PAYMENT.bank + "<br>" : ""}
+        </p>
+        <p class="muted" style="font-size:0.8rem;margin:0">${MANUAL_PAYMENT.note}</p>
+      </div>
+
+      <div style="margin-top:14px">
+        <button type="button" class="btn btn-ghost" id="demoUnlockBtn">Demo unlock (local only – for testing)</button>
+      </div>
     </div>`;
   const demo = $("demoUnlockBtn");
   if (demo) demo.addEventListener("click", () => {
@@ -868,6 +929,125 @@ async function init(force = false) {
   }
 }
 
+
+// ---------- Live Rank ----------
+async function loadEntrySummary(teamId) {
+  return fetchJson(`entry/${teamId}/`);
+}
+
+async function loadEntryHistory(teamId) {
+  try {
+    return await fetchJson(`entry/${teamId}/history/`);
+  } catch {
+    return null;
+  }
+}
+
+function formatRank(n) {
+  if (n == null || n === 0) return "–";
+  return Number(n).toLocaleString();
+}
+
+async function renderLiveRank() {
+  const teamId = parseInt(($("rankTeamId") && $("rankTeamId").value) || $("teamIdInput").value, 10) || DEFAULT_TEAM_ID;
+  if ($("rankTeamId")) $("rankTeamId").value = teamId;
+  const sumBox = $("rankSummary");
+  const histBox = $("rankHistory");
+  const leaguesBox = $("rankLeagues");
+  if (!sumBox) return;
+  sumBox.innerHTML = `<p class="muted">Loading rank data…</p>`;
+  if (histBox) histBox.innerHTML = "";
+  if (leaguesBox) leaguesBox.innerHTML = "";
+
+  try {
+    const entry = await loadEntrySummary(teamId);
+    const history = await loadEntryHistory(teamId);
+
+    const overallPts = entry.summary_overall_points;
+    const overallRank = entry.summary_overall_rank;
+    const gwPts = entry.summary_event_points;
+    const gwRank = entry.summary_event_rank;
+    const name = entry.name || "Your team";
+    const currentEvent = entry.current_event;
+    const seasonStarted = overallPts != null || (history && history.current && history.current.length);
+
+    if (!seasonStarted) {
+      sumBox.innerHTML = `
+        <div class="rank-empty" style="grid-column:1/-1">
+          <strong>${name}</strong> · Team ID ${teamId}<br>
+          Gameweek 1 has not been scored yet.<br>
+          Overall rank, GW points and history will appear here once the first matches are complete.
+        </div>`;
+      if (histBox) histBox.innerHTML = `<div class="rank-empty">No gameweek history yet.</div>`;
+    } else {
+      sumBox.innerHTML = `
+        <div class="rank-metric"><span class="rm-label">Team</span><span class="rm-val" style="font-size:1rem">${name}</span></div>
+        <div class="rank-metric"><span class="rm-label">Overall rank</span><span class="rm-val">${formatRank(overallRank)}</span></div>
+        <div class="rank-metric"><span class="rm-label">Overall points</span><span class="rm-val">${overallPts ?? "–"}</span></div>
+        <div class="rank-metric"><span class="rm-label">GW ${currentEvent || "–"} pts</span><span class="rm-val">${gwPts ?? "–"}</span>
+          <div class="rm-sub">GW rank ${formatRank(gwRank)}</div></div>
+      `;
+
+      if (histBox && history && history.current && history.current.length) {
+        const rows = [...history.current].reverse().slice(0, 15).map(h => {
+          const delta = h.rank_sort ? "" : "";
+          return `<tr>
+            <td>GW ${h.event}</td>
+            <td>${h.points}</td>
+            <td>${h.total_points}</td>
+            <td>${formatRank(h.rank)}</td>
+            <td>${formatRank(h.overall_rank)}</td>
+            <td>${h.event_transfers || 0}${h.event_transfers_cost ? ` (−${h.event_transfers_cost})` : ""}</td>
+            <td>£${((h.value || 0) / 10).toFixed(1)}m</td>
+          </tr>`;
+        }).join("");
+        histBox.innerHTML = `
+          <table>
+            <thead><tr>
+              <th>GW</th><th>Pts</th><th>Total</th><th>GW rank</th><th>Overall</th><th>Transfers</th><th>Value</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      } else if (histBox) {
+        histBox.innerHTML = `<div class="rank-empty">No scored gameweeks yet.</div>`;
+      }
+    }
+
+    // Classic leagues
+    if (leaguesBox) {
+      const classic = (entry.leagues && entry.leagues.classic) || [];
+      if (!classic.length) {
+        leaguesBox.innerHTML = `<div class="rank-empty">No classic leagues found.</div>`;
+      } else {
+        const rows = classic.map(l => `
+          <tr>
+            <td>${l.name}</td>
+            <td>${formatRank(l.entry_rank)}</td>
+            <td>${formatRank(l.entry_last_rank)}</td>
+            <td>${l.entry_rank && l.entry_last_rank
+              ? (l.entry_rank < l.entry_last_rank
+                  ? `<span class="rank-delta-up">↑ ${l.entry_last_rank - l.entry_rank}</span>`
+                  : l.entry_rank > l.entry_last_rank
+                    ? `<span class="rank-delta-down">↓ ${l.entry_rank - l.entry_last_rank}</span>`
+                    : "–")
+              : "–"}</td>
+            <td>${l.rank_count ? formatRank(l.rank_count) : "–"}</td>
+          </tr>`).join("");
+        leaguesBox.innerHTML = `
+          <table>
+            <thead><tr>
+              <th>League</th><th>Rank</th><th>Last</th><th>Δ</th><th>Size</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      }
+    }
+  } catch (e) {
+    sumBox.innerHTML = `<p class="muted">Could not load rank: ${e.message}. Rank data is only available after GW1 is live.</p>`;
+  }
+}
+
+
 // Nav
 document.querySelectorAll(".nav-btn").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -877,11 +1057,13 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     $("view-" + btn.dataset.view).classList.add("active");
     if (btn.dataset.view === "transfers") renderTransfersUI();
     if (btn.dataset.view === "teams") { /* wait for button */ }
+    if (btn.dataset.view === "rank") renderLiveRank();
     if (btn.dataset.view === "chips") renderChips();
   });
 });
 
 on("refreshBtn", "click", () => init(true));
+on("refreshRankBtn", "click", () => renderLiveRank());
 on("optimiseBtn", "click", () => { optimiseSquad(); renderPitch(); renderPlayerList(); setStatus("Optimised for best XI under £100m"); });
 on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; renderPitch(); renderPlayerList(); });
 function setEditMode(on) {
