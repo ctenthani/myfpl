@@ -37,6 +37,16 @@ const AUTH_SALT = "fpl-mw-2026-srdl";
 
 function moneyUsd(n) { return "$" + Number(n).toFixed(2); }
 
+function $(id) { return document.getElementById(id); }
+function on(id, evt, fn) {
+  const el = $(id);
+  if (el) el.addEventListener(evt, fn);
+}
+function money(n) { return "£" + Number(n).toFixed(1) + "m"; }
+function setStatus(m) { const el = $("statusBar"); if (el) el.textContent = m; }
+function xpOf(p) { return horizon === 3 ? p.xp3 : p.xp; }
+
+
 /** Simple deterministic access code for a team + plan (you can generate offline). */
 function makeAccessCode(teamId, plan) {
   const raw = String(teamId) + "|" + plan + "|" + AUTH_SALT;
@@ -48,6 +58,8 @@ function makeAccessCode(teamId, plan) {
   // 8-char uppercase alphanumeric
   return (Math.abs(h).toString(36) + Math.abs(h * 31).toString(36)).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
 }
+window.makeAccessCode = makeAccessCode;
+
 
 let authSession = null; // { teamId, plan, email }
 
@@ -183,6 +195,39 @@ function updatePlanUI() {
         Include which plan (Pro or Ultra, monthly or yearly). You will receive an unlock link.
       </span>`;
   }
+}
+
+
+let bootstrap = null;
+let players = [];
+let fixtures = [];
+let teamsMap = {};
+let posMap = {};
+let currentGw = 1;
+let horizon = 1;
+let squad = [];
+let startingIds = [];
+let benchIds = [];
+let captainId = null;
+let editMode = false;
+let bank = 0;
+let entryBank = 0;
+let chipModalKey = null;
+
+const SQUAD_LIMITS = { GKP: 2, DEF: 5, MID: 5, FWD: 3 };
+
+// XifundoFC GW1 draft — used only for DEFAULT_TEAM_ID when API picks not public
+const DEFAULT_SQUAD_IDS = {
+  starting: [1, 8, 4, 469, 418, 400, 427, 542, 398, 411, 106],
+  bench: [497, 346, 259, 212],
+  captain: 411
+};
+
+async function fetchJson(path) {
+  const url = API + encodeURIComponent(path);
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
 }
 
 async function loadBootstrap(force = false) {
@@ -844,8 +889,6 @@ const CHIP_META = {
   wc: { name: "Wildcard", desc: "Unlimited transfers for the week you activate it; changes are permanent. WC1 early season, WC2 for blank/double clusters." },
   tc: { name: "Triple captain", desc: "Captain scores 3× points. Best on a premium in a double gameweek." },
 };
-
-let chipModalKey = null;
 
 function renderChips() {
   const plan = getChipPlan();
