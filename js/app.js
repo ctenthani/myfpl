@@ -255,7 +255,7 @@ function buildPlayers() {
       availability = Number(p.chance_of_playing_next_round) / 100;
     const pl = {
       id: p.id, web_name: p.web_name, team_id: p.team,
-      team: team.short_name || "?", team_name: team.name || "?",
+      team: team.short_name || "?", team_name: team.name || "?", team_code: team.code || 0,
       position: posMap[p.element_type] || "?", element_type: p.element_type,
       price: p.now_cost / 10, form: parseFloat(p.form) || 0,
       points_per_game: parseFloat(p.points_per_game) || 0,
@@ -454,90 +454,163 @@ function optimiseLineup() {
   return { ok: true, xiXp: bestXI.reduce((s, p) => s + xpOf(p), 0) };
 }
 
-function optimiseSquad(budget = BUDGET) {
-  let pool = players.filter(p => p.availability >= 0.35 && !["u", "s"].includes(p.status));
-  pool.sort((a, b) => xpOf(b) - xpOf(a));
+function optimiseSquad(budget = BUDGET, opts = {}) {
+  // opts.mode: "wildcard" | "freehit" | "balanced"
+  // opts.excludeIds: number[]
+  // opts.horizonOverride: 1 | 3
+  const mode = opts.mode || "balanced";
+  const exclude = new Set(opts.excludeIds || []);
+  const savedH = horizon;
+  if (opts.horizonOverride) horizon = opts.horizonOverride;
+
+  const scoreOf = (p) => {
+    let s = xpOf(p);
+    if (mode === "freehit") {
+      // single-GW: lean harder on next fixture + form
+      s = (p.xp || s) * 1.15 + (p.form || 0) * 0.2;
+    } else if (mode === "wildcard") {
+      // multi-week structure: xp3 + ownership stability for premiums
+      s = (p.xp3 || s) + (p.price >= 7 ? 0.3 : 0) - (p.selected_by_percent > 40 ? 0.1 : 0);
+    }
+    return s;
+  };
+
+  let pool = players.filter(p =>
+    p.availability >= 0.25 &&
+    !["u", "s"].includes(p.status) &&
+    !exclude.has(p.id)
+  );
+  pool.sort((a, b) => scoreOf(b) - scoreOf(a));
+
+  const need = { GKP: 2, DEF: 5, MID: 5, FWD: 3 };
   const counts = { GKP: 0, DEF: 0, MID: 0, FWD: 0 };
   const club = {};
   const picked = [];
   let spent = 0;
-  for (const p of pool) {
-    if (picked.length >= 15) break;
-    if (counts[p.position] >= SQUAD_LIMITS[p.position]) continue;
-    if ((club[p.team_id] || 0) >= 3) continue;
-    if (spent + p.price > budget) continue;
-    picked.push(p); counts[p.position]++; club[p.team_id] = (club[p.team_id] || 0) + 1; spent += p.price;
+
+  // Phase 1: fill each position quota by score within budget
+  for (const pos of ["GKP", "DEF", "MID", "FWD"]) {
+    const candidates = pool.filter(p => p.position === pos);
+    for (const p of candidates) {
+      if (counts[pos] >= need[pos]) break;
+      if ((club[p.team_id] || 0) >= 3) continue;
+      if (spent + p.price > budget + 0.05) continue;
+      picked.push(p);
+      counts[pos]++;
+      club[p.team_id] = (club[p.team_id] || 0) + 1;
+      spent += p.price;
+    }
   }
+
+  // Phase 2: fill remaining slots with cheapest valid players
+  if (picked.length < 15) {
+    const rest = pool
+      .filter(p => !picked.includes(p))
+      .sort((a, b) => a.price - b.price || scoreOf(b) - scoreOf(a));
+    for (const p of rest) {
+      if (picked.length >= 15) break;
+      if (counts[p.position] >= need[p.position]) continue;
+      if ((club[p.team_id] || 0) >= 3) continue;
+      if (spent + p.price > budget + 0.05) continue;
+      picked.push(p);
+      counts[p.position]++;
+      club[p.team_id] = (club[p.team_id] || 0) + 1;
+      spent += p.price;
+    }
+  }
+
+  // Phase 3: if still short, relax budget slightly (up to 100.5) then availability
   if (picked.length < 15) {
     const rest = pool.filter(p => !picked.includes(p)).sort((a, b) => a.price - b.price);
     for (const p of rest) {
       if (picked.length >= 15) break;
-      if (counts[p.position] >= SQUAD_LIMITS[p.position]) continue;
+      if (counts[p.position] >= need[p.position]) continue;
       if ((club[p.team_id] || 0) >= 3) continue;
-      if (spent + p.price > budget) continue;
-      picked.push(p); counts[p.position]++; club[p.team_id] = (club[p.team_id] || 0) + 1; spent += p.price;
+      picked.push(p);
+      counts[p.position]++;
+      club[p.team_id] = (club[p.team_id] || 0) + 1;
+      spent += p.price;
     }
   }
-  for (let i = 0; i < 3; i++) {
-    picked.sort((a, b) => xpOf(a) - xpOf(b));
+
+  // Phase 4: upgrade weak picks while staying in budget
+  for (let pass = 0; pass < 4; pass++) {
+    picked.sort((a, b) => scoreOf(a) - scoreOf(b));
     for (let j = 0; j < picked.length; j++) {
       const weak = picked[j];
       for (const cand of pool) {
         if (picked.includes(cand) || cand.position !== weak.position) continue;
-        if (xpOf(cand) <= xpOf(weak) + 0.05) continue;
+        if (scoreOf(cand) <= scoreOf(weak) + 0.05) continue;
         const newSpent = spent - weak.price + cand.price;
-        if (newSpent > budget) continue;
-        const nc = { ...club };
-        nc[weak.team_id] = (nc[weak.team_id] || 1) - 1;
-        nc[cand.team_id] = (nc[cand.team_id] || 0) + 1;
-        if (nc[cand.team_id] > 3) continue;
-        picked[j] = cand; spent = newSpent;
-        club[weak.team_id]--; club[cand.team_id] = (club[cand.team_id] || 0) + 1;
+        if (newSpent > budget + 0.05) continue;
+        const nc = (club[cand.team_id] || 0) - (cand.team_id === weak.team_id ? 1 : 0) + 1;
+        if (cand.team_id !== weak.team_id && (club[cand.team_id] || 0) >= 3) continue;
+        club[weak.team_id] = (club[weak.team_id] || 1) - 1;
+        club[cand.team_id] = (club[cand.team_id] || 0) + 1;
+        spent = newSpent;
+        picked[j] = cand;
         break;
       }
     }
   }
+
+  // Build best XI from the 15
   const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
   picked.forEach(p => byPos[p.position].push(p));
-  Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => xpOf(b) - xpOf(a)));
+  Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => scoreOf(b) - scoreOf(a)));
   const formations = [
     { DEF: 3, MID: 4, FWD: 3 }, { DEF: 3, MID: 5, FWD: 2 }, { DEF: 4, MID: 4, FWD: 2 },
     { DEF: 4, MID: 3, FWD: 3 }, { DEF: 5, MID: 3, FWD: 2 }, { DEF: 5, MID: 4, FWD: 1 }, { DEF: 4, MID: 5, FWD: 1 },
   ];
   let bestXI = null, bestScore = -1;
   for (const f of formations) {
-    if (byPos.DEF.length < f.DEF || byPos.MID.length < f.MID || byPos.FWD.length < f.FWD || byPos.GKP.length < 1) continue;
+    if (byPos.GKP.length < 1 || byPos.DEF.length < f.DEF || byPos.MID.length < f.MID || byPos.FWD.length < f.FWD) continue;
     const xi = [byPos.GKP[0], ...byPos.DEF.slice(0, f.DEF), ...byPos.MID.slice(0, f.MID), ...byPos.FWD.slice(0, f.FWD)];
-    const score = xi.reduce((s, p) => s + xpOf(p) * (0.7 + 0.3 * (p.availability || 1)), 0);
+    if (xi.length !== 11) continue;
+    const score = xi.reduce((s, p) => s + scoreOf(p), 0);
     if (score > bestScore) { bestScore = score; bestXI = xi; }
   }
-  if (!bestXI) {
+  if (!bestXI || bestXI.length !== 11) {
     bestXI = [];
-    for (const pos of ["GKP", "DEF", "MID", "FWD"]) {
-      const need = pos === "GKP" ? 1 : pos === "DEF" ? 3 : pos === "MID" ? 4 : 2;
-      bestXI.push(...byPos[pos].slice(0, need));
-    }
+    if (byPos.GKP[0]) bestXI.push(byPos.GKP[0]);
+    bestXI.push(...byPos.DEF.slice(0, 3), ...byPos.MID.slice(0, 4), ...byPos.FWD.slice(0, 3));
+    bestXI = bestXI.slice(0, 11);
   }
-  // Ensure XI is exactly 11 and squad is exactly 15 when possible
-  if (bestXI.length > 11) bestXI = bestXI.slice(0, 11);
+
   const xiIds = new Set(bestXI.map(p => p.id));
-  let benchFinal = picked.filter(p => !xiIds.has(p.id));
-  benchFinal.sort((a, b) => {
+  const bench = picked.filter(p => !xiIds.has(p.id));
+  bench.sort((a, b) => {
     if (a.position === "GKP" && b.position !== "GKP") return -1;
     if (b.position === "GKP" && a.position !== "GKP") return 1;
-    return xpOf(b) - xpOf(a);
+    return scoreOf(b) - scoreOf(a);
   });
-  // If we somehow have fewer than 15, leave as-is; never exceed 15
-  const full = [...bestXI, ...benchFinal].slice(0, 15);
-  const xiFinal = full.slice(0, Math.min(11, full.length));
-  const benchOut = full.slice(xiFinal.length);
-  squad = full;
-  startingIds = xiFinal.map(p => p.id);
-  benchIds = benchOut.map(p => p.id);
-  captainId = xiFinal.slice().sort((a, b) => xpOf(b) - xpOf(a))[0]?.id || null;
-  const realSpent = squad.reduce((s, p) => s + p.price, 0);
-  bank = Math.max(0, budget - realSpent);
-  return { spent: realSpent, bank, xiXp: xiFinal.reduce((s, p) => s + xpOf(p), 0), squad: [...squad], startingIds: [...startingIds], benchIds: [...benchIds], captainId };
+
+  const full = [...bestXI, ...bench].slice(0, 15);
+  const xiFinal = full.filter(p => xiIds.has(p.id)).slice(0, 11);
+  // if filter order wrong, rebuild
+  const xiOrdered = bestXI.filter(p => full.some(x => x.id === p.id)).slice(0, 11);
+  const benchOut = full.filter(p => !xiOrdered.some(x => x.id === p.id));
+  const squadOut = [...xiOrdered, ...benchOut].slice(0, 15);
+  const realSpent = squadOut.reduce((s, p) => s + p.price, 0);
+  const cap = xiOrdered.slice().sort((a, b) => scoreOf(b) - scoreOf(a))[0]?.id || null;
+
+  horizon = savedH;
+  return {
+    spent: realSpent,
+    bank: Math.max(0, budget - realSpent),
+    xiXp: xiOrdered.reduce((s, p) => s + xpOf(p), 0),
+    squad: squadOut,
+    startingIds: xiOrdered.map(p => p.id),
+    benchIds: benchOut.map(p => p.id),
+    captainId: cap,
+    counts: {
+      GKP: squadOut.filter(p => p.position === "GKP").length,
+      DEF: squadOut.filter(p => p.position === "DEF").length,
+      MID: squadOut.filter(p => p.position === "MID").length,
+      FWD: squadOut.filter(p => p.position === "FWD").length,
+      total: squadOut.length,
+    },
+  };
 }
 
 // ---------- AI Transfers ----------
@@ -657,11 +730,25 @@ function applyTransferSuggestion(sug) {
 }
 
 // ---------- Render ----------
+function shirtUrl(p) {
+  const code = p.team_code || 0;
+  if (!code) return "";
+  // Official FPL kit art (home). GK uses _1 suffix.
+  if (p.position === "GKP") {
+    return `https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${code}_1-66.webp`;
+  }
+  return `https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${code}-66.webp`;
+}
 function playerCard(p, isCaptain = false) {
   const pts = xpOf(p).toFixed(1);
+  const shirt = shirtUrl(p);
+  const shirtHtml = shirt
+    ? `<img class="shirt-img" src="${shirt}" alt="${p.team}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+       <div class="shirt shirt-fallback" style="display:none;background:${shirtFor(p.team)}">${posEmoji(p.position)}</div>`
+    : `<div class="shirt" style="background:${shirtFor(p.team)}">${posEmoji(p.position)}</div>`;
   return `
     <div class="pcard ${isCaptain ? "captain" : ""}" data-id="${p.id}" title="${p.news || p.web_name}">
-      <div class="shirt" style="background:${shirtFor(p.team)}">${posEmoji(p.position)}</div>
+      ${shirtHtml}
       <div class="pname">${p.web_name}</div>
       <div class="pprice">${money(p.price)}</div>
       <div class="ppts"><span>${pts}</span></div>
@@ -671,6 +758,26 @@ function posEmoji(pos) { return { GKP: "🧤", DEF: "🛡️", MID: "⚙️", FW
 function shirtFor(team) {
   const map = { ARS:"#ef0107",AVL:"#670e36",BOU:"#da291c",BRE:"#e30613",BHA:"#0057b8",CHE:"#034694",CRY:"#1b458f",EVE:"#003399",FUL:"#000000",LIV:"#c8102e",MCI:"#6cabdd",MUN:"#da291c",NEW:"#241f20",NFO:"#e53233",TOT:"#132257",WHU:"#7a263a",WOL:"#fdb913",LEE:"#1d428a",SUN:"#eb172b",IPS:"#0033a0",SOU:"#d71920",LEI:"#003090",HUL:"#f5a12d",BUR:"#6c1d45" };
   return map[team] || "#64748b";
+}
+
+/** Mini pitch HTML for AI Teams (Wildcard / Free Hit) */
+function renderMiniPitch(data) {
+  const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
+  (data.startingIds || []).forEach(id => {
+    const p = (data.squad || []).find(x => x.id === id);
+    if (p) byPos[p.position].push(p);
+  });
+  let rows = "";
+  for (const pos of ["GKP", "DEF", "MID", "FWD"]) {
+    rows += `<div class="pitch-row">`;
+    byPos[pos].forEach(p => { rows += playerCard(p, p.id === data.captainId); });
+    rows += `</div>`;
+  }
+  const bench = (data.benchIds || []).map(id => (data.squad || []).find(x => x.id === id)).filter(Boolean);
+  const benchHtml = bench.map(p => playerCard(p, false)).join("");
+  return `<div class="ai-pitch pitch">${rows}</div>
+    <div class="bench-label">Bench</div>
+    <div class="bench ai-bench">${benchHtml}</div>`;
 }
 
 function renderPitch() {
@@ -869,57 +976,52 @@ function renderAITeams() {
   }
   const budget = parseFloat($("aiBudget").value) || 100;
   const box = $("aiTeamsResults");
-  box.innerHTML = "<p class='muted'>Generating…</p>";
-  // Generate 3 variants by slightly different sort bias
-  const variants = [];
+  box.innerHTML = "<p class='muted'>Generating Wildcard & Free Hit squads…</p>";
+
   const savedHorizon = horizon;
-  for (let v = 0; v < 3; v++) {
-    // temporarily nudge sort by mixing ownership
-    const result = optimiseSquad(budget);
-    variants.push({
-      label: v === 0 ? "Balanced (recommended)" : v === 1 ? "Premium-heavy" : "Value / differentials",
-      ...result,
-    });
-    // perturb: exclude top owned mid for variant diversity
-    if (v === 0) {
-      // next loop will re-run; force different by excluding highest owned from previous
-    }
-  }
-  // Better diversity: run once, then exclude 2-3 template players and re-run
-  const r1 = optimiseSquad(budget);
-  const excludeIds = r1.squad.filter(p => p.selected_by_percent > 30).slice(0, 3).map(p => p.id);
-  const pool2 = players.filter(p => !excludeIds.includes(p.id));
-  // quick second optimise on reduced pool
-  const origPlayers = players;
-  players = pool2;
-  const r2 = optimiseSquad(budget);
-  players = origPlayers;
-  // third: force Haaland if available
-  const haaland = origPlayers.find(p => p.web_name === "Haaland");
-  let r3 = r1;
-  if (haaland) {
-    players = origPlayers.filter(p => p.id === haaland.id || p.web_name !== "Haaland");
-    r3 = optimiseSquad(budget);
-    players = origPlayers;
-  }
+
+  // Wildcard: multi-GW structure (horizon 3)
+  horizon = 3;
+  const wc = optimiseSquad(budget, { mode: "wildcard", horizonOverride: 3 });
+
+  // Free Hit: next GW maximisation; exclude a few WC template players for diversity
+  const templateIds = (wc.squad || [])
+    .filter(p => p.selected_by_percent > 25)
+    .slice(0, 4)
+    .map(p => p.id);
+  horizon = 1;
+  const fh = optimiseSquad(budget, { mode: "freehit", horizonOverride: 1, excludeIds: templateIds });
+
+  horizon = savedHorizon;
 
   const teams = [
-    { label: "Balanced (recommended)", data: r1 },
-    { label: "Lower ownership / differentials", data: r2 },
-    { label: "Template-leaning", data: r3 },
+    {
+      label: "Wildcard Team",
+      blurb: "Built for the next 3 GWs — structure, fixtures and longer-term value. Permanent changes.",
+      data: wc,
+    },
+    {
+      label: "Free Hit Team",
+      blurb: "Built for the next GW only — maximise single-week points. Squad reverts after the GW.",
+      data: fh,
+    },
   ];
 
   box.innerHTML = teams.map((t, i) => {
-    const xi = t.data.squad.filter(p => t.data.startingIds.includes(p.id));
-    const bench = t.data.squad.filter(p => t.data.benchIds.includes(p.id));
+    const c = t.data.counts || {};
+    const ok15 = (c.total === 15) && c.GKP === 2 && c.DEF === 5 && c.MID === 5 && c.FWD === 3;
     return `
-      <div class="team-card">
-        <h4>${t.label} · XI XP ≈ ${t.data.xiXp.toFixed(1)} · ${money(t.data.spent)} · Bank ${money(t.data.bank)}</h4>
-        <div class="mini-squad">
-          ${xi.map(p => `<span class="mini-chip"><span class="pos">${p.position}</span> ${p.web_name} ${money(p.price)}</span>`).join("")}
+      <div class="team-card ai-team-card">
+        <h4>${t.label}</h4>
+        <p class="muted" style="font-size:0.85rem;margin:4px 0 10px">${t.blurb}</p>
+        <div class="ai-meta">
+          <span>XI XP ≈ <strong>${(t.data.xiXp || 0).toFixed(1)}</strong></span>
+          <span>Cost <strong>${money(t.data.spent)}</strong></span>
+          <span>Bank <strong>${money(t.data.bank)}</strong></span>
+          <span>${ok15 ? "15/15 · 2-5-5-3" : `⚠ ${c.total || 0}/15 (${c.GKP}GK ${c.DEF}DF ${c.MID}MD ${c.FWD}FW)`}</span>
         </div>
-        <p class="muted" style="margin-top:6px;font-size:0.8rem">Bench: ${bench.map(p => p.web_name).join(", ")}</p>
-        <button class="btn btn-blue use-team" data-idx="${i}" style="margin-top:8px">Use this team</button>
+        ${renderMiniPitch(t.data)}
+        <button class="btn btn-blue use-team" data-idx="${i}" style="margin-top:12px">Use this team on Pick tab</button>
       </div>`;
   }).join("");
 
@@ -931,10 +1033,9 @@ function renderAITeams() {
       captainId = t.captainId; bank = t.bank;
       renderPitch(); renderPlayerList();
       document.querySelector('[data-view="pick"]').click();
-      setStatus("AI team applied — review on Pick tab");
+      setStatus("AI team applied — review on Pick tab (" + (squad.length) + " players)");
     });
   });
-  horizon = savedHorizon;
 }
 
 function getChipPlan() {
