@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#37003c" />
+  <meta name="description" content="FPL Assistant – pitch view, AI transfers, AI teams & chip strategy" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <title>FPL Assistant 2026/27</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="logo">⚽ FPL Assistant</span>
+      <span class="season">2026/27 · XifundoFC</span>
+    </div>
+    <div class="topbar-metrics" id="topMetrics">
+      <div class="tm"><span class="tm-label">Team Rating</span><span class="tm-val" id="mRating">–</span></div>
+      <div class="tm"><span class="tm-label">Predicted</span><span class="tm-val" id="mPred">–</span></div>
+      <div class="tm"><span class="tm-label">In the bank</span><span class="tm-val" id="mBank">£0.0m</span></div>
+      <div class="tm"><span class="tm-label">Squad cost</span><span class="tm-val" id="mCost">£0.0m</span></div>
+    </div>
+    <div class="topbar-right">
+      <span id="planBadge" class="plan-badge starter" title="Current plan">Starter</span>
+      <label class="tid">Team ID <input type="number" id="teamIdInput" value="1932256" /></label>
+      <button id="refreshBtn" class="btn btn-pink">Refresh</button>
+      <button id="installBtn" class="btn btn-outline" hidden>Install App</button>
+    </div>
+  </header>
+
+  <nav class="main-nav">
+    <button class="nav-btn active" data-view="pick">Pick</button>
+    <button class="nav-btn" data-view="transfers">AI Transfers</button>
+    <button class="nav-btn" data-view="teams">AI Teams</button>
+    <button class="nav-btn" data-view="chips">Chips</button>
+  </nav>
+
+  <div class="status-line" id="statusBar">Loading FPL data…</div>
+  <div class="edit-banner hidden" id="editBanner">
+    <strong>Edit mode on</strong> — click a pitch/bench player to remove · click a list player to add ·
+    <span id="editStatusInline"></span>
+    <button id="doneEditBtn" class="btn btn-pink" style="margin-left:12px">Done editing</button>
+  </div>
+
+  <!-- ========== PICK VIEW ========== -->
+  <div id="view-pick" class="view active">
+    <div class="layout">
+      <section class="pitch-area">
+        <div class="horizon-toggle">
+          <button class="hz active" data-hz="1">Next GW</button>
+          <button class="hz" data-hz="3">Next 3 GWs</button>
+        </div>
+        <div class="pitch" id="pitch"></div>
+        <div class="bench-section">
+          <div class="bench-label">Bench</div>
+          <div class="bench" id="bench"></div>
+        </div>
+        <div class="pitch-actions">
+          <button id="optimiseBtn" class="btn btn-blue">✨ Optimise lineup</button>
+          <button id="editBtn" class="btn btn-cyan">✎ Edit team</button>
+          <button id="resetBtn" class="btn btn-ghost">🗑 Reset team</button>
+        </div>
+      </section>
+      <aside class="players-panel card">
+        <h2>Players</h2>
+        <div class="pos-tabs" id="posTabs">
+          <button class="pos-tab active" data-pos="ALL">All</button>
+          <button class="pos-tab" data-pos="GKP">GK</button>
+          <button class="pos-tab" data-pos="DEF">DEF</button>
+          <button class="pos-tab" data-pos="MID">MID</button>
+          <button class="pos-tab" data-pos="FWD">FWD</button>
+        </div>
+        <label class="sort-label">Sort by
+          <select id="sortBy">
+            <option value="xp">Predicted points</option>
+            <option value="price">Price</option>
+            <option value="own">Ownership</option>
+            <option value="name">Name</option>
+          </select>
+        </label>
+        <div class="price-filter">
+          <span>Price</span>
+          <div class="range-row">
+            <input type="range" id="priceMin" min="4" max="15.5" step="0.5" value="4" />
+            <input type="range" id="priceMax" min="4" max="15.5" step="0.5" value="15.5" />
+          </div>
+          <span id="priceRangeLabel">£4.0 – £15.5m</span>
+        </div>
+        <input type="search" id="searchInput" placeholder="Search by player or team name" />
+        <label class="check"><input type="checkbox" id="affordableOnly" /> Affordable only</label>
+        <div class="player-list" id="playerList"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ========== AI TRANSFERS ========== -->
+  <div id="view-transfers" class="view">
+    <div class="page-wrap">
+      <div class="card">
+        <h2>AI Transfer Suggestions</h2>
+        <p class="muted">Looks for upgrades that raise predicted points while respecting budget and free transfers. Bench quality is considered for coverage.</p>
+        <div class="controls-row">
+          <label>Free transfers <input type="number" id="ftInput" value="1" min="0" max="5" /></label>
+          <label>Max hits (extra transfers) <input type="number" id="hitsInput" value="1" min="0" max="3" /></label>
+          <button id="runTransfersBtn" class="btn btn-blue">Find transfers</button>
+        </div>
+        <div id="transferResults"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== AI TEAMS ========== -->
+  <div id="view-teams" class="view">
+    <div class="page-wrap">
+      <div class="card">
+        <h2>AI Teams</h2>
+        <p class="muted">Alternative strong squads for Wildcard / Free Hit / building from scratch. Optimised for XI points under £100m.</p>
+        <div class="controls-row">
+          <label>Budget £<input type="number" id="aiBudget" value="100" min="90" max="100" step="0.5" /></label>
+          <button id="genTeamsBtn" class="btn btn-blue">Generate AI teams</button>
+        </div>
+        <div id="aiTeamsResults"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== CHIPS ========== -->
+  <div id="view-chips" class="view">
+    <div class="page-wrap">
+      <div class="card">
+        <h2>Chip strategy</h2>
+        <p class="muted">Plan which gameweek to play each chip. Saved on this device only (not sent to official FPL).</p>
+        <div class="chip-grid" id="chipGrid"></div>
+        <div id="chipAdviceShort" class="chip-advice" style="margin-top:16px"></div>
+        <div id="chipModal" class="chip-modal hidden">
+          <div class="chip-modal-box">
+            <h3 id="chipModalTitle">Chip</h3>
+            <p id="chipModalDesc" class="muted"></p>
+            <label>Choose gameweek
+              <select id="chipGwSelect"></select>
+            </label>
+            <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+              <button type="button" class="btn btn-ghost" id="chipClearBtn">Clear</button>
+              <button type="button" class="btn btn-cyan" id="chipCancelBtn">Cancel</button>
+              <button type="button" class="btn btn-blue" id="chipSaveBtn">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Plans & pricing</h2>
+        <p class="muted">Starter stays useful forever. Pro unlocks AI Transfers + AI Teams. Create Stripe Payment Links and paste the URLs into <code>js/app.js</code> (STRIPE_PRO_LINK / STRIPE_ULTRA_LINK).</p>
+        <div class="price-grid">
+          <div class="price-card">
+            <h3>Starter</h3>
+            <div class="price">Free</div>
+            <ul>
+              <li>Pitch view & your squad</li>
+              <li>Predicted points (xG + fixtures)</li>
+              <li>Chip planner</li>
+              <li>Optimise lineup</li>
+            </ul>
+            <button type="button" class="btn btn-ghost" disabled>Current plan</button>
+          </div>
+          <div class="price-card featured">
+            <div class="badge">Most popular</div>
+            <h3>Pro</h3>
+            <div class="price">£4.99<span>/mo</span></div>
+            <ul>
+              <li>Unlimited AI transfers & teams</li>
+              <li>Improved projections (xG + FDR)</li>
+              <li>Mini-league rival diffs</li>
+              <li>Live rank (from GW1)</li>
+            </ul>
+            <a id="upgradeProBtn" class="btn btn-blue" href="https://buy.stripe.com/test_REPLACE_PRO" target="_blank" rel="noopener">Upgrade to Pro</a>
+          </div>
+          <div class="price-card">
+            <h3>Ultra</h3>
+            <div class="price">£9.99<span>/mo</span></div>
+            <ul>
+              <li>Everything in Pro</li>
+              <li>Multi-week transfer planner</li>
+              <li>Draft + Challenge trackers</li>
+              <li>Priority data refresh</li>
+            </ul>
+            <a id="upgradeUltraBtn" class="btn btn-outline" href="https://buy.stripe.com/test_REPLACE_ULTRA" target="_blank" rel="noopener">Upgrade to Ultra</a>
+          </div>
+        </div>
+        <p class="muted" style="margin-top:12px;font-size:0.85rem">
+          Testing without Stripe: open AI Transfers / AI Teams and use <strong>Demo unlock (local only)</strong>.
+          To reset plan open console: <code>localStorage.removeItem('fpl_plan_v1')</code> then Refresh.
+        </p>
+      </div>
+    </div>
+  </div>
+
+
+
+  <footer class="footer">
+    Data from the official Fantasy Premier League API · Not affiliated with the Premier League ·
+    <span id="lastUpdated"></span>
+  </footer>
+  <script src="js/app.js"></script>
+</body>
+</html>
