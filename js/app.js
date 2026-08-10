@@ -1,7 +1,7 @@
 /* FPL Assistant – pitch UI, AI Transfers, AI Teams, Netlify proxy */
 
 const API = "/api/fpl?path=";
-const DEFAULT_TEAM_ID = 1932256;
+const DEFAULT_TEAM_ID = null; // public site: no default team
 const BUDGET = 100.0;
 
 // ============================================================
@@ -9,8 +9,8 @@ const BUDGET = 100.0;
 // Annual = monthly × 12 × 0.80  (20% discount)
 // ============================================================
 const PRICING = {
-  pro:   { monthly: 4.99, yearly: +(4.99 * 12 * 0.8).toFixed(2) },   // $4.99 / $47.90
-  ultra: { monthly: 9.99, yearly: +(9.99 * 12 * 0.8).toFixed(2) },   // $9.99 / $95.90
+  pro:   { monthly: 2.49, yearly: +(2.49 * 12 * 0.8).toFixed(2) },   // $2.49 / $23.90
+  ultra: { monthly: 4.99, yearly: +(4.99 * 12 * 0.8).toFixed(2) },   // $4.99 / $47.90
 };
 
 const PAYPAL_PRO_MONTHLY   = "https://www.paypal.com/ncp/payment/J6DP32LZ7ZMZA";
@@ -30,10 +30,14 @@ const MERCHANT_TILLS = {
   nbm:    "",                   // leave blank if not using NBM yet
 };
 
-// Owner access – change to something only you know
-const OWNER_CODE = "xifundo-owner-2026";
-// Salt used to generate customer access codes (change this too)
-const AUTH_SALT = "fpl-mw-2026-srdl";
+// Owner sign-in: use this email (any Team ID)
+const OWNER_EMAIL = "owner@myfpl.local";
+
+// Paid subscribers — you add a row after each payment (email lowercased)
+// plan: "pro" | "ultra"
+const PAID_USERS = [
+  // { email: "customer@example.com", teamId: 1234567, plan: "pro" },
+];
 
 function moneyUsd(n) { return "$" + Number(n).toFixed(2); }
 
@@ -47,18 +51,6 @@ function setStatus(m) { const el = $("statusBar"); if (el) el.textContent = m; }
 function xpOf(p) { return horizon === 3 ? p.xp3 : p.xp; }
 
 
-/** Simple deterministic access code for a team + plan (you can generate offline). */
-function makeAccessCode(teamId, plan) {
-  const raw = String(teamId) + "|" + plan + "|" + AUTH_SALT;
-  let h = 2166136261;
-  for (let i = 0; i < raw.length; i++) {
-    h ^= raw.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  // 8-char uppercase alphanumeric
-  return (Math.abs(h).toString(36) + Math.abs(h * 31).toString(36)).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
-}
-window.makeAccessCode = makeAccessCode;
 
 
 let authSession = null; // { teamId, plan, email }
@@ -71,22 +63,17 @@ function loadAuthSession() {
   // URL one-time login: ?login=TEAM&plan=pro&code=XXXX  or ?owner=CODE
   try {
     const params = new URLSearchParams(location.search);
-    const ownerParam = params.get("owner");
-    if (ownerParam && ownerParam === OWNER_CODE) {
-      authSession = { teamId: null, plan: "owner", email: "owner" };
-      localStorage.setItem("fpl_auth_v1", JSON.stringify(authSession));
-      history.replaceState({}, "", location.pathname);
-    }
-    const loginTeam = params.get("login");
-    const loginPlan = params.get("plan");
-    const loginCode = params.get("code");
-    if (loginTeam && loginPlan && loginCode) {
-      const tid = parseInt(loginTeam, 10);
-      if ((loginPlan === "pro" || loginPlan === "ultra") && loginCode.toUpperCase() === makeAccessCode(tid, loginPlan)) {
-        authSession = { teamId: tid, plan: loginPlan, email: params.get("email") || "" };
+    // Optional deep-link activate: ?email=x&team=123&plan=pro (must match PAID_USERS)
+    const qEmail = (params.get("email") || "").toLowerCase();
+    const qTeam = parseInt(params.get("team") || params.get("login") || "", 10);
+    const qPlan = params.get("plan");
+    if (qEmail && qTeam && (qPlan === "pro" || qPlan === "ultra")) {
+      const hit = PAID_USERS.find(u => String(u.email).toLowerCase() === qEmail && Number(u.teamId) === qTeam && u.plan === qPlan);
+      if (hit || qEmail === OWNER_EMAIL.toLowerCase()) {
+        authSession = { teamId: qEmail === OWNER_EMAIL.toLowerCase() ? null : qTeam, plan: qEmail === OWNER_EMAIL.toLowerCase() ? "owner" : qPlan, email: qEmail };
         localStorage.setItem("fpl_auth_v1", JSON.stringify(authSession));
         history.replaceState({}, "", location.pathname);
-        if ($("teamIdInput")) $("teamIdInput").value = tid;
+        if ($("teamIdInput") && qTeam) $("teamIdInput").value = qTeam;
       }
     }
   } catch (_) {}
@@ -102,7 +89,8 @@ function saveAuthSession(sess) {
 }
 
 function currentTeamId() {
-  return parseInt($("teamIdInput") && $("teamIdInput").value, 10) || DEFAULT_TEAM_ID;
+  const v = parseInt($("teamIdInput") && $("teamIdInput").value, 10);
+  return v || 0;
 }
 
 /** Pro only if session matches the Team ID currently loaded (owner always). */
@@ -128,24 +116,29 @@ function activePlanLabel() {
 function setPlan() { /* legacy no-op – use login */ }
 
 function attemptLogin(teamId, code, email) {
+  // code arg kept for backward compat but ignored — login is email + teamId
   teamId = parseInt(teamId, 10);
-  code = String(code || "").trim().toUpperCase();
-  email = String(email || "").trim();
+  email = String(email || "").trim().toLowerCase();
+  if (!email) return { ok: false, msg: "Enter your email" };
   if (!teamId) return { ok: false, msg: "Enter a valid Team ID" };
-  // Owner login
-  if (code === OWNER_CODE.toUpperCase() || code === OWNER_CODE) {
-    saveAuthSession({ teamId: null, plan: "owner", email: email || "owner" });
+
+  // Owner
+  if (email === OWNER_EMAIL.toLowerCase()) {
+    saveAuthSession({ teamId: null, plan: "owner", email });
+    if ($("teamIdInput")) $("teamIdInput").value = teamId;
     return { ok: true, msg: "Signed in as Owner (full access on any team)" };
   }
-  // Customer codes
-  for (const plan of ["pro", "ultra"]) {
-    if (code === makeAccessCode(teamId, plan)) {
-      saveAuthSession({ teamId, plan, email });
-      if ($("teamIdInput")) $("teamIdInput").value = teamId;
-      return { ok: true, msg: `Signed in · ${plan.toUpperCase()} bound to team ${teamId}` };
-    }
+
+  // Paid allowlist
+  const hit = PAID_USERS.find(u =>
+    String(u.email || "").toLowerCase() === email && Number(u.teamId) === teamId
+  );
+  if (hit && (hit.plan === "pro" || hit.plan === "ultra")) {
+    saveAuthSession({ teamId, plan: hit.plan, email });
+    if ($("teamIdInput")) $("teamIdInput").value = teamId;
+    return { ok: true, msg: `Signed in · ${hit.plan.toUpperCase()} · team ${teamId}` };
   }
-  return { ok: false, msg: "Invalid access code for this Team ID" };
+  return { ok: false, msg: "No Pro/Ultra found for that email + Team ID. Pay first, then we activate your account." };
 }
 
 function logout() {
@@ -192,7 +185,7 @@ function updatePlanUI() {
       <strong>TNM Mpamba</strong> — dial <code>*444#</code> → Pay to Till <strong>${MERCHANT_TILLS.tnm}</strong>${nbm}<br>
       <span class="muted" style="font-size:0.85rem">
         After paying, send the SMS confirmation (or screenshot) on WhatsApp / X (@ctenthani).
-        Include which plan (Pro or Ultra, monthly or yearly). You will receive an unlock link.
+        Include your email, Team ID, and plan (Pro/Ultra). We activate email + Team ID for Sign in.
       </span>`;
   }
 }
@@ -400,6 +393,67 @@ function recomputeAllXP() {
 }
 
 // ---------- Squad optimise (15 then best XI) ----------
+
+/** Rearrange the *current* 15-man squad into best XI + bench + captain. Does not buy/sell players. */
+function optimiseLineup() {
+  if (!squad || squad.length < 11) {
+    return { error: "Need at least 11 players in your squad first. Load a Team ID or use Edit team." };
+  }
+  const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
+  squad.forEach(p => {
+    if (byPos[p.position]) byPos[p.position].push(p);
+  });
+  Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => xpOf(b) - xpOf(a)));
+
+  if (byPos.GKP.length < 1) return { error: "Need at least 1 goalkeeper in the squad." };
+
+  const formations = [
+    { DEF: 3, MID: 4, FWD: 3 }, { DEF: 3, MID: 5, FWD: 2 }, { DEF: 4, MID: 4, FWD: 2 },
+    { DEF: 4, MID: 3, FWD: 3 }, { DEF: 5, MID: 3, FWD: 2 }, { DEF: 5, MID: 4, FWD: 1 }, { DEF: 4, MID: 5, FWD: 1 },
+  ];
+  let bestXI = null, bestScore = -1;
+  for (const f of formations) {
+    if (byPos.DEF.length < f.DEF || byPos.MID.length < f.MID || byPos.FWD.length < f.FWD) continue;
+    const xi = [byPos.GKP[0], ...byPos.DEF.slice(0, f.DEF), ...byPos.MID.slice(0, f.MID), ...byPos.FWD.slice(0, f.FWD)];
+    if (xi.length !== 11) continue;
+    const score = xi.reduce((s, p) => s + xpOf(p) * (0.7 + 0.3 * (p.availability || 1)), 0);
+    if (score > bestScore) { bestScore = score; bestXI = xi; }
+  }
+  if (!bestXI) {
+    // fallback: top XP available under legal min formation
+    bestXI = [byPos.GKP[0]];
+    const rest = [...byPos.DEF, ...byPos.MID, ...byPos.FWD].sort((a, b) => xpOf(b) - xpOf(a));
+    // ensure min 3 DEF, 2 MID, 1 FWD if possible
+    const pick = { DEF: 0, MID: 0, FWD: 0 };
+    const chosen = [];
+    for (const p of rest) {
+      if (chosen.length >= 10) break;
+      if (p.position === "DEF" && pick.DEF >= 5) continue;
+      if (p.position === "MID" && pick.MID >= 5) continue;
+      if (p.position === "FWD" && pick.FWD >= 3) continue;
+      chosen.push(p); pick[p.position]++;
+    }
+    bestXI = [byPos.GKP[0], ...chosen].slice(0, 11);
+  }
+  if (bestXI.length !== 11) {
+    return { error: "Could not form a valid XI from this squad (check positions)." };
+  }
+  const xiIds = new Set(bestXI.map(p => p.id));
+  const bench = squad.filter(p => !xiIds.has(p.id));
+  bench.sort((a, b) => {
+    if (a.position === "GKP" && b.position !== "GKP") return -1;
+    if (b.position === "GKP" && a.position !== "GKP") return 1;
+    return xpOf(b) - xpOf(a);
+  });
+  startingIds = bestXI.map(p => p.id);
+  benchIds = bench.map(p => p.id);
+  captainId = bestXI.slice().sort((a, b) => xpOf(b) - xpOf(a))[0]?.id || null;
+  // keep squad membership unchanged — only order/XI/bench/captain
+  squad = [...bestXI, ...bench];
+  bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
+  return { ok: true, xiXp: bestXI.reduce((s, p) => s + xpOf(p), 0) };
+}
+
 function optimiseSquad(budget = BUDGET) {
   let pool = players.filter(p => p.availability >= 0.35 && !["u", "s"].includes(p.status));
   pool.sort((a, b) => xpOf(b) - xpOf(a));
@@ -464,19 +518,26 @@ function optimiseSquad(budget = BUDGET) {
       bestXI.push(...byPos[pos].slice(0, need));
     }
   }
+  // Ensure XI is exactly 11 and squad is exactly 15 when possible
+  if (bestXI.length > 11) bestXI = bestXI.slice(0, 11);
   const xiIds = new Set(bestXI.map(p => p.id));
-  const bench = picked.filter(p => !xiIds.has(p.id));
-  bench.sort((a, b) => {
+  let benchFinal = picked.filter(p => !xiIds.has(p.id));
+  benchFinal.sort((a, b) => {
     if (a.position === "GKP" && b.position !== "GKP") return -1;
     if (b.position === "GKP" && a.position !== "GKP") return 1;
     return xpOf(b) - xpOf(a);
   });
-  squad = [...bestXI, ...bench];
-  startingIds = bestXI.map(p => p.id);
-  benchIds = bench.map(p => p.id);
-  captainId = bestXI.slice().sort((a, b) => xpOf(b) - xpOf(a))[0]?.id || null;
-  bank = budget - spent;
-  return { spent, bank, xiXp: bestXI.reduce((s, p) => s + xpOf(p), 0), squad: [...squad], startingIds: [...startingIds], benchIds: [...benchIds], captainId };
+  // If we somehow have fewer than 15, leave as-is; never exceed 15
+  const full = [...bestXI, ...benchFinal].slice(0, 15);
+  const xiFinal = full.slice(0, Math.min(11, full.length));
+  const benchOut = full.slice(xiFinal.length);
+  squad = full;
+  startingIds = xiFinal.map(p => p.id);
+  benchIds = benchOut.map(p => p.id);
+  captainId = xiFinal.slice().sort((a, b) => xpOf(b) - xpOf(a))[0]?.id || null;
+  const realSpent = squad.reduce((s, p) => s + p.price, 0);
+  bank = Math.max(0, budget - realSpent);
+  return { spent: realSpent, bank, xiXp: xiFinal.reduce((s, p) => s + xpOf(p), 0), squad: [...squad], startingIds: [...startingIds], benchIds: [...benchIds], captainId };
 }
 
 // ---------- AI Transfers ----------
@@ -994,12 +1055,7 @@ async function tryLoadUserTeam(teamId) {
     }
   }
 
-  // 2) Only the default Team ID gets the hardcoded XifundoFC draft
-  if (teamId === DEFAULT_TEAM_ID) {
-    if (loadDefaultSquad()) return { source: "default", teamName: teamName || "XifundoFC" };
-  }
-
-  // 3) Other teams with no public picks yet: empty squad (user can edit / optimise)
+  // No public picks yet — empty squad (user edits or uses AI Teams)
   squad = [];
   startingIds = [];
   benchIds = [];
@@ -1009,7 +1065,18 @@ async function tryLoadUserTeam(teamId) {
 }
 
 async function init(force = false) {
-  const teamId = parseInt($("teamIdInput").value, 10) || DEFAULT_TEAM_ID;
+  const rawId = $("teamIdInput") && $("teamIdInput").value;
+  const teamId = parseInt(rawId, 10);
+  if (!teamId) {
+    setStatus("Enter a Team ID above and press Refresh to load a squad.");
+    loadPlan(); updatePlanUI();
+    squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET;
+    try {
+      if (!bootstrap) { await loadBootstrap(force); await loadFixtures(); buildPlayers(); }
+      renderPitch(); renderPlayerList(); renderChips(); updatePlanUI();
+    } catch (e) { setStatus("Error: " + e.message); }
+    return;
+  }
   setStatus("Loading official FPL data…");
   loadPlan();
   updatePlanUI();
@@ -1023,7 +1090,7 @@ async function init(force = false) {
     if (loaded && loaded.source === "api") {
       setStatus(`GW ${currentGw} · ${tname} · official picks (${squad.length} players)`);
     } else if (loaded && loaded.source === "default") {
-      setStatus(`GW ${currentGw} · ${tname} draft (API picks not public yet — edit freely)`);
+      setStatus(`GW ${currentGw} · ${tname} · draft fallback`);
     } else if (loaded && loaded.source === "empty") {
       setStatus(`GW ${currentGw} · ${tname} · no public picks yet — Optimise or Edit to build a squad`);
     } else {
@@ -1184,9 +1251,8 @@ on("loginBtn", "click", () => {
 on("logoutBtn", "click", () => { logout(); updatePlanUI(); });
 on("loginSubmitBtn", "click", async () => {
   const tid = $("loginTeamId") && $("loginTeamId").value;
-  const code = $("loginCode") && $("loginCode").value;
   const email = $("loginEmail") && $("loginEmail").value;
-  const res = attemptLogin(tid, code, email);
+  const res = attemptLogin(tid, "", email);
   const msg = $("loginMsg");
   if (msg) { msg.textContent = res.msg; msg.style.color = res.ok ? "#16a34a" : "#dc2626"; }
   if (res.ok) {
@@ -1207,7 +1273,7 @@ if (tidInput) {
 }
 
 on("refreshRankBtn", "click", () => renderLiveRank());
-on("optimiseBtn", "click", () => { optimiseSquad(); renderPitch(); renderPlayerList(); setStatus("Optimised for best XI under £100m"); });
+on("optimiseBtn", "click", () => { const r = optimiseLineup(); if (r && r.error) setStatus(r.error); else { renderPitch(); renderPlayerList(); setStatus("Lineup optimised from your current squad (best XI + captain)"); } });
 on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; renderPitch(); renderPlayerList(); });
 function setEditMode(on) {
   editMode = on;

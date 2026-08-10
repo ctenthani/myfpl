@@ -15,7 +15,7 @@
   <header class="topbar">
     <div class="topbar-left">
       <span class="logo">⚽ FPL Assistant</span>
-      <span class="season">2026/27 · XifundoFC</span>
+      <span class="season">2026/27</span>
     </div>
     <div class="topbar-metrics" id="topMetrics">
       <div class="tm"><span class="tm-label">Team Rating</span><span class="tm-val" id="mRating">–</span></div>
@@ -26,7 +26,7 @@
     <div class="topbar-right">
       <span id="planBadge" class="plan-badge starter" title="Current plan">Starter</span>
       <span id="authStatus" class="auth-status">Not signed in</span>
-      <label class="tid">Team ID <input type="number" id="teamIdInput" value="1932256" title="Change then Enter or Refresh" /></label>
+      <label class="tid">Team ID <input type="number" id="teamIdInput" value="" placeholder="Enter Team ID" title="Enter Team ID then Refresh" /></label>
       <button id="refreshBtn" class="btn btn-pink">Refresh</button>
       <button id="loginBtn" class="btn btn-cyan">Sign in</button>
       <button id="logoutBtn" class="btn btn-ghost">Sign out</button>
@@ -139,7 +139,7 @@
         <h2>Live Rank</h2>
         <p class="muted">Overall rank, gameweek points and mini-league standing from the official FPL API. Available once Gameweek 1 is live.</p>
         <div class="controls-row" style="margin-bottom:12px">
-          <label>Team ID <input type="number" id="rankTeamId" value="1932256" /></label>
+          <label>Team ID <input type="number" id="rankTeamId" value="" placeholder="Team ID" /></label>
           <button id="refreshRankBtn" class="btn btn-blue">Refresh rank</button>
         </div>
         <div id="rankSummary" class="rank-summary">
@@ -202,8 +202,8 @@
           <div class="price-card featured">
             <div class="badge">Most popular</div>
             <h3>Pro</h3>
-            <div class="price">$4.99<span>/mo</span></div>
-            <div class="price" style="font-size:1rem;margin-top:-6px;color:var(--muted)">or <strong>$47.90/yr</strong> <span style="color:#16a34a;font-size:0.8rem">save 20%</span></div>
+            <div class="price">$2.49<span>/mo</span></div>
+            <div class="price" style="font-size:1rem;margin-top:-6px;color:var(--muted)">or <strong>$23.90/yr</strong> <span style="color:#16a34a;font-size:0.8rem">save 20%</span></div>
             <ul>
               <li>Unlimited AI Transfers</li>
               <li>Unlimited AI Teams</li>
@@ -212,12 +212,12 @@
               <li>Mini-league rival diffs</li>
             </ul>
             <a id="upgradeProBtn" class="btn btn-blue" href="https://www.paypal.com/ncp/payment/J6DP32LZ7ZMZA" target="_blank" rel="noopener">PayPal · Pro monthly</a>
-            <a id="upgradeProYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/6BS7Z7XPV4FFL" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Pro yearly $47.90</a>
+            <a id="upgradeProYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/6BS7Z7XPV4FFL" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Pro yearly $23.90</a>
           </div>
           <div class="price-card">
             <h3>Ultra</h3>
-            <div class="price">$9.99<span>/mo</span></div>
-            <div class="price" style="font-size:1rem;margin-top:-6px;color:var(--muted)">or <strong>$95.90/yr</strong> <span style="color:#16a34a;font-size:0.8rem">save 20%</span></div>
+            <div class="price">$4.99<span>/mo</span></div>
+            <div class="price" style="font-size:1rem;margin-top:-6px;color:var(--muted)">or <strong>$47.90/yr</strong> <span style="color:#16a34a;font-size:0.8rem">save 20%</span></div>
             <ul>
               <li><strong>Everything in Pro</strong></li>
               <li>Multi-week transfer planner</li>
@@ -226,7 +226,7 @@
               <li>Early access to new tools</li>
             </ul>
             <a id="upgradeUltraBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ZXB3XQA3BJG9A" target="_blank" rel="noopener">PayPal · Ultra monthly</a>
-            <a id="upgradeUltraYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ELGD2S687MS7Q" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Ultra yearly $95.90</a>
+            <a id="upgradeUltraYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ELGD2S687MS7Q" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Ultra yearly $47.90</a>
           </div>
         </div>
 
@@ -252,16 +252,14 @@
   <div id="loginModal" class="chip-modal hidden">
     <div class="chip-modal-box" style="max-width:420px">
       <h3>Sign in</h3>
-      <p class="muted" style="font-size:0.9rem">Pro / Ultra is bound to your <strong>Team ID</strong>. Enter the access code from your payment. Owner: use the owner code.</p>
-      <label>Team ID
-        <input type="number" id="loginTeamId" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border)" />
+      <p class="muted" style="font-size:0.9rem">Pro / Ultra is bound to your <strong>email + Team ID</strong> after payment. Enter both to unlock AI features for that team only.</p>
+      <label style="display:block">Email
+        <input type="email" id="loginEmail" placeholder="you@email.com" required style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border)" />
       </label>
-      <label style="display:block;margin-top:10px">Email (optional)
-        <input type="email" id="loginEmail" placeholder="you@email.com" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border)" />
+      <label style="display:block;margin-top:10px">Team ID
+        <input type="number" id="loginTeamId" placeholder="e.g. 3748215" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border)" />
       </label>
-      <label style="display:block;margin-top:10px">Access code
-        <input type="text" id="loginCode" placeholder="8-character code" autocomplete="off" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border);text-transform:uppercase" />
-      </label>
+      <input type="hidden" id="loginCode" value="" />
       <p id="loginMsg" style="margin-top:10px;font-size:0.85rem"></p>
       <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
         <button type="button" class="btn btn-ghost" id="loginCancelBtn">Cancel</button>
