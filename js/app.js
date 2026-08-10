@@ -21,88 +21,146 @@ const PAYPAL_ULTRA_YEARLY  = "https://www.paypal.com/ncp/payment/ELGD2S687MS7Q";
 const CHECKOUT_PRO_LINK   = PAYPAL_PRO_MONTHLY;
 const CHECKOUT_ULTRA_LINK = PAYPAL_ULTRA_MONTHLY;
 
-// Manual payment details (Airtel Money / bank) – edit these
-const MANUAL_PAYMENT = {
-  airtel: "088X XXX XXX",
-  name:   "Your Full Name",
-  bank:   "National Bank / Standard Bank – Account XXXXXXXX",
-  note:   "Send proof on WhatsApp / X (@ctenthani). Yearly: Pro $47.90 · Ultra $95.90 (20% off)."
+// Mobile money – Merchant Till codes only (no personal numbers on site)
+// Replace TILL_xxx with the codes Airtel / TNM give you after merchant registration.
+const MERCHANT_TILLS = {
+  airtel: "AIRTEL_TILL_XXXX",   // e.g. 123456
+  tnm:    "TNM_TILL_YYYY",      // e.g. 654321
+  // Optional National Bank merchant / account reference (not personal account)
+  nbm:    "",                   // leave blank if not using NBM yet
 };
+
+// Owner access – change to something only you know
+const OWNER_CODE = "xifundo-owner-2026";
+// Salt used to generate customer access codes (change this too)
+const AUTH_SALT = "fpl-mw-2026-srdl";
 
 function moneyUsd(n) { return "$" + Number(n).toFixed(2); }
 
-let bootstrap = null;
-let players = [];
-let fixtures = [];
-let teamsMap = {};
-let posMap = {};
-let currentGw = 1;
-let horizon = 1;
-let squad = [];
-let startingIds = [];
-let benchIds = [];
-let captainId = null;
-let editMode = false;
-let bank = 0;
-let entryBank = 0; // from API if available
-let userPlan = "starter"; // starter | pro | ultra
-
-const SQUAD_LIMITS = { GKP: 2, DEF: 5, MID: 5, FWD: 3 };
-
-// XifundoFC GW1 draft (from official FPL site) — used when API picks are not public yet
-const DEFAULT_SQUAD_IDS = {
-  starting: [1, 8, 4, 469, 418, 400, 427, 542, 398, 411, 106], // Raya, Calafiori, Gabriel, N.Williams, Maguire, Doku, Mbeumo, E.Le Fée, Foden, Haaland, Thiago
-  bench: [497, 346, 259, 212], // Dubravka, Calvert-Lewin, Diop, Hughes
-  captain: 411 // Haaland
-};
-
-async function fetchJson(path) {
-  const url = API + encodeURIComponent(path);
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-  return r.json();
+/** Simple deterministic access code for a team + plan (you can generate offline). */
+function makeAccessCode(teamId, plan) {
+  const raw = String(teamId) + "|" + plan + "|" + AUTH_SALT;
+  let h = 2166136261;
+  for (let i = 0; i < raw.length; i++) {
+    h ^= raw.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  // 8-char uppercase alphanumeric
+  return (Math.abs(h).toString(36) + Math.abs(h * 31).toString(36)).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
 }
 
-function $(id) { return document.getElementById(id); }
-function on(id, evt, fn) { const el = $(id); if (el) el.addEventListener(evt, fn); }
-function money(n) { return "£" + Number(n).toFixed(1) + "m"; }
-function setStatus(m) { $("statusBar").textContent = m; }
-function xpOf(p) { return horizon === 3 ? p.xp3 : p.xp; }
+let authSession = null; // { teamId, plan, email }
 
-function loadPlan() {
+function loadAuthSession() {
   try {
-    const p = localStorage.getItem("fpl_plan_v1");
-    if (p === "pro" || p === "ultra") userPlan = p;
-  } catch (_) {}
-  // Success redirect from Stripe Payment Link (?plan=pro or #plan=pro)
+    const raw = localStorage.getItem("fpl_auth_v1");
+    if (raw) authSession = JSON.parse(raw);
+  } catch (_) { authSession = null; }
+  // URL one-time login: ?login=TEAM&plan=pro&code=XXXX  or ?owner=CODE
   try {
     const params = new URLSearchParams(location.search);
-    const hash = (location.hash || "").replace(/^#/, "");
-    const fromUrl = params.get("plan") || (hash.startsWith("plan=") ? hash.slice(5) : null);
-    if (fromUrl === "pro" || fromUrl === "ultra") {
-      userPlan = fromUrl;
-      localStorage.setItem("fpl_plan_v1", fromUrl);
-      // Clean URL without reload
+    const ownerParam = params.get("owner");
+    if (ownerParam && ownerParam === OWNER_CODE) {
+      authSession = { teamId: null, plan: "owner", email: "owner" };
+      localStorage.setItem("fpl_auth_v1", JSON.stringify(authSession));
       history.replaceState({}, "", location.pathname);
+    }
+    const loginTeam = params.get("login");
+    const loginPlan = params.get("plan");
+    const loginCode = params.get("code");
+    if (loginTeam && loginPlan && loginCode) {
+      const tid = parseInt(loginTeam, 10);
+      if ((loginPlan === "pro" || loginPlan === "ultra") && loginCode.toUpperCase() === makeAccessCode(tid, loginPlan)) {
+        authSession = { teamId: tid, plan: loginPlan, email: params.get("email") || "" };
+        localStorage.setItem("fpl_auth_v1", JSON.stringify(authSession));
+        history.replaceState({}, "", location.pathname);
+        if ($("teamIdInput")) $("teamIdInput").value = tid;
+      }
     }
   } catch (_) {}
 }
-function isPro() { return userPlan === "pro" || userPlan === "ultra"; }
-function setPlan(plan) {
-  userPlan = plan;
-  try { localStorage.setItem("fpl_plan_v1", plan); } catch (_) {}
+
+function saveAuthSession(sess) {
+  authSession = sess;
+  try {
+    if (sess) localStorage.setItem("fpl_auth_v1", JSON.stringify(sess));
+    else localStorage.removeItem("fpl_auth_v1");
+  } catch (_) {}
   updatePlanUI();
 }
+
+function currentTeamId() {
+  return parseInt($("teamIdInput") && $("teamIdInput").value, 10) || DEFAULT_TEAM_ID;
+}
+
+/** Pro only if session matches the Team ID currently loaded (owner always). */
+function isPro() {
+  if (!authSession) return false;
+  if (authSession.plan === "owner") return true;
+  if (authSession.plan !== "pro" && authSession.plan !== "ultra") return false;
+  return Number(authSession.teamId) === Number(currentTeamId());
+}
+function isUltra() {
+  if (!authSession) return false;
+  if (authSession.plan === "owner") return true;
+  if (authSession.plan !== "ultra") return false;
+  return Number(authSession.teamId) === Number(currentTeamId());
+}
+function activePlanLabel() {
+  if (!authSession) return "Starter";
+  if (authSession.plan === "owner") return "Owner";
+  if (isPro()) return authSession.plan === "ultra" ? "Ultra" : "Pro";
+  return "Starter"; // logged in but viewing a different team
+}
+
+function setPlan() { /* legacy no-op – use login */ }
+
+function attemptLogin(teamId, code, email) {
+  teamId = parseInt(teamId, 10);
+  code = String(code || "").trim().toUpperCase();
+  email = String(email || "").trim();
+  if (!teamId) return { ok: false, msg: "Enter a valid Team ID" };
+  // Owner login
+  if (code === OWNER_CODE.toUpperCase() || code === OWNER_CODE) {
+    saveAuthSession({ teamId: null, plan: "owner", email: email || "owner" });
+    return { ok: true, msg: "Signed in as Owner (full access on any team)" };
+  }
+  // Customer codes
+  for (const plan of ["pro", "ultra"]) {
+    if (code === makeAccessCode(teamId, plan)) {
+      saveAuthSession({ teamId, plan, email });
+      if ($("teamIdInput")) $("teamIdInput").value = teamId;
+      return { ok: true, msg: `Signed in · ${plan.toUpperCase()} bound to team ${teamId}` };
+    }
+  }
+  return { ok: false, msg: "Invalid access code for this Team ID" };
+}
+
+function logout() {
+  saveAuthSession(null);
+  setStatus("Signed out — Pro features locked");
+}
+
+function loadPlan() {
+  loadAuthSession();
+}
+
 function updatePlanUI() {
   const badge = $("planBadge");
   if (badge) {
-    badge.textContent = userPlan === "ultra" ? "Ultra" : userPlan === "pro" ? "Pro" : "Starter";
-    badge.className = "plan-badge " + userPlan;
+    const label = activePlanLabel();
+    badge.textContent = label;
+    badge.className = "plan-badge " + (label === "Owner" || label === "Ultra" ? "ultra" : label === "Pro" ? "pro" : "starter");
+  }
+  const authLabel = $("authStatus");
+  if (authLabel) {
+    if (!authSession) authLabel.textContent = "Not signed in";
+    else if (authSession.plan === "owner") authLabel.textContent = "Owner · any team";
+    else authLabel.textContent = `${authSession.plan.toUpperCase()} · team ${authSession.teamId}`;
   }
   document.querySelectorAll(".pro-only").forEach(el => {
     el.classList.toggle("locked", !isPro());
   });
-  // Wire checkout buttons (monthly + yearly)
   const proBtn = $("upgradeProBtn");
   const ultraBtn = $("upgradeUltraBtn");
   const proY = $("upgradeProYearlyBtn");
@@ -112,14 +170,18 @@ function updatePlanUI() {
   if (proY) proY.href = PAYPAL_PRO_YEARLY;
   if (ultraY) ultraY.href = PAYPAL_ULTRA_YEARLY;
 
-  // Fill manual payment details on Chips / pricing page
   const man = $("manualPayDetails");
   if (man) {
+    const nbm = MERCHANT_TILLS.nbm
+      ? `<br>National Bank merchant ref: <strong>${MERCHANT_TILLS.nbm}</strong>`
+      : "";
     man.innerHTML = `
-      Airtel Money: <strong>${MANUAL_PAYMENT.airtel}</strong><br>
-      Name: ${MANUAL_PAYMENT.name}<br>
-      ${MANUAL_PAYMENT.bank ? "Bank: " + MANUAL_PAYMENT.bank + "<br>" : ""}
-      <span class="muted" style="font-size:0.85rem">${MANUAL_PAYMENT.note}</span>`;
+      <strong>Airtel Money</strong> — dial <code>*247#</code> → Pay to Till <strong>${MERCHANT_TILLS.airtel}</strong><br>
+      <strong>TNM Mpamba</strong> — dial <code>*444#</code> → Pay to Till <strong>${MERCHANT_TILLS.tnm}</strong>${nbm}<br>
+      <span class="muted" style="font-size:0.85rem">
+        After paying, send the SMS confirmation (or screenshot) on WhatsApp / X (@ctenthani).
+        Include which plan (Pro or Ultra, monthly or yearly). You will receive an unlock link.
+      </span>`;
   }
 }
 
@@ -637,13 +699,14 @@ function showUpgradePrompt(feature) {
       </div>
 
       <div class="manual-pay" style="margin-top:18px;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0">
-        <strong>Or pay via Airtel Money / Bank (Malawi)</strong>
+        <strong>Or pay via mobile money (Malawi)</strong>
         <p style="margin:8px 0 4px;font-size:0.9rem">
-          Airtel: <strong>${MANUAL_PAYMENT.airtel}</strong><br>
-          Name: ${MANUAL_PAYMENT.name}<br>
-          ${MANUAL_PAYMENT.bank ? "Bank: " + MANUAL_PAYMENT.bank + "<br>" : ""}
+          <strong>Airtel Money</strong> — *247# → Till <strong>${MERCHANT_TILLS.airtel}</strong><br>
+          <strong>TNM Mpamba</strong> — *444# → Till <strong>${MERCHANT_TILLS.tnm}</strong>
         </p>
-        <p class="muted" style="font-size:0.8rem;margin:0">${MANUAL_PAYMENT.note}</p>
+        <p class="muted" style="font-size:0.8rem;margin:0">
+          Send SMS proof to @ctenthani. State Pro or Ultra (monthly/yearly). You get an unlock link.
+        </p>
       </div>
 
       <div style="margin-top:14px">
@@ -652,8 +715,9 @@ function showUpgradePrompt(feature) {
     </div>`;
   const demo = $("demoUnlockBtn");
   if (demo) demo.addEventListener("click", () => {
-    setPlan("pro");
-    setStatus("Pro unlocked locally (demo) — run the button again");
+    const tid = currentTeamId();
+    saveAuthSession({ teamId: tid, plan: "pro", email: "demo" });
+    setStatus("Demo Pro unlocked for team " + tid + " on this device only");
     if (feature === "transfers") renderTransfersUI();
     else renderAITeams();
   });
@@ -860,8 +924,15 @@ function loadDefaultSquad() {
 }
 
 async function tryLoadUserTeam(teamId) {
-  // 1) Try official API picks for a few events
-  for (const ev of [currentGw, 1, 2, 3]) {
+  teamId = parseInt(teamId, 10);
+  let teamName = null;
+  try {
+    const entry = await fetchJson(`entry/${teamId}/`);
+    if (entry && entry.name) teamName = entry.name;
+  } catch (_) {}
+
+  // 1) Official picks for recent events
+  for (const ev of [currentGw, 1, 2, 3, 4, 5]) {
     try {
       const picks = await fetchJson(`entry/${teamId}/event/${ev}/picks/`);
       if (!picks || !picks.picks || !picks.picks.length) continue;
@@ -874,29 +945,24 @@ async function tryLoadUserTeam(teamId) {
       const cap = ordered.find(p => p.is_captain);
       captainId = cap ? cap.element : startingIds[0];
       bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
-      return "api";
+      return { source: "api", teamName };
     } catch (err) {
-      // 404 is normal pre-deadline
+      // 404 pre-deadline is normal
     }
   }
-  // 2) Always fall back to known XifundoFC draft (by ID, then by name)
-  if (loadDefaultSquad()) return "default";
-  // 3) Name-based fallback if IDs drifted
-  const namesXI = ["Raya","Calafiori","Gabriel","N.Williams","Maguire","Doku","Mbeumo","E.Le Fée","Foden","Haaland","Thiago"];
-  const namesBench = ["Dubravka","Calvert-Lewin","Diop","Hughes"];
-  const findByName = (n) => players.find(p => p.web_name === n || p.web_name.replace(" ","") === n.replace(" ",""));
-  const xi = namesXI.map(findByName).filter(Boolean);
-  const bench = namesBench.map(findByName).filter(Boolean);
-  if (xi.length >= 11) {
-    squad = [...xi, ...bench];
-    startingIds = xi.map(p => p.id);
-    benchIds = bench.map(p => p.id);
-    const h = players.find(p => p.web_name === "Haaland");
-    captainId = h ? h.id : startingIds[0];
-    bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
-    return "default";
+
+  // 2) Only the default Team ID gets the hardcoded XifundoFC draft
+  if (teamId === DEFAULT_TEAM_ID) {
+    if (loadDefaultSquad()) return { source: "default", teamName: teamName || "XifundoFC" };
   }
-  return false;
+
+  // 3) Other teams with no public picks yet: empty squad (user can edit / optimise)
+  squad = [];
+  startingIds = [];
+  benchIds = [];
+  captainId = null;
+  bank = BUDGET;
+  return { source: "empty", teamName };
 }
 
 async function init(force = false) {
@@ -910,14 +976,18 @@ async function init(force = false) {
     await loadFixtures();
     buildPlayers();
     const loaded = await tryLoadUserTeam(teamId);
-    if (loaded === "api") {
-      setStatus(`GW ${currentGw} · Loaded your official FPL picks (${squad.length} players)`);
-    } else if (loaded === "default") {
-      setStatus(`GW ${currentGw} · Loaded XifundoFC draft (API picks not public yet — edit freely)`);
+    const tname = (loaded && loaded.teamName) ? loaded.teamName : ("Team " + teamId);
+    if (loaded && loaded.source === "api") {
+      setStatus(`GW ${currentGw} · ${tname} · official picks (${squad.length} players)`);
+    } else if (loaded && loaded.source === "default") {
+      setStatus(`GW ${currentGw} · ${tname} draft (API picks not public yet — edit freely)`);
+    } else if (loaded && loaded.source === "empty") {
+      setStatus(`GW ${currentGw} · ${tname} · no public picks yet — Optimise or Edit to build a squad`);
     } else {
       optimiseSquad();
       setStatus(`GW ${currentGw} · AI draft generated`);
     }
+    updatePlanUI(); // re-check Pro lock if team ID differs from session
     renderPitch();
     renderPlayerList();
     renderChips();
@@ -1063,6 +1133,36 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
 });
 
 on("refreshBtn", "click", () => init(true));
+on("loginBtn", "click", () => {
+  const modal = $("loginModal");
+  if (modal) modal.classList.remove("hidden");
+  if ($("loginTeamId")) $("loginTeamId").value = currentTeamId();
+});
+on("logoutBtn", "click", () => { logout(); updatePlanUI(); });
+on("loginSubmitBtn", "click", async () => {
+  const tid = $("loginTeamId") && $("loginTeamId").value;
+  const code = $("loginCode") && $("loginCode").value;
+  const email = $("loginEmail") && $("loginEmail").value;
+  const res = attemptLogin(tid, code, email);
+  const msg = $("loginMsg");
+  if (msg) { msg.textContent = res.msg; msg.style.color = res.ok ? "#16a34a" : "#dc2626"; }
+  if (res.ok) {
+    const modal = $("loginModal");
+    if (modal) modal.classList.add("hidden");
+    await init(true);
+  }
+});
+on("loginCancelBtn", "click", () => {
+  const modal = $("loginModal");
+  if (modal) modal.classList.add("hidden");
+});
+// Reload squad when Team ID changes + Enter / blur
+const tidInput = $("teamIdInput");
+if (tidInput) {
+  tidInput.addEventListener("change", () => init(true));
+  tidInput.addEventListener("keydown", (e) => { if (e.key === "Enter") init(true); });
+}
+
 on("refreshRankBtn", "click", () => renderLiveRank());
 on("optimiseBtn", "click", () => { optimiseSquad(); renderPitch(); renderPlayerList(); setStatus("Optimised for best XI under £100m"); });
 on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; renderPitch(); renderPlayerList(); });

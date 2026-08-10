@@ -646,3 +646,4 @@ body {
   border-radius: 12px;
   border: 1px dashed var(--border);
 }
+.auth-status{font-size:0.75rem;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
