@@ -169,7 +169,41 @@ function saveAuthSession(sess) {
 
 function currentTeamId() {
   const v = parseInt($("teamIdInput") && $("teamIdInput").value, 10);
-  return v || 0;
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+function rememberTeamId(id) {
+  id = id || currentTeamId();
+  try {
+    if (id) localStorage.setItem("fpl_last_team_id", String(id));
+  } catch (_) {}
+}
+
+function restoreTeamIdInput() {
+  const input = $("teamIdInput");
+  if (!input) return null;
+  try {
+    const u = new URL(location.href);
+    const fromUrl = parseInt(u.searchParams.get("team"), 10);
+    if (fromUrl > 0) {
+      input.value = fromUrl;
+      rememberTeamId(fromUrl);
+      return fromUrl;
+    }
+  } catch (_) {}
+  const typed = parseInt(input.value, 10);
+  if (typed > 0) {
+    rememberTeamId(typed);
+    return typed;
+  }
+  try {
+    const saved = parseInt(localStorage.getItem("fpl_last_team_id"), 10);
+    if (saved > 0) {
+      input.value = saved;
+      return saved;
+    }
+  } catch (_) {}
+  return null;
 }
 
 /** Pro only if session matches the Team ID currently loaded (owner always). */
