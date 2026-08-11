@@ -16,6 +16,13 @@
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png" />
   <title>FPL Assistant 2026/27</title>
   <link rel="stylesheet" href="css/style.css" />
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").catch(function () {});
+      });
+    }
+  </script>
 </head>
 <body>
   <header class="topbar">

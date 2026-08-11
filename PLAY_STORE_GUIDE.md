@@ -161,3 +161,37 @@ Host: `myfpl.netlify.app` · Package: `app.myfpl.assistant` · Fingerprint: (pas
 ## Support contact for Play listing
 
 Use the same email as your Play Console account, or a public support email/WhatsApp you monitor.
+
+---
+
+## I. Play Console phone number verification (common failures)
+
+Google often fails SMS verification for some countries (including parts of Africa). Try in order:
+
+1. **Use +265 format correctly**  
+   Country: Malawi · Number without leading 0 (e.g. if local is 0999…, enter 999… after +265).
+
+2. **Try Voice call instead of SMS**  
+   On the verification screen, choose **Call me** / voice if shown.
+
+3. **Different number**  
+   Use another mobile (Airtel or TNM), or a trusted friend’s number temporarily.
+
+4. **VPN off / clean browser**  
+   Disable VPN, use Chrome desktop, clear cookies for google.com, try Incognito.
+
+5. **Wait and retry**  
+   Too many attempts locks you out for hours. Wait 6–24 hours.
+
+6. **Google account recovery phone**  
+   Add/verify the number first at https://myaccount.google.com/security under **Ways we can verify it’s you**, then return to Play Console.
+
+7. **Play Console support**  
+   In Play Console: **Help** (question mark) → **Contact support** → account / verification issues.  
+   Explain: “Unable to receive verification SMS for +265… while completing developer account.”
+
+8. **Workspace / different Google account**  
+   Some people complete signup with an account that already has a verified US/UK/EU number, then add you as an admin later (only if appropriate for your situation).
+
+**Note:** Phone verification is required by Google; we cannot bypass it from the app side. Packaging (PWA Builder) can continue once the developer account is fully verified.
+
