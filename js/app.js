@@ -1826,79 +1826,6 @@ function loadDefaultSquad() {
 }
 
 
-function encodeSquadShare() {
-  if (!squad.length) return "";
-  const ids = squad.map(p => p.id).join(",");
-  const start = startingIds.join(",");
-  const bench = benchIds.join(",");
-  return btoa(unescape(encodeURIComponent([ids, start, bench, captainId || "", viceCaptainId || ""].join("|"))))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function applySquadShare(code) {
-  try {
-    let s = code.replace(/-/g, "+").replace(/_/g, "/");
-    while (s.length % 4) s += "=";
-    const raw = decodeURIComponent(escape(atob(s)));
-    const [ids, start, bench, cap, vice] = raw.split("|");
-    const squadIds = ids.split(",").map(Number).filter(Boolean);
-    const mapped = squadIds.map(id => players.find(p => p.id === id)).filter(Boolean);
-    if (mapped.length < 11) return false;
-    squad = mapped;
-    startingIds = (start || "").split(",").map(Number).filter(id => squad.some(p => p.id === id));
-    benchIds = (bench || "").split(",").map(Number).filter(id => squad.some(p => p.id === id));
-    const placed = new Set([...startingIds, ...benchIds]);
-    squad.forEach(p => {
-      if (!placed.has(p.id)) {
-        if (startingIds.length < 11) startingIds.push(p.id);
-        else benchIds.push(p.id);
-      }
-    });
-    captainId = cap && squad.some(p => p.id === +cap) ? +cap : startingIds[0];
-    viceCaptainId = vice && squad.some(p => p.id === +vice) ? +vice : null;
-    enforceValidXI();
-    bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
-    saveSquadLocal();
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
-function copyShareLink() {
-  if (!squad.length) {
-    setStatus("Build a squad first");
-    return;
-  }
-  const tid = currentTeamId() || "";
-  const code = encodeSquadShare();
-  const url = new URL(location.href);
-  url.searchParams.set("team", tid);
-  url.searchParams.set("s", code);
-  const link = url.toString();
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(link).then(() => setStatus("Squad link copied — open it on another device")).catch(() => prompt("Copy this squad link:", link));
-  } else {
-    prompt("Copy this squad link:", link);
-  }
-}
-
-function tryLoadShareFromUrl() {
-  try {
-    const u = new URL(location.href);
-    const code = u.searchParams.get("s");
-    const team = u.searchParams.get("team");
-    if (team && $("teamIdInput") && !$("teamIdInput").value) $("teamIdInput").value = team;
-    if (code && players.length) {
-      if (applySquadShare(code)) {
-        setStatus("Squad loaded from shared link (" + squad.length + " players)");
-        return true;
-      }
-    }
-  } catch (_) {}
-  return false;
-}
-
 function squadStorageKey(teamId) {
   return "fpl_squad_v1_" + String(teamId || "anon");
 }
@@ -2062,7 +1989,6 @@ async function init(force = false) {
     squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null;
     try {
       if (!bootstrap) { await loadBootstrap(force); await loadFixtures(); buildPlayers(); }
-      tryLoadShareFromUrl();
       renderPitch(); renderPlayerList(); renderChips(); updatePlanUI();
     } catch (e) { setStatus("Error: " + e.message); }
     return;
@@ -2077,16 +2003,11 @@ async function init(force = false) {
     buildPlayers();
     rememberTeamId(teamId);
     let loaded = await tryLoadUserTeam(teamId);
-    if ((!loaded || loaded.source === "empty") && tryLoadShareFromUrl()) {
-      loaded = { source: "share", teamName: loaded && loaded.teamName };
-    }
     const tname = (loaded && loaded.teamName) ? loaded.teamName : ("Team " + teamId);
     if (loaded && loaded.source === "api") {
       setStatus(`GW ${loaded.event || currentGw} · ${tname}: official picks (${squad.length} players)`);
     } else if (loaded && loaded.source === "local") {
       setStatus(`${tname}: saved squad restored (${squad.length} players)`);
-    } else if (loaded && loaded.source === "share") {
-      setStatus(`${tname}: squad loaded from shared link`);
     } else if (loaded && loaded.source === "error") {
       setStatus(loaded.error || "Could not load team");
     } else if (loaded && loaded.source === "empty") {
@@ -2742,7 +2663,6 @@ on("optimiseBtn", "click", () => {
   }
 });
 on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null; renderPitch(); renderPlayerList(); });
-on("shareTeamBtn", "click", copyShareLink);
 on("teamFilter", "change", () => renderPlayerList());
 function setEditMode(on) {
   if (!on) {
