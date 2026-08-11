@@ -119,13 +119,74 @@
   <div id="view-transfers" class="view">
     <div class="page-wrap">
       <div class="card">
-        <h2>AI Transfer Suggestions</h2>
-        <p class="muted">Looks for upgrades that raise predicted points while respecting budget and free transfers. Bench quality is considered for coverage.</p>
-        <div class="controls-row">
-          <label>Free transfers <input type="number" id="ftInput" value="1" min="0" max="5" /></label>
-          <label>Max hits (extra transfers) <input type="number" id="hitsInput" value="1" min="0" max="3" /></label>
-          <button id="runTransfersBtn" class="btn btn-blue">Find transfers</button>
+        <h2>AI Transfers</h2>
+        <div class="tr-tabs">
+          <button type="button" class="tr-tab active" data-tr-tab="recommended">Recommended</button>
+          <button type="button" class="tr-tab" data-tr-tab="custom">Custom transfers</button>
         </div>
+
+        <div id="trPaneRecommended" class="tr-pane">
+          <p class="muted">Upgrades that raise predicted points while respecting budget and free transfers.</p>
+          <div class="controls-row">
+            <label>Free transfers <input type="number" id="ftInput" value="1" min="0" max="5" /></label>
+            <label>Max hits <input type="number" id="hitsInput" value="1" min="0" max="3" /></label>
+            <button id="runTransfersBtn" class="btn btn-blue">Find transfers</button>
+          </div>
+        </div>
+
+        <div id="trPaneCustom" class="tr-pane hidden">
+          <p class="muted">Adjust AI recommendations with your own filters (Hub-style custom transfers).</p>
+          <div class="custom-filters" id="customFilters">
+            <div class="filter-row">
+              <label># No. of transfers
+                <select id="cfNumTransfers">
+                  <option value="1">1 transfer</option>
+                  <option value="2">2 transfers</option>
+                  <option value="3">3 transfers</option>
+                </select>
+              </label>
+              <label>Player position
+                <select id="cfPosition">
+                  <option value="">Any</option>
+                  <option value="GKP">GKP</option>
+                  <option value="DEF">DEF</option>
+                  <option value="MID">MID</option>
+                  <option value="FWD">FWD</option>
+                </select>
+              </label>
+            </div>
+            <div class="filter-row">
+              <label>Team (in)
+                <select id="cfTeam"><option value="">Any club</option></select>
+              </label>
+              <label>Effective ownership max %
+                <input type="number" id="cfMaxEO" value="100" min="0" max="100" step="1" />
+              </label>
+            </div>
+            <div class="filter-row">
+              <label>Player price max £
+                <input type="number" id="cfMaxPrice" value="15" min="4" max="15" step="0.5" />
+              </label>
+              <label>Player price min £
+                <input type="number" id="cfMinPrice" value="4" min="4" max="15" step="0.5" />
+              </label>
+            </div>
+            <div class="filter-row">
+              <label>Player in (name contains)
+                <input type="text" id="cfPlayerIn" placeholder="e.g. Saka" />
+              </label>
+              <label>Player out (name contains)
+                <input type="text" id="cfPlayerOut" placeholder="e.g. weak mid" />
+              </label>
+            </div>
+            <div class="controls-row">
+              <label>Free transfers <input type="number" id="ftInputCustom" value="1" min="0" max="5" /></label>
+              <label>Max hits <input type="number" id="hitsInputCustom" value="2" min="0" max="3" /></label>
+              <button id="runCustomTransfersBtn" class="btn btn-blue">Run custom transfers</button>
+            </div>
+          </div>
+        </div>
+
         <div id="transferResults"></div>
       </div>
     </div>

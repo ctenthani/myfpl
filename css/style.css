@@ -841,3 +841,18 @@ body {
 }
 .terms-doc h2 { margin-top: 1.2em; font-size: 1.1rem; }
 .terms-doc h1 { font-size: 1.35rem; }
+
+.tr-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.tr-tab {
+  flex: 1; padding: 10px 12px; border-radius: 999px; border: 1px solid var(--border);
+  background: #f1f5f9; font-weight: 600; cursor: pointer;
+}
+.tr-tab.active { background: #0f172a; color: #fff; border-color: #0f172a; }
+.tr-pane.hidden { display: none; }
+.custom-filters { background: #f8fafc; border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+.filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.filter-row label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
+.filter-row input, .filter-row select {
+  padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.9rem;
+}
+@media (max-width: 600px) { .filter-row { grid-template-columns: 1fr; } }

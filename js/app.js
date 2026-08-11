@@ -779,22 +779,58 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
 }
 
 // ---------- AI Transfers ----------
-function findTransfers(freeTransfers = 1, maxHits = 1) {
-  if (!squad.length) return { error: "No squad loaded. Open Pick tab and load/optimise first." };
+function getTransferFilters() {
+  return {
+    numTransfers: parseInt(($("cfNumTransfers") && $("cfNumTransfers").value) || "1", 10) || 1,
+    position: ($("cfPosition") && $("cfPosition").value) || "",
+    teamId: parseInt(($("cfTeam") && $("cfTeam").value) || "", 10) || 0,
+    maxEO: parseFloat(($("cfMaxEO") && $("cfMaxEO").value) || "100") || 100,
+    maxPrice: parseFloat(($("cfMaxPrice") && $("cfMaxPrice").value) || "15") || 15,
+    minPrice: parseFloat(($("cfMinPrice") && $("cfMinPrice").value) || "4") || 4,
+    playerIn: (($("cfPlayerIn") && $("cfPlayerIn").value) || "").trim().toLowerCase(),
+    playerOut: (($("cfPlayerOut") && $("cfPlayerOut").value) || "").trim().toLowerCase(),
+  };
+}
+
+function passInFilters(p, f) {
+  if (!f) return true;
+  if (f.position && p.position !== f.position) return false;
+  if (f.teamId && p.team_id !== f.teamId) return false;
+  if ((p.selected_by_percent || 0) > f.maxEO + 0.01) return false;
+  if (p.price > f.maxPrice + 0.05) return false;
+  if (p.price < f.minPrice - 0.05) return false;
+  if (f.playerIn && !p.web_name.toLowerCase().includes(f.playerIn)) return false;
+  return true;
+}
+
+function passOutFilters(p, f) {
+  if (!f) return true;
+  if (f.position && p.position !== f.position) return false;
+  if (f.playerOut && !p.web_name.toLowerCase().includes(f.playerOut)) return false;
+  return true;
+}
+
+function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
+  if (!squad.length) return { error: "No squad loaded. Enter your Team ID on Pick and press Refresh (or Edit a squad)." };
   const squadIds = new Set(squad.map(p => p.id));
   const currentXp = squad.reduce((s, p) => s + xpOf(p), 0);
   const availableBudget = bank;
   const candidates = [];
+  const wantN = filters ? (filters.numTransfers || 1) : 1;
 
   // Single transfers
-  const outs = [...squad].sort((a, b) => xpOf(a) - xpOf(b)).slice(0, 8);
+  let outs = [...squad].sort((a, b) => xpOf(a) - xpOf(b));
+  if (filters) outs = outs.filter(p => passOutFilters(p, filters));
+  outs = outs.slice(0, 10);
+  if (wantN <= 1) {
   for (const out of outs) {
     const maxPrice = availableBudget + out.price;
     const ins = players
       .filter(p => p.position === out.position && !squadIds.has(p.id) && p.price <= maxPrice + 0.05
-        && p.availability > 0.4 && xpOf(p) > xpOf(out) + 0.15)
+        && p.availability > 0.35 && xpOf(p) > xpOf(out) + 0.1
+        && passInFilters(p, filters))
       .sort((a, b) => xpOf(b) - xpOf(a))
-      .slice(0, 5);
+      .slice(0, filters && filters.playerIn ? 12 : 6);
     for (const inn of ins) {
       const clubCount = squad.filter(x => x.team_id === inn.team_id && x.id !== out.id).length;
       if (clubCount >= 3) continue;
@@ -810,18 +846,20 @@ function findTransfers(freeTransfers = 1, maxHits = 1) {
       });
     }
   }
+  } // end wantN <= 1
 
   // Two transfers if FT+hits allow
-  if (freeTransfers + maxHits >= 2) {
-    const weak2 = outs.slice(0, 5);
+  if (wantN >= 2 && freeTransfers + maxHits >= 2) {
+    let weak2 = outs.slice(0, 6);
+    if (filters) weak2 = weak2.filter(p => passOutFilters(p, filters));
     for (let i = 0; i < weak2.length; i++) {
       for (let j = i + 1; j < weak2.length; j++) {
         const o1 = weak2[i], o2 = weak2[j];
-        if (o1.position === o2.position) continue; // keep simple different positions
+        if (filters && filters.position && o1.position !== filters.position && o2.position !== filters.position) continue;
         const budget2 = availableBudget + o1.price + o2.price;
-        const ins1 = players.filter(p => p.position === o1.position && !squadIds.has(p.id) && xpOf(p) > xpOf(o1) + 0.1 && p.availability > 0.4)
+        const ins1 = players.filter(p => p.position === o1.position && !squadIds.has(p.id) && xpOf(p) > xpOf(o1) + 0.1 && p.availability > 0.35 && passInFilters(p, filters))
           .sort((a, b) => xpOf(b) - xpOf(a)).slice(0, 4);
-        const ins2 = players.filter(p => p.position === o2.position && !squadIds.has(p.id) && xpOf(p) > xpOf(o2) + 0.1 && p.availability > 0.4)
+        const ins2 = players.filter(p => p.position === o2.position && !squadIds.has(p.id) && xpOf(p) > xpOf(o2) + 0.1 && p.availability > 0.35 && passInFilters(p, filters))
           .sort((a, b) => xpOf(b) - xpOf(a)).slice(0, 4);
         for (const a of ins1) {
           for (const b of ins2) {
@@ -1108,21 +1146,27 @@ function showUpgradePrompt(feature) {
   });
 }
 
-function renderTransfersUI() {
-  if (!isPro()) {
-    showUpgradePrompt("transfers");
-    return;
-  }
-  const ft = parseInt($("ftInput").value, 10) || 1;
-  const hits = parseInt($("hitsInput").value, 10) || 0;
-  const res = findTransfers(ft, hits);
+function populateClubFilter() {
+  const sel = $("cfTeam");
+  if (!sel || sel.options.length > 1) return;
+  const clubs = Object.values(teamsMap || {}).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  clubs.forEach(t => {
+    const o = document.createElement("option");
+    o.value = t.id;
+    o.textContent = t.short_name || t.name;
+    sel.appendChild(o);
+  });
+}
+
+function showTransferResults(res) {
   const box = $("transferResults");
+  if (!box) return;
   if (res.error) { box.innerHTML = `<p class="muted">${res.error}</p>`; return; }
   if (!res.suggestions.length) {
-    box.innerHTML = `<p class="muted">No strong upgrades found — squad looks solid on current metrics (bank ${money(res.bank)}).</p>`;
+    box.innerHTML = `<p class="muted">No upgrades matched — loosen filters or check your squad is loaded (bank ${money(res.bank)}).</p>`;
     return;
   }
-  box.innerHTML = `<p class="muted">Current squad XP ≈ <strong>${res.currentXp.toFixed(1)}</strong> · Bank ${money(res.bank)}</p>` +
+  box.innerHTML = `<p class="muted">Squad XP ≈ <strong>${res.currentXp.toFixed(1)}</strong> · Bank ${money(res.bank)} · ${res.suggestions.length} ideas</p>` +
     res.suggestions.map((s, i) => `
       <div class="transfer-card">
         <h4>#${i + 1} · ${s.type} · <span class="gain">+${s.gain.toFixed(2)} XP</span>
@@ -1130,15 +1174,38 @@ function renderTransfersUI() {
           · cost ${s.costDiff >= 0 ? "+" : ""}${money(s.costDiff)}</h4>
         ${s.moves.map(m => `
           <div class="transfer-row">
-            <span>OUT <strong>${m.out.web_name}</strong> (${m.out.team} ${money(m.out.price)} · ${xpOf(m.out).toFixed(1)})</span>
+            <span>OUT <strong>${m.out.web_name}</strong> (${m.out.team} ${money(m.out.price)} · ${xpOf(m.out).toFixed(1)} · ${m.out.selected_by_percent}%)</span>
             <span>→</span>
-            <span>IN <strong>${m.inn.web_name}</strong> (${m.inn.team} ${money(m.inn.price)} · ${xpOf(m.inn).toFixed(1)})</span>
+            <span>IN <strong>${m.inn.web_name}</strong> (${m.inn.team} ${money(m.inn.price)} · ${xpOf(m.inn).toFixed(1)} · ${m.inn.selected_by_percent}%)</span>
           </div>`).join("")}
         <button class="btn btn-cyan apply-tr" data-idx="${i}" style="margin-top:8px">Apply locally</button>
       </div>`).join("");
   box.querySelectorAll(".apply-tr").forEach(btn => {
     btn.addEventListener("click", () => applyTransferSuggestion(res.suggestions[+btn.dataset.idx]));
   });
+}
+
+function renderTransfersUI() {
+  if (!isPro()) {
+    showUpgradePrompt("transfers");
+    return;
+  }
+  populateClubFilter();
+  const ft = parseInt($("ftInput").value, 10) || 1;
+  const hits = parseInt($("hitsInput").value, 10) || 0;
+  showTransferResults(findTransfers(ft, hits, null));
+}
+
+function renderCustomTransfersUI() {
+  if (!isPro()) {
+    showUpgradePrompt("transfers");
+    return;
+  }
+  populateClubFilter();
+  const ft = parseInt($("ftInputCustom").value, 10) || 1;
+  const hits = parseInt($("hitsInputCustom").value, 10) || 0;
+  const filters = getTransferFilters();
+  showTransferResults(findTransfers(ft, hits, filters));
 }
 
 function renderAITeams() {
@@ -1304,6 +1371,7 @@ function loadDefaultSquad() {
 async function tryLoadUserTeam(teamId) {
   teamId = parseInt(teamId, 10);
   let teamName = null;
+  let playerName = null;
   entryBank = null;
   teamValueOverride = null;
   squadLockedValue = false;
@@ -1312,14 +1380,31 @@ async function tryLoadUserTeam(teamId) {
     const entry = await fetchJson(`entry/${teamId}/`);
     if (entry) {
       if (entry.name) teamName = entry.name;
-      // FPL stores bank/value in tenths of a million (e.g. 15 → £1.5m, 1000 → £100.0m)
+      playerName = [entry.player_first_name, entry.player_last_name].filter(Boolean).join(" ");
       if (entry.last_deadline_bank != null) entryBank = entry.last_deadline_bank / 10;
       if (entry.last_deadline_value != null) teamValueOverride = entry.last_deadline_value / 10;
+      // Prefer entry.current_event / started_event when present
+      if (entry.current_event) currentGw = entry.current_event;
+      else if (entry.started_event) currentGw = entry.started_event;
     }
-  } catch (_) {}
+  } catch (e) {
+    return { source: "error", teamName: null, error: "Team ID not found on FPL" };
+  }
 
-  // 1) Official picks for recent events
-  for (const ev of [currentGw, 1, 2, 3, 4, 5]) {
+  // Build list of events to try (next, current, 1..5, history)
+  const tryEvents = [];
+  if (bootstrap && bootstrap.events) {
+    const nx = bootstrap.events.find(e => e.is_next);
+    const cu = bootstrap.events.find(e => e.is_current);
+    if (nx) tryEvents.push(nx.id);
+    if (cu) tryEvents.push(cu.id);
+  }
+  for (let e = 1; e <= 8; e++) tryEvents.push(e);
+  const seenEv = new Set();
+
+  for (const ev of tryEvents) {
+    if (seenEv.has(ev)) continue;
+    seenEv.add(ev);
     try {
       const picks = await fetchJson(`entry/${teamId}/event/${ev}/picks/`);
       if (!picks || !picks.picks || !picks.picks.length) continue;
@@ -1332,23 +1417,33 @@ async function tryLoadUserTeam(teamId) {
       const cap = ordered.find(p => p.is_captain);
       captainId = cap ? cap.element : startingIds[0];
       squadLockedValue = true;
-      // Bank from official entry; do NOT clamp to 100 − current prices (prices may have risen)
       if (entryBank != null) bank = entryBank;
-      else bank = 0; // unknown ITB — show 0 rather than a fake 100−value figure
-      return { source: "api", teamName };
+      else {
+        const spent = squad.reduce((s, p) => s + p.price, 0);
+        bank = Math.max(0, BUDGET - spent);
+      }
+      // entry_history bank on picks if present
+      if (picks.entry_history && picks.entry_history.bank != null) {
+        bank = picks.entry_history.bank / 10;
+      }
+      return { source: "api", teamName, playerName, event: ev };
     } catch (err) {
-      // 404 pre-deadline is normal
+      // 404 until FPL publishes that team's picks for the event
     }
   }
 
-  // No public picks yet — empty squad (user edits or uses AI Teams) under £100.0m start
   squad = [];
   startingIds = [];
   benchIds = [];
   captainId = null;
   bank = BUDGET;
   squadLockedValue = false;
-  return { source: "empty", teamName };
+  return {
+    source: "empty",
+    teamName,
+    playerName,
+    note: "FPL has not published this team's picks yet (common before the first deadline). Use Edit team to rebuild, or try again after picks go public.",
+  };
 }
 
 async function init(force = false) {
@@ -1375,14 +1470,13 @@ async function init(force = false) {
     const loaded = await tryLoadUserTeam(teamId);
     const tname = (loaded && loaded.teamName) ? loaded.teamName : ("Team " + teamId);
     if (loaded && loaded.source === "api") {
-      setStatus(`GW ${currentGw} · ${tname} · official picks (${squad.length} players)`);
-    } else if (loaded && loaded.source === "default") {
-      setStatus(`GW ${currentGw} · ${tname} · draft fallback`);
+      setStatus(`GW ${loaded.event || currentGw} · ${tname} · official picks loaded (${squad.length} players)`);
+    } else if (loaded && loaded.source === "error") {
+      setStatus(loaded.error || "Could not load team");
     } else if (loaded && loaded.source === "empty") {
-      setStatus(`GW ${currentGw} · ${tname} · no public picks yet — Optimise or Edit to build a squad`);
+      setStatus(`${tname}: ${loaded.note || "no public picks yet — Edit team or try after deadline"}`);
     } else {
-      optimiseSquad();
-      setStatus(`GW ${currentGw} · AI draft generated`);
+      setStatus(`GW ${currentGw} · ${tname}`);
     }
     updatePlanUI(); // re-check Pro lock if team ID differs from session
     renderPitch();
@@ -2007,6 +2101,19 @@ on("editBtn", "click", () => setEditMode(true));
 const doneBtn = $("doneEditBtn");
 if (doneBtn) doneBtn.addEventListener("click", () => setEditMode(false));
 on("runTransfersBtn", "click", renderTransfersUI);
+on("runCustomTransfersBtn", "click", renderCustomTransfersUI);
+document.querySelectorAll(".tr-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tr-tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    const which = tab.dataset.trTab;
+    const rec = $("trPaneRecommended");
+    const cus = $("trPaneCustom");
+    if (rec) rec.classList.toggle("hidden", which !== "recommended");
+    if (cus) cus.classList.toggle("hidden", which !== "custom");
+    if (which === "custom") populateClubFilter();
+  });
+});
 on("genTeamsBtn", "click", renderAITeams);
 
 document.querySelectorAll(".hz").forEach(btn => {
