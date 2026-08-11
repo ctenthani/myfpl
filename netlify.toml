@@ -2,10 +2,8 @@
   publish = "."
   functions = "netlify/functions"
 
-# Every hour: send Matchday digest when GW deadline is ~4 hours away
-[functions."matchday-digest"]
-  schedule = "0 * * * *"
-
+# Schedule via free external cron (cron-job.org) hitting the function URL
+# every hour — Netlify free scheduled functions can return 403 on HTTP invoke.
 
 [[redirects]]
   from = "/api/fpl"
