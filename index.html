@@ -386,6 +386,21 @@
 
 
   
+  <!-- Player context menu (Hub-style) -->
+  <div id="playerMenu" class="player-menu hidden">
+    <button type="button" data-act="captain">© Make captain</button>
+    <button type="button" data-act="vice">ⓥ Make vice captain</button>
+    <button type="button" data-act="sub">⇄ Substitute</button>
+    <button type="button" data-act="transfer">↗ Transfer out</button>
+    <button type="button" data-act="recommend">✦ Recommend transfer</button>
+    <button type="button" data-act="info">ⓘ See player info</button>
+  </div>
+  <div id="playerInfoModal" class="chip-modal hidden">
+    <div class="chip-modal-card player-info-card">
+      <button type="button" class="modal-close" id="playerInfoClose">←</button>
+      <div id="playerInfoBody"></div>
+    </div>
+  </div>
   <div id="loginModal" class="chip-modal hidden">
     <div class="chip-modal-box" style="max-width:420px">
       <h3>Sign in</h3>

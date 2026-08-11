@@ -310,6 +310,8 @@ let squad = [];
 let startingIds = [];
 let benchIds = [];
 let captainId = null;
+let viceCaptainId = null;
+let menuPlayerId = null;
 let editMode = false;
 let bank = 0;
 let entryBank = 0;
@@ -942,15 +944,18 @@ function shirtUrl(p) {
   }
   return `https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${code}-66.webp`;
 }
-function playerCard(p, isCaptain = false) {
+function playerCard(p, isCaptain = false, isVice = false) {
   const pts = xpOf(p).toFixed(1);
   const shirt = shirtUrl(p);
   const shirtHtml = shirt
     ? `<img class="shirt-img" src="${shirt}" alt="${p.team}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
        <div class="shirt shirt-fallback" style="display:none;background:${shirtFor(p.team)}">${posEmoji(p.position)}</div>`
     : `<div class="shirt" style="background:${shirtFor(p.team)}">${posEmoji(p.position)}</div>`;
+  const cls = ["pcard"];
+  if (isCaptain) cls.push("captain");
+  else if (isVice) cls.push("vice");
   return `
-    <div class="pcard ${isCaptain ? "captain" : ""}" data-id="${p.id}" title="${p.news || p.web_name}">
+    <div class="${cls.join(" ")}" data-id="${p.id}" title="${p.news || p.web_name}">
       ${shirtHtml}
       <div class="pname">${p.web_name}</div>
       <div class="pprice">${money(p.price)}</div>
@@ -983,6 +988,175 @@ function renderMiniPitch(data) {
     <div class="bench ai-bench">${benchHtml}</div>`;
 }
 
+function hidePlayerMenu() {
+  const m = $("playerMenu");
+  if (m) m.classList.add("hidden");
+  menuPlayerId = null;
+}
+
+function openPlayerMenu(playerId, evt) {
+  const p = squad.find(x => x.id === playerId);
+  if (!p) return;
+  menuPlayerId = playerId;
+  const menu = $("playerMenu");
+  if (!menu) return;
+  menu.classList.remove("hidden");
+  const x = Math.min(window.innerWidth - 220, Math.max(8, (evt.clientX || 40) - 20));
+  const y = Math.min(window.innerHeight - 280, Math.max(8, (evt.clientY || 80)));
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
+}
+
+function nextFixturesFor(teamId, n = 5) {
+  if (!fixtures.length) return [];
+  return fixtures
+    .filter(f => !f.finished && (f.team_h === teamId || f.team_a === teamId) && (f.event || 0) >= currentGw)
+    .sort((a, b) => (a.event || 0) - (b.event || 0) || (a.kickoff_time || "").localeCompare(b.kickoff_time || ""))
+    .slice(0, n);
+}
+
+function showPlayerInfo(playerId) {
+  const p = players.find(x => x.id === playerId) || squad.find(x => x.id === playerId);
+  if (!p) return;
+  const body = $("playerInfoBody");
+  const modal = $("playerInfoModal");
+  if (!body || !modal) return;
+  const fxt = nextFixturesFor(p.team_id, 6);
+  const rows = fxt.map(f => {
+    const home = f.team_h === p.team_id;
+    const oppId = home ? f.team_a : f.team_h;
+    const opp = (teamsMap[oppId] && (teamsMap[oppId].short_name || teamsMap[oppId].name)) || "?";
+    const xp = xpOf(p).toFixed(1);
+    return `<div class="pi-fix-row"><span>GW${f.event} · ${opp} (${home ? "Home" : "Away"})</span><strong>${xp} pts</strong></div>`;
+  }).join("") || `<p class="muted">No upcoming fixtures loaded.</p>`;
+  body.innerHTML = `
+    <h2 style="margin:0 0 8px">${p.web_name}</h2>
+    <div class="pi-header">
+      <div>
+        <div><strong>${p.team}</strong> · ${p.position}</div>
+        <div class="muted">${money(p.price)} · ${p.selected_by_percent}% selected</div>
+      </div>
+    </div>
+    <div class="pi-stats">
+      <div><strong>${p.total_points || 0}</strong><span>Total pts</span></div>
+      <div><strong>${p.points_per_game || "–"}</strong><span>Pts / match</span></div>
+      <div><strong>${p.selected_by_percent}%</strong><span>Selected by</span></div>
+      <div><strong>${p.goals_scored || 0}</strong><span>Goals</span></div>
+      <div><strong>${p.assists || 0}</strong><span>Assists</span></div>
+      <div><strong>${p.bonus || 0}</strong><span>Bonus</span></div>
+    </div>
+    <p class="muted" style="font-size:0.85rem">${p.news || "No news"} · Form ${p.form || "–"} · ep_next ${p.ep_next || "–"}</p>
+    <h3 style="margin:14px 0 6px;font-size:0.95rem">Predicted points</h3>
+    ${rows}
+  `;
+  modal.classList.remove("hidden");
+}
+
+function recommendTransferFor(playerId) {
+  const out = squad.find(p => p.id === playerId);
+  if (!out) return;
+  const maxPrice = bank + out.price;
+  const ins = players
+    .filter(p => p.position === out.position && !squad.some(s => s.id === p.id) && p.price <= maxPrice + 0.05 && p.availability > 0.35)
+    .sort((a, b) => xpOf(b) - xpOf(a))
+    .slice(0, 5);
+  if (!ins.length) {
+    setStatus("No clear replacement under budget for " + out.web_name);
+    return;
+  }
+  const box = $("transferResults");
+  // Jump to transfers view
+  document.querySelector('[data-view="transfers"]')?.click();
+  const html = `<p class="muted">Recommended replacements for <strong>${out.web_name}</strong> (${money(out.price)} · ${xpOf(out).toFixed(1)} XP)</p>` +
+    ins.map((inn, i) => {
+      const gain = xpOf(inn) - xpOf(out);
+      return `<div class="transfer-card">
+        <h4>#${i + 1} · <span class="gain">${gain >= 0 ? "+" : ""}${gain.toFixed(2)} XP</span> · ${money(inn.price - out.price)}</h4>
+        <div class="transfer-row">
+          <span>OUT <strong>${out.web_name}</strong></span><span>→</span>
+          <span>IN <strong>${inn.web_name}</strong> (${inn.team} · ${xpOf(inn).toFixed(1)})</span>
+        </div>
+        <button class="btn btn-cyan apply-one-tr" data-out="${out.id}" data-in="${inn.id}" style="margin-top:8px">Apply locally</button>
+      </div>`;
+    }).join("");
+  if (box) {
+    box.innerHTML = html;
+    box.querySelectorAll(".apply-one-tr").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const o = squad.find(p => p.id === +btn.dataset.out);
+        const inn = players.find(p => p.id === +btn.dataset.in);
+        if (!o || !inn) return;
+        applyTransferSuggestion({ moves: [{ out: o, inn }] });
+        saveSquadLocal();
+        setStatus(`Transferred ${o.web_name} → ${inn.web_name}`);
+      });
+    });
+  }
+  setStatus("Recommend transfer open on AI Transfers");
+}
+
+function handlePlayerAction(act) {
+  const id = menuPlayerId;
+  hidePlayerMenu();
+  if (!id) return;
+  const p = squad.find(x => x.id === id);
+  if (!p) return;
+  if (act === "captain") {
+    if (viceCaptainId === id) viceCaptainId = null;
+    captainId = id;
+    saveSquadLocal();
+    renderPitch();
+    setStatus("Captain: " + p.web_name);
+  } else if (act === "vice") {
+    if (captainId === id) {
+      setStatus("Already captain — pick someone else as vice");
+      return;
+    }
+    viceCaptainId = id;
+    saveSquadLocal();
+    renderPitch();
+    setStatus("Vice captain: " + p.web_name);
+  } else if (act === "sub") {
+    const isStarter = startingIds.includes(id);
+    if (isStarter) {
+      // swap with best bench same eligibility loosely
+      if (!benchIds.length) { setStatus("Bench is empty"); return; }
+      const outIdx = startingIds.indexOf(id);
+      // prefer same position on bench
+      let inId = benchIds.find(bid => {
+        const bp = squad.find(x => x.id === bid);
+        return bp && bp.position === p.position;
+      }) || benchIds[0];
+      startingIds[outIdx] = inId;
+      benchIds = benchIds.filter(x => x !== inId).concat([id]);
+    } else {
+      // promote to XI — demote lowest XP same or any
+      const weak = [...startingIds]
+        .map(sid => squad.find(x => x.id === sid))
+        .filter(Boolean)
+        .sort((a, b) => xpOf(a) - xpOf(b))[0];
+      if (!weak) return;
+      startingIds = startingIds.map(x => x === weak.id ? id : x);
+      benchIds = benchIds.filter(x => x !== id).concat([weak.id]);
+    }
+    saveSquadLocal();
+    renderPitch();
+    setStatus("Line-up updated");
+  } else if (act === "transfer") {
+    // Soft transfer-out: enter edit mode and highlight
+    editMode = true;
+    const es = $("editStatusInline");
+    if (es) es.textContent = "Transfer out: tap a replacement from the list (or remove " + p.web_name + ")";
+    removePlayer(id);
+    editMode = true;
+    setStatus("Removed " + p.web_name + " — pick a replacement from the player list");
+  } else if (act === "recommend") {
+    recommendTransferFor(id);
+  } else if (act === "info") {
+    showPlayerInfo(id);
+  }
+}
+
 function renderPitch() {
   const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
   startingIds.forEach(id => {
@@ -992,12 +1166,12 @@ function renderPitch() {
   let html = "";
   for (const pos of ["GKP", "DEF", "MID", "FWD"]) {
     html += `<div class="pitch-row">`;
-    byPos[pos].forEach(p => { html += playerCard(p, p.id === captainId); });
+    byPos[pos].forEach(p => { html += playerCard(p, p.id === captainId, p.id === viceCaptainId); });
     html += `</div>`;
   }
   $("pitch").innerHTML = html;
   const benchPlayers = benchIds.map(id => squad.find(x => x.id === id)).filter(Boolean);
-  $("bench").innerHTML = benchPlayers.map(p => playerCard(p, false)).join("");
+  $("bench").innerHTML = benchPlayers.map(p => playerCard(p, false, p.id === viceCaptainId)).join("");
 
   const xi = squad.filter(p => startingIds.includes(p.id));
   const xiXp = xi.reduce((s, p) => s + xpOf(p), 0);
@@ -1017,16 +1191,17 @@ function renderPitch() {
   const r2 = $("mRating2"); if (r2) r2.textContent = rating + "%";
   const p2 = $("mPred2"); if (p2) p2.textContent = pred.toFixed(1);
   const b2 = $("mBank2"); if (b2) b2.textContent = money(bank);
-  if (editMode) {
-    document.querySelectorAll(".pcard").forEach(el => {
-      el.classList.add("removable");
-      el.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+  document.querySelectorAll(".pcard").forEach(el => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (editMode) {
         removePlayer(+el.dataset.id);
-      });
+        return;
+      }
+      openPlayerMenu(+el.dataset.id, e);
     });
-  }
+  });
 }
 
 function renderPlayerList() {
@@ -1072,6 +1247,7 @@ function removePlayer(id) {
   if (captainId === id) captainId = startingIds[0] || null;
   bank = BUDGET - squad.reduce((s, p) => s + p.price, 0);
   while (startingIds.length < 11 && benchIds.length) startingIds.push(benchIds.shift());
+  saveSquadLocal();
   renderPitch(); renderPlayerList();
   $("editStatusInline").textContent = `Squad: ${squad.length}/15 · Bank ${money(bank)}`;
 }
@@ -1368,6 +1544,64 @@ function loadDefaultSquad() {
   return squad.length >= 11;
 }
 
+
+function squadStorageKey(teamId) {
+  return "fpl_squad_v1_" + String(teamId || "anon");
+}
+
+function saveSquadLocal(teamId) {
+  teamId = teamId || currentTeamId();
+  if (!teamId || !squad.length) return;
+  const payload = {
+    teamId: Number(teamId),
+    squadIds: squad.map(p => p.id),
+    startingIds: [...startingIds],
+    benchIds: [...benchIds],
+    captainId,
+    viceCaptainId,
+    bank,
+    squadLockedValue,
+    entryBank,
+    savedAt: Date.now(),
+  };
+  try {
+    localStorage.setItem(squadStorageKey(teamId), JSON.stringify(payload));
+  } catch (_) {}
+}
+
+function loadSquadLocal(teamId) {
+  teamId = teamId || currentTeamId();
+  if (!teamId || !players.length) return false;
+  try {
+    const raw = localStorage.getItem(squadStorageKey(teamId));
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data.squadIds || data.squadIds.length < 11) return false;
+    const mapped = data.squadIds.map(id => players.find(p => p.id === id)).filter(Boolean);
+    if (mapped.length < 11) return false;
+    squad = mapped;
+    startingIds = (data.startingIds || []).filter(id => squad.some(p => p.id === id));
+    benchIds = (data.benchIds || []).filter(id => squad.some(p => p.id === id));
+    // recover missing from squad
+    const placed = new Set([...startingIds, ...benchIds]);
+    squad.forEach(p => {
+      if (!placed.has(p.id)) {
+        if (startingIds.length < 11) startingIds.push(p.id);
+        else benchIds.push(p.id);
+      }
+    });
+    captainId = data.captainId && squad.some(p => p.id === data.captainId) ? data.captainId : startingIds[0];
+    viceCaptainId = data.viceCaptainId && squad.some(p => p.id === data.viceCaptainId) ? data.viceCaptainId : null;
+    if (viceCaptainId === captainId) viceCaptainId = null;
+    if (typeof data.bank === "number") bank = data.bank;
+    squadLockedValue = !!data.squadLockedValue;
+    if (data.entryBank != null) entryBank = data.entryBank;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function tryLoadUserTeam(teamId) {
   teamId = parseInt(teamId, 10);
   let teamName = null;
@@ -1426,23 +1660,35 @@ async function tryLoadUserTeam(teamId) {
       if (picks.entry_history && picks.entry_history.bank != null) {
         bank = picks.entry_history.bank / 10;
       }
+      saveSquadLocal(teamId);
       return { source: "api", teamName, playerName, event: ev };
     } catch (err) {
       // 404 until FPL publishes that team's picks for the event
     }
   }
 
+  // Prefer squad saved on this device for this Team ID
+  if (loadSquadLocal(teamId)) {
+    return {
+      source: "local",
+      teamName,
+      playerName,
+      note: "Loaded your saved squad for this Team ID (device storage).",
+    };
+  }
+
   squad = [];
   startingIds = [];
   benchIds = [];
   captainId = null;
+  viceCaptainId = null;
   bank = BUDGET;
   squadLockedValue = false;
   return {
     source: "empty",
     teamName,
     playerName,
-    note: "FPL has not published this team's picks yet (common before the first deadline). Use Edit team to rebuild, or try again after picks go public.",
+    note: "FPL has not published this team's picks yet. Edit your team here — it will be saved for this Team ID on this device.",
   };
 }
 
@@ -1470,11 +1716,13 @@ async function init(force = false) {
     const loaded = await tryLoadUserTeam(teamId);
     const tname = (loaded && loaded.teamName) ? loaded.teamName : ("Team " + teamId);
     if (loaded && loaded.source === "api") {
-      setStatus(`GW ${loaded.event || currentGw} · ${tname} · official picks loaded (${squad.length} players)`);
+      setStatus(`GW ${loaded.event || currentGw} · ${tname} · official picks (${squad.length} players)`);
+    } else if (loaded && loaded.source === "local") {
+      setStatus(`GW ${currentGw} · ${tname} · saved squad restored (${squad.length} players)`);
     } else if (loaded && loaded.source === "error") {
       setStatus(loaded.error || "Could not load team");
     } else if (loaded && loaded.source === "empty") {
-      setStatus(`${tname}: ${loaded.note || "no public picks yet — Edit team or try after deadline"}`);
+      setStatus(`${tname}: ${loaded.note || "Edit team — progress is saved for this Team ID"}`);
     } else {
       setStatus(`GW ${currentGw} · ${tname}`);
     }
@@ -2034,6 +2282,26 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
 });
 
 on("refreshBtn", "click", () => init(true));
+document.addEventListener("click", (e) => {
+  const menu = $("playerMenu");
+  if (menu && !menu.classList.contains("hidden") && !menu.contains(e.target) && !e.target.closest(".pcard")) {
+    hidePlayerMenu();
+  }
+});
+const pMenu = $("playerMenu");
+if (pMenu) {
+  pMenu.querySelectorAll("button[data-act]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handlePlayerAction(btn.dataset.act);
+    });
+  });
+}
+on("playerInfoClose", "click", () => {
+  const m = $("playerInfoModal");
+  if (m) m.classList.add("hidden");
+});
+
 on("footerTermsLink", "click", (e) => {
   e.preventDefault();
   document.querySelector('[data-view="terms"]')?.click();
