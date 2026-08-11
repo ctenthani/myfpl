@@ -173,23 +173,53 @@ function currentTeamId() {
 }
 
 /** Pro only if session matches the Team ID currently loaded (owner always). */
+function trialStillValid(sess) {
+  if (!sess || !sess.trialEnds) return false;
+  return Date.now() < Number(sess.trialEnds);
+}
+
 function isPro() {
   if (!authSession) return false;
   if (authSession.plan === "owner") return true;
-  if (authSession.plan !== "pro" && authSession.plan !== "ultra") return false;
+  if (authSession.plan !== "pro" && authSession.plan !== "ultra" && authSession.plan !== "trial_pro" && authSession.plan !== "trial_ultra") return false;
+  if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") {
+    if (!trialStillValid(authSession)) return false;
+  }
+  // trials are not team-bound so user can explore; paid stays team-bound
+  if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") return true;
   return Number(authSession.teamId) === Number(currentTeamId());
 }
 function isUltra() {
   if (!authSession) return false;
   if (authSession.plan === "owner") return true;
+  if (authSession.plan === "trial_ultra" && trialStillValid(authSession)) return true;
   if (authSession.plan !== "ultra") return false;
   return Number(authSession.teamId) === Number(currentTeamId());
 }
 function activePlanLabel() {
   if (!authSession) return "Starter";
   if (authSession.plan === "owner") return "Owner";
+  if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") {
+    if (!trialStillValid(authSession)) return "Starter";
+    const days = Math.max(0, Math.ceil((Number(authSession.trialEnds) - Date.now()) / 86400000));
+    return (authSession.plan === "trial_ultra" ? "Ultra trial" : "Pro trial") + " · " + days + "d left";
+  }
   if (isPro()) return authSession.plan === "ultra" ? "Ultra" : "Pro";
-  return "Starter"; // logged in but viewing a different team
+  return "Starter";
+}
+
+function startTrial(level) {
+  // level: "pro" | "ultra"
+  const ends = Date.now() + 14 * 24 * 60 * 60 * 1000;
+  saveAuthSession({
+    teamId: currentTeamId() || null,
+    plan: level === "ultra" ? "trial_ultra" : "trial_pro",
+    email: (authSession && authSession.email) || "trial@local",
+    trialEnds: ends,
+    trialStarted: Date.now(),
+  });
+  setStatus((level === "ultra" ? "Ultra" : "Pro") + " trial started — 14 days, all features unlocked");
+  updatePlanUI();
 }
 
 function setPlan() { /* legacy no-op – use login */ }
@@ -236,11 +266,10 @@ function updatePlanUI() {
     badge.textContent = label;
     badge.className = "plan-badge " + (label === "Owner" || label === "Ultra" ? "ultra" : label === "Pro" ? "pro" : "starter");
   }
-  const authLabel = $("authStatus");
-  if (authLabel) {
-    if (!authSession) authLabel.textContent = "Not signed in";
-    else if (authSession.plan === "owner") authLabel.textContent = "Owner · any team";
-    else authLabel.textContent = `${authSession.plan.toUpperCase()} · team ${authSession.teamId}`;
+  const authBtn = $("authBtn");
+  if (authBtn) {
+    const signed = authSession && (authSession.plan === "owner" || authSession.plan === "pro" || authSession.plan === "ultra" || ((authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") && trialStillValid(authSession)));
+    authBtn.textContent = signed ? "Sign out" : "Sign in";
   }
   document.querySelectorAll(".pro-only").forEach(el => {
     el.classList.toggle("locked", !isPro());
@@ -342,6 +371,8 @@ function buildPlayers() {
       selected_by_percent: parseFloat(p.selected_by_percent) || 0,
       ep_next: parseFloat(p.ep_next) || 0, status, news: p.news || "",
       availability,
+      expected_goals: parseFloat(p.expected_goals) || 0,
+      expected_assists: parseFloat(p.expected_assists) || 0,
       xg90: parseFloat(p.expected_goals_per_90) || 0,
       xa90: parseFloat(p.expected_assists_per_90) || 0,
       xgi90: parseFloat(p.expected_goal_involvements_per_90) || 0,
@@ -364,6 +395,7 @@ function buildPlayers() {
   const ev = bootstrap.events.find(e => e.is_next || e.is_current);
   currentGw = ev ? ev.id : 1;
   recomputeAllXP();
+  updateGwBanner();
 }
 
 /**
@@ -373,85 +405,110 @@ function buildPlayers() {
  * We scale toward realistic GW totals using the components below.
  */
 function expectedPoints(p, hz = 1) {
+  /**
+   * Hybrid model aligned with public FPL research / Hub-style components:
+   * - Official ep_next as Bayesian prior (FPL's own projection)
+   * - xG/xA per 90 → goal/assist points by position
+   * - CS from xGC + fixture difficulty
+   * - Start probability from availability, minutes, ownership
+   * - Captain total on pitch = XI XP + captain XP (double count of captain)
+   */
   const avail = p.availability ?? 1;
-  const minsShare = Math.min(1, (p.minutes || 0) / (38 * 70)); // ~full season starter ~1
-  const startProb = Math.max(0.25, Math.min(0.98, 0.35 * avail + 0.45 * Math.max(minsShare, 0.2) + 0.2 * Math.min((p.selected_by_percent || 0) / 40, 1)));
+  const mins = p.minutes || 0;
+  const minsShare = Math.min(1, mins / (Math.max(currentGw, 1) * 70));
+  const own = p.selected_by_percent || 0;
+  const startProb = Math.max(
+    0.2,
+    Math.min(
+      0.97,
+      0.40 * avail +
+        0.35 * Math.max(minsShare, mins > 0 ? 0.35 : 0.15) +
+        0.15 * Math.min(own / 35, 1) +
+        0.10 * Math.min((p.price || 4) / 12, 1)
+    )
+  );
 
-  // Appearance points (2 if 60+ mins) weighted by start prob
   const appearance = 2 * startProb;
-
-  // Attacking: convert xG/xA rates to FPL points by position
   const goalPts = { GKP: 10, DEF: 6, MID: 5, FWD: 4 }[p.position] || 4;
   const assistPts = 3;
-  // Prefer per-90 rates; if missing, back out from season totals
+
   let xg90 = p.xg90 || 0;
   let xa90 = p.xa90 || 0;
-  if (xg90 < 0.01 && (p.goals_scored || 0) > 0 && (p.minutes || 0) > 200) {
-    xg90 = (p.goals_scored * 90) / p.minutes;
+  // Season totals → per-90 when rates thin
+  if (xg90 < 0.02 && (p.expected_goals || 0) > 0 && mins > 90) {
+    xg90 = (Number(p.expected_goals) * 90) / mins;
   }
-  if (xa90 < 0.01 && (p.assists || 0) > 0 && (p.minutes || 0) > 200) {
-    xa90 = (p.assists * 90) / p.minutes;
+  if (xa90 < 0.02 && (p.expected_assists || 0) > 0 && mins > 90) {
+    xa90 = (Number(p.expected_assists) * 90) / mins;
   }
-  // Soft floor for premiums who will start
-  if (p.price >= 10 && xg90 + xa90 < 0.15) {
-    xg90 = Math.max(xg90, 0.25);
-    xa90 = Math.max(xa90, 0.12);
-  } else if (p.price >= 7.5 && xg90 + xa90 < 0.08) {
-    xg90 = Math.max(xg90, 0.12);
-    xa90 = Math.max(xa90, 0.08);
+  if (xg90 < 0.01 && (p.goals_scored || 0) > 0 && mins > 200) {
+    xg90 = (p.goals_scored * 90) / mins;
+  }
+  if (xa90 < 0.01 && (p.assists || 0) > 0 && mins > 200) {
+    xa90 = (p.assists * 90) / mins;
+  }
+  // Pre-season / low-sample floors for nailed premiums
+  if (mins < 200) {
+    if (p.price >= 12) { xg90 = Math.max(xg90, 0.45); xa90 = Math.max(xa90, 0.15); }
+    else if (p.price >= 10) { xg90 = Math.max(xg90, 0.28); xa90 = Math.max(xa90, 0.12); }
+    else if (p.price >= 8 && (p.position === "MID" || p.position === "FWD")) {
+      xg90 = Math.max(xg90, 0.18); xa90 = Math.max(xa90, 0.10);
+    } else if (p.price >= 7 && p.position === "MID") {
+      xg90 = Math.max(xg90, 0.12); xa90 = Math.max(xa90, 0.10);
+    }
   }
 
-  const goalsXP = xg90 * goalPts * startProb;
-  const assistsXP = xa90 * assistPts * startProb;
+  // ~70–80 mins when starting
+  const goalsXP = xg90 * (75 / 90) * goalPts * startProb;
+  const assistsXP = xa90 * (75 / 90) * assistPts * startProb;
 
-  // Clean sheets (DEF/GK heavy). Proxy from team strength via ownership+price and inverse xGC
   let csXP = 0;
+  const fixMulNext = fixtureFactor(p.team_id, currentGw);
   if (p.position === "GKP" || p.position === "DEF") {
-    const xgc = p.xgc90 || 1.3;
-    const csProb = Math.max(0.05, Math.min(0.55, 0.42 - 0.12 * xgc + (p.price >= 5 ? 0.05 : 0)));
+    const xgc = p.xgc90 || 1.25;
+    // Base CS prob from xGC, then scale with fixture ease
+    let csProb = Math.max(0.04, Math.min(0.58, 0.48 - 0.14 * xgc));
+    csProb *= 0.85 + 0.3 * (fixMulNext - 0.9); // easier FDR → more CS
+    if (p.price >= 5.5) csProb += 0.03;
     csXP = csProb * 4 * startProb;
   } else if (p.position === "MID") {
-    csXP = 0.08 * startProb; // rare 1pt CS
+    csXP = 0.06 * startProb;
   }
 
-  // Bonus proxy from BPS-related ICT
   const ict = (p.influence || 0) + (p.creativity || 0) + (p.threat || 0);
-  const bonusXP = Math.min(1.2, ict / 800) * startProb;
+  const bonusXP = Math.min(1.4, ict / 700 + (p.price >= 9 ? 0.25 : 0)) * startProb;
 
-  // Saves for GK
   let savesXP = 0;
-  if (p.position === "GKP") {
-    savesXP = 0.6 * startProb; // ~2 save points typical
-  }
+  if (p.position === "GKP") savesXP = 0.55 * startProb;
 
-  // Blend with official ep_next (FPL's own model) — important anchor
-  const ep = p.ep_next || 0;
-  const component = appearance + goalsXP + assistsXP + csXP + bonusXP + savesXP;
-  // Pre-season ep_next is flat (~2–4). Weight components more early; ep more once form exists.
-  const form = p.form || 0;
+  const form = parseFloat(p.form) || 0;
+  const formXP = Math.min(1.5, form * 0.15);
+
+  const component = appearance + goalsXP + assistsXP + csXP + bonusXP + savesXP + formXP;
+  const ep = parseFloat(p.ep_next) || 0;
+
+  // Blend: trust FPL ep more once form exists; components more pre-season
   let base;
-  if (form > 0.5) {
-    base = 0.5 * ep + 0.5 * component;
+  if (form >= 1 || mins > 300) {
+    base = 0.55 * ep + 0.45 * component;
+  } else if (ep >= 3) {
+    base = 0.40 * ep + 0.60 * component;
   } else {
-    // Pre-season: lift toward Hub-like magnitudes with components + ownership prior
-    const ownPrior = Math.min(2.0, (p.selected_by_percent || 0) / 35);
-    base = 0.25 * ep + 0.60 * component + 0.15 * (ep + ownPrior);
+    const ownPrior = Math.min(1.8, own / 40);
+    base = 0.20 * Math.max(ep, 2) + 0.65 * component + 0.15 * (2 + ownPrior);
   }
 
-  base = Math.max(base, 1.0);
+  base = Math.max(0.8, base);
+  base *= fixMulNext;
 
-  // Fixture difficulty / home advantage adjustment for the next GW(s)
-  const fixMul = fixtureFactor(p.team_id, currentGw);
-  base *= fixMul;
+  if (hz <= 1) return +(base * avail).toFixed(3);
 
-  // Multi-GW: slight decay + per-GW fixture factor
-  if (hz <= 1) return base * avail;
-  const weights = [1, 0.92, 0.85, 0.8, 0.75];
-  let total = base * (weights[0] || 1);
+  const weights = [1, 0.93, 0.86, 0.8, 0.75];
+  let total = base * weights[0];
   for (let i = 1; i < hz; i++) {
     total += base * (weights[i] || 0.7) * fixtureFactor(p.team_id, currentGw + i);
   }
-  return total * avail;
+  return +(total * avail).toFixed(3);
 }
 
 function fixtureFactor(teamId, gw) {
@@ -464,6 +521,33 @@ function fixtureFactor(teamId, gw) {
   const diffMul = 1.22 - 0.07 * diff;
   const homeMul = isHome ? 1.07 : 0.96;
   return Math.max(0.55, Math.min(1.28, diffMul * homeMul));
+}
+
+function formatDeadline(iso) {
+  if (!iso) return "–";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      weekday: "short", day: "numeric", month: "short",
+      hour: "2-digit", minute: "2-digit",
+    });
+  } catch (_) { return iso; }
+}
+
+function updateGwBanner() {
+  if (!bootstrap) return;
+  const ev =
+    bootstrap.events.find(e => e.is_next) ||
+    bootstrap.events.find(e => e.is_current) ||
+    bootstrap.events.find(e => e.id === currentGw);
+  const name = ev ? (ev.name || ("Gameweek " + ev.id)) : ("Gameweek " + currentGw);
+  const dl = ev ? formatDeadline(ev.deadline_time) : "–";
+  const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+  set("mGw", ev ? String(ev.id) : String(currentGw));
+  set("gwLabel", "Gameweek");
+  set("mDeadline", dl);
+  set("gwBannerTitle", name);
+  set("gwBannerDeadline", "Deadline: " + dl);
 }
 
 function recomputeAllXP() {
@@ -888,10 +972,13 @@ function renderPitch() {
     bank = entryBank;
   }
   const rating = Math.min(100, Math.round((pred / (horizon === 3 ? 90 : 55)) * 100));
-  $("mRating").textContent = rating + "/100";
+  $("mRating").textContent = rating + "%";
   $("mPred").textContent = pred.toFixed(1);
   $("mBank").textContent = money(bank);
-  $("mCost").textContent = money(cost); // Team value — may exceed £100.0m after price rises
+  $("mCost").textContent = money(cost);
+  const r2 = $("mRating2"); if (r2) r2.textContent = rating + "%";
+  const p2 = $("mPred2"); if (p2) p2.textContent = pred.toFixed(1);
+  const b2 = $("mBank2"); if (b2) b2.textContent = money(bank);
   if (editMode) {
     document.querySelectorAll(".pcard").forEach(el => {
       el.classList.add("removable");
@@ -1669,6 +1756,55 @@ async function renderRivalRadar() {
   }
 }
 
+function renderTerms() {
+  const box = $("termsContent");
+  if (!box) return;
+  box.innerHTML = `
+    <h1>Terms of Use</h1>
+    <p><em>Last updated: 11 August 2026</em></p>
+    <p>Welcome to <strong>FPL Assistant</strong> (“the App”), operated from Malawi. By accessing or using the App you agree to these Terms of Use.</p>
+
+    <h2>1. Nature of the service</h2>
+    <p>The App is an independent Fantasy Premier League decision-support tool. It is <strong>not affiliated with, endorsed by, or connected to</strong> the Premier League, the FA, or Fantasy Premier League. Official FPL remains the only place to enter teams, make transfers, and play chips.</p>
+
+    <h2>2. Data sources</h2>
+    <p>Player data, fixtures, prices, and live scores are derived from publicly available Fantasy Premier League API responses and related public information. We do not guarantee accuracy, completeness, or uninterrupted availability of any data or prediction.</p>
+
+    <h2>3. Predictions and advice</h2>
+    <p>Expected points, captain polls, transfer suggestions, AI teams, and chip guidance are <strong>estimates only</strong>. They are not financial advice and do not guarantee FPL points or ranking outcomes. You remain solely responsible for decisions on the official FPL site.</p>
+
+    <h2>4. Accounts, trials, and paid plans</h2>
+    <ul>
+      <li><strong>Starter</strong> features are free.</li>
+      <li><strong>Pro</strong> and <strong>Ultra</strong> may be started with a <strong>14-day free trial</strong>. During the trial, paid features are unlocked on this device/browser.</li>
+      <li>After the trial, continued access to Pro/Ultra requires payment (PayPal or approved local methods) and activation of your email + Team ID.</li>
+      <li>Paid Pro/Ultra access is bound to the Team ID registered at activation.</li>
+      <li>Owner access is reserved for the operator of the App.</li>
+    </ul>
+
+    <h2>5. Payments</h2>
+    <p>Card and PayPal payments are processed by third parties (e.g. PayPal). Mobile-money payments use merchant till instructions you provide. We do not store full card numbers. Refunds are handled case-by-case for failed activation after confirmed payment.</p>
+
+    <h2>6. Acceptable use</h2>
+    <p>You must not misuse the App, attempt to break security, scrape aggressively, resell access without permission, or use the App for unlawful purposes. Votes and community features must not be manipulated with automated bots.</p>
+
+    <h2>7. Intellectual property</h2>
+    <p>App design, copy, and original code are owned by the operator. Club kits and marks belong to their respective owners and are shown for identification only.</p>
+
+    <h2>8. Limitation of liability</h2>
+    <p>To the fullest extent permitted by law, the operator is not liable for lost FPL points, ranking changes, payment provider outages, or damages arising from reliance on App content. The App is provided “as is”.</p>
+
+    <h2>9. Privacy</h2>
+    <p>We may store email, Team ID, plan, and trial status locally in your browser and, where configured, on hosting infrastructure for activation and Matchday emails. Do not submit passwords for your official FPL account.</p>
+
+    <h2>10. Changes</h2>
+    <p>We may update these Terms and the App features at any time. Continued use after changes constitutes acceptance.</p>
+
+    <h2>11. Contact</h2>
+    <p>Questions about these Terms or paid access: contact the operator via the channels published on the App (e.g. X/WhatsApp associated with the project).</p>
+  `;
+}
+
 async function renderMatchday() {
   if (!players.length) {
     try {
@@ -1797,18 +1933,32 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     if (btn.dataset.view === "transfers") renderTransfersUI();
     if (btn.dataset.view === "teams") { /* wait for button */ }
     if (btn.dataset.view === "matchday") renderMatchday();
+    if (btn.dataset.view === "terms") renderTerms();
     if (btn.dataset.view === "rank") renderLiveRank();
     if (btn.dataset.view === "chips") renderChips();
   });
 });
 
 on("refreshBtn", "click", () => init(true));
-on("loginBtn", "click", () => {
+on("footerTermsLink", "click", (e) => {
+  e.preventDefault();
+  document.querySelector('[data-view="terms"]')?.click();
+});
+on("authBtn", "click", () => {
+  if (authSession && (authSession.plan === "owner" || authSession.plan === "pro" || authSession.plan === "ultra" || authSession.plan === "trial_pro" || authSession.plan === "trial_ultra")) {
+    logout();
+    const btn = $("authBtn");
+    if (btn) btn.textContent = "Sign in";
+    updatePlanUI();
+    return;
+  }
   const modal = $("loginModal");
   if (modal) modal.classList.remove("hidden");
-  if ($("loginTeamId")) $("loginTeamId").value = currentTeamId();
+  if ($("loginTeamId")) $("loginTeamId").value = currentTeamId() || "";
 });
-on("logoutBtn", "click", () => { logout(); updatePlanUI(); });
+on("startTrialPro", "click", () => startTrial("pro"));
+on("startTrialUltra", "click", () => startTrial("ultra"));
+
 on("loginSubmitBtn", "click", async () => {
   const tid = $("loginTeamId") && $("loginTeamId").value;
   const email = $("loginEmail") && $("loginEmail").value;

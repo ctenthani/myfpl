@@ -18,21 +18,34 @@
       <span class="season">2026/27</span>
     </div>
     <div class="topbar-metrics" id="topMetrics">
-      <div class="tm"><span class="tm-label">Team Rating</span><span class="tm-val" id="mRating">–</span></div>
+      <div class="tm tm-gw"><span class="tm-label" id="gwLabel">Gameweek</span><span class="tm-val" id="mGw">–</span></div>
+      <div class="tm tm-deadline"><span class="tm-label">Deadline</span><span class="tm-val" id="mDeadline">–</span></div>
+      <div class="tm"><span class="tm-label">Team rating</span><span class="tm-val" id="mRating">–</span></div>
       <div class="tm"><span class="tm-label">Predicted</span><span class="tm-val" id="mPred">–</span></div>
       <div class="tm"><span class="tm-label">In the bank</span><span class="tm-val" id="mBank">£0.0m</span></div>
       <div class="tm"><span class="tm-label">Team value</span><span class="tm-val" id="mCost">£0.0m</span></div>
     </div>
     <div class="topbar-right">
       <span id="planBadge" class="plan-badge starter" title="Current plan">Starter</span>
-      <span id="authStatus" class="auth-status">Not signed in</span>
-      <label class="tid">Team ID <input type="number" id="teamIdInput" value="" placeholder="Enter Team ID" title="Enter Team ID then Refresh" /></label>
+      <label class="tid">Team ID <input type="number" id="teamIdInput" value="" placeholder="Team ID" title="Enter Team ID then Refresh" /></label>
       <button id="refreshBtn" class="btn btn-pink">Refresh</button>
-      <button id="loginBtn" class="btn btn-cyan">Sign in</button>
-      <button id="logoutBtn" class="btn btn-ghost">Sign out</button>
+      <button id="authBtn" class="btn btn-cyan">Sign in</button>
       <button id="installBtn" class="btn btn-outline" hidden>Install App</button>
     </div>
   </header>
+
+  <div class="gw-banner" id="gwBanner">
+    <div class="gw-banner-inner">
+      <div class="gw-title" id="gwBannerTitle">Gameweek 1</div>
+      <div class="gw-deadline" id="gwBannerDeadline">Deadline: –</div>
+      <div class="gw-stats">
+        <div><strong id="mRating2">–</strong><span>Team rating</span></div>
+        <div><strong id="mPred2">–</strong><span>Predicted</span></div>
+        <div><strong id="mBank2">£0.0m</strong><span>In the bank</span></div>
+        <div><strong id="mTransfers">∞</strong><span>Transfers</span></div>
+      </div>
+    </div>
+  </div>
 
   <nav class="main-nav">
     <button class="nav-btn active" data-view="pick">Pick</button>
@@ -41,6 +54,7 @@
     <button class="nav-btn" data-view="matchday">Matchday</button>
     <button class="nav-btn" data-view="rank">Live Rank</button>
     <button class="nav-btn" data-view="chips">Chips</button>
+    <button class="nav-btn" data-view="terms">Terms</button>
   </nav>
 
   <div class="status-line" id="statusBar">Loading FPL data…</div>
@@ -243,6 +257,9 @@
       </div>
       <div class="card" style="margin-top:16px">
         <h2>Plans & pricing</h2>
+        <p class="trial-note" style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px 12px;font-size:0.9rem">
+          <strong>14-day free trial:</strong> Start Pro or Ultra free for 14 days — all features unlocked. Cancel anytime before the trial ends; no charge if you don’t continue.
+        </p>
         <p class="muted">Prices in USD. Yearly = 20% off. Local Malawi payments use merchant Till codes only (no personal numbers on this site).</p>
         <div class="price-grid">
           <div class="price-card">
@@ -269,6 +286,7 @@
               <li>Mini-league rival diffs</li>
             </ul>
             <a id="upgradeProBtn" class="btn btn-blue" href="https://www.paypal.com/ncp/payment/J6DP32LZ7ZMZA" target="_blank" rel="noopener">PayPal · Pro monthly</a>
+            <button type="button" id="startTrialPro" class="btn btn-outline" style="margin-top:6px">Start 14-day Pro trial</button>
             <a id="upgradeProYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/6BS7Z7XPV4FFL" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Pro yearly $23.90</a>
           </div>
           <div class="price-card">
@@ -283,6 +301,7 @@
               <li>Early access to new tools</li>
             </ul>
             <a id="upgradeUltraBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ZXB3XQA3BJG9A" target="_blank" rel="noopener">PayPal · Ultra monthly</a>
+            <button type="button" id="startTrialUltra" class="btn btn-outline" style="margin-top:6px">Start 14-day Ultra trial</button>
             <a id="upgradeUltraYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ELGD2S687MS7Q" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Ultra yearly $47.90</a>
           </div>
         </div>
@@ -329,8 +348,12 @@
     </div>
   </div>
 
-<footer class="footer">
-    Data from the official Fantasy Premier League API · Not affiliated with the Premier League ·
+  <div id="view-terms" class="view">
+    <div class="terms-doc" id="termsContent"></div>
+  </div>
+
+  <footer class="footer">
+    Data from the official Fantasy Premier League API · <a href="#" id="footerTermsLink">Terms of Use</a> · Not affiliated with the Premier League ·
     <span id="lastUpdated"></span>
   </footer>
   <script src="js/app.js"></script>
