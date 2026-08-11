@@ -924,72 +924,111 @@ function passOutFilters(p, f) {
   return true;
 }
 
-function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
-  if (!squad.length) return { error: "No squad loaded. Enter your Team ID on Pick and press Refresh (or Edit a squad)." };
-  const squadIds = new Set(squad.map(p => p.id));
-  const currentXp = squad.reduce((s, p) => s + xpOf(p), 0);
-  const availableBudget = bank;
-  const candidates = [];
-  const wantN = filters ? (filters.numTransfers || 1) : 1;
+function isUnlimitedTransferMode() {
+  const modeEl = $("trMode");
+  if (modeEl && modeEl.value === "unlimited") return true;
+  // Auto: GW1 before first deadline behaves like unlimited squad building
+  if (currentGw <= 1) return true;
+  return false;
+}
 
-  // Single transfers
-  let outs = [...squad].sort((a, b) => xpOf(a) - xpOf(b));
+function transferXp(p) {
+  const hz = parseInt(($("trHorizon") && $("trHorizon").value) || "3", 10) || 3;
+  if (hz <= 1) return expectedPoints(p, 1);
+  if (hz >= 6) return expectedPoints(p, 3) * 2; // rough 6-GW scale from 3-GW model
+  return expectedPoints(p, 3);
+}
+
+function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
+  if (!squad.length) {
+    return { error: "No squad loaded. Enter Team ID and Refresh, or Edit a full 15." };
+  }
+  const unlimited = isUnlimitedTransferMode();
+  if (unlimited) {
+    freeTransfers = 15;
+    maxHits = 0;
+  }
+  const squadIds = new Set(squad.map(p => p.id));
+  const currentXp = squad.reduce((s, p) => s + transferXp(p), 0);
+  const availableBudget = bank;
+  const wantN = filters ? (filters.numTransfers || 1) : null;
+  const candidates = [];
+
+  let outs = [...squad].sort((a, b) => transferXp(a) - transferXp(b));
   if (filters) outs = outs.filter(p => passOutFilters(p, filters));
-  outs = outs.slice(0, 10);
-  if (wantN <= 1) {
-  for (const out of outs) {
-    const maxPrice = availableBudget + out.price;
-    const ins = players
-      .filter(p => p.position === out.position && !squadIds.has(p.id) && p.price <= maxPrice + 0.05
-        && p.availability > 0.35 && xpOf(p) > xpOf(out) + 0.1
-        && passInFilters(p, filters))
-      .sort((a, b) => xpOf(b) - xpOf(a))
-      .slice(0, filters && filters.playerIn ? 12 : 6);
-    for (const inn of ins) {
-      const clubCount = squad.filter(x => x.team_id === inn.team_id && x.id !== out.id).length;
-      if (clubCount >= 3) continue;
-      const gain = xpOf(inn) - xpOf(out);
-      const costDiff = inn.price - out.price;
-      candidates.push({
-        type: "1 FT",
-        moves: [{ out, inn }],
-        gain,
-        costDiff,
-        hits: 0,
-        netGain: gain,
-      });
+  outs = outs.slice(0, 12);
+
+  function bestInsFor(out, usedInIds, budgetLeft) {
+    return players
+      .filter(p =>
+        p.position === out.position &&
+        !squadIds.has(p.id) &&
+        !usedInIds.has(p.id) &&
+        p.price <= budgetLeft + 0.05 &&
+        p.availability > 0.3 &&
+        transferXp(p) > transferXp(out) + 0.05 &&
+        passInFilters(p, filters)
+      )
+      .sort((a, b) => transferXp(b) - transferXp(a))
+      .slice(0, 8);
+  }
+
+  // --- 1-transfer ideas ---
+  if (!wantN || wantN === 1) {
+    for (const out of outs) {
+      const ins = bestInsFor(out, new Set(), availableBudget + out.price);
+      for (const inn of ins.slice(0, 4)) {
+        const clubCount = squad.filter(x => x.team_id === inn.team_id && x.id !== out.id).length;
+        if (clubCount >= 3) continue;
+        const gain = transferXp(inn) - transferXp(out);
+        const costDiff = inn.price - out.price;
+        candidates.push({
+          moves: [{ out, inn, gain }],
+          gain,
+          costDiff,
+          hits: 0,
+          netGain: gain,
+          size: 1,
+        });
+      }
     }
   }
-  } // end wantN <= 1
 
-  // Two transfers if FT+hits allow
-  if (wantN >= 2 && freeTransfers + maxHits >= 2) {
-    let weak2 = outs.slice(0, 6);
-    if (filters) weak2 = weak2.filter(p => passOutFilters(p, filters));
-    for (let i = 0; i < weak2.length; i++) {
-      for (let j = i + 1; j < weak2.length; j++) {
-        const o1 = weak2[i], o2 = weak2[j];
+  // --- 2-transfer bundles ---
+  if ((!wantN || wantN === 2) && freeTransfers + maxHits >= 2) {
+    const weak = outs.slice(0, 8);
+    for (let i = 0; i < weak.length; i++) {
+      for (let j = i + 1; j < weak.length; j++) {
+        const o1 = weak[i], o2 = weak[j];
         if (filters && filters.position && o1.position !== filters.position && o2.position !== filters.position) continue;
         const budget2 = availableBudget + o1.price + o2.price;
-        const ins1 = players.filter(p => p.position === o1.position && !squadIds.has(p.id) && xpOf(p) > xpOf(o1) + 0.1 && p.availability > 0.35 && passInFilters(p, filters))
-          .sort((a, b) => xpOf(b) - xpOf(a)).slice(0, 4);
-        const ins2 = players.filter(p => p.position === o2.position && !squadIds.has(p.id) && xpOf(p) > xpOf(o2) + 0.1 && p.availability > 0.35 && passInFilters(p, filters))
-          .sort((a, b) => xpOf(b) - xpOf(a)).slice(0, 4);
-        for (const a of ins1) {
-          for (const b of ins2) {
+        const ins1 = bestInsFor(o1, new Set(), budget2);
+        for (const a of ins1.slice(0, 4)) {
+          const ins2 = bestInsFor(o2, new Set([a.id]), budget2 - a.price);
+          for (const b of ins2.slice(0, 4)) {
             if (a.id === b.id) continue;
             if (a.price + b.price > budget2 + 0.05) continue;
-            const hits = Math.max(0, 2 - freeTransfers);
+            // club limit after both
+            const temp = squad.filter(x => x.id !== o1.id && x.id !== o2.id);
+            const cA = temp.filter(x => x.team_id === a.team_id).length + 1;
+            const cB = temp.filter(x => x.team_id === b.team_id).length + (a.team_id === b.team_id ? 1 : 0) + 1;
+            if (cA > 3 || cB > 3) continue;
+            const hits = unlimited ? 0 : Math.max(0, 2 - freeTransfers);
             if (hits > maxHits) continue;
-            const gain = (xpOf(a) - xpOf(o1)) + (xpOf(b) - xpOf(o2));
-            const hitPenalty = hits * 4; // FPL -4 per hit; we subtract from "value" loosely
+            const g1 = transferXp(a) - transferXp(o1);
+            const g2 = transferXp(b) - transferXp(o2);
+            const gain = g1 + g2;
+            const hitPenalty = hits * 4;
             candidates.push({
-              type: hits ? `2 transfers (−${hitPenalty} hit)` : "2 FT",
-              moves: [{ out: o1, inn: a }, { out: o2, inn: b }],
+              moves: [
+                { out: o1, inn: a, gain: g1 },
+                { out: o2, inn: b, gain: g2 },
+              ],
               gain,
               costDiff: a.price + b.price - o1.price - o2.price,
               hits,
-              netGain: gain - hitPenalty * 0.15, // soft penalty in ranking
+              netGain: gain - hitPenalty * 0.25,
+              size: 2,
             });
           }
         }
@@ -997,18 +1036,66 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
     }
   }
 
+  // --- 3-transfer bundles (unlimited / high FT only) ---
+  if ((!wantN || wantN === 3) && freeTransfers + maxHits >= 3) {
+    const weak3 = outs.slice(0, 6);
+    for (let i = 0; i < weak3.length; i++) {
+      for (let j = i + 1; j < Math.min(i + 4, weak3.length); j++) {
+        for (let k = j + 1; k < Math.min(j + 3, weak3.length); k++) {
+          const trio = [weak3[i], weak3[j], weak3[k]];
+          const budget3 = availableBudget + trio.reduce((s, p) => s + p.price, 0);
+          const picks = [];
+          let left = budget3;
+          const used = new Set();
+          let ok = true;
+          for (const out of trio) {
+            const ins = bestInsFor(out, used, left).filter(p => {
+              const tempIds = new Set([...squad.map(x => x.id)].filter(id => !trio.some(o => o.id === id)).concat([...used]));
+              // rough club check later
+              return true;
+            });
+            if (!ins.length) { ok = false; break; }
+            const inn = ins[0];
+            picks.push({ out, inn, gain: transferXp(inn) - transferXp(out) });
+            used.add(inn.id);
+            left -= inn.price;
+          }
+          if (!ok || picks.length !== 3) continue;
+          if (picks.reduce((s, m) => s + m.inn.price, 0) > budget3 + 0.05) continue;
+          const hits = unlimited ? 0 : Math.max(0, 3 - freeTransfers);
+          if (hits > maxHits) continue;
+          const gain = picks.reduce((s, m) => s + m.gain, 0);
+          candidates.push({
+            moves: picks,
+            gain,
+            costDiff: picks.reduce((s, m) => s + m.inn.price - m.out.price, 0),
+            hits,
+            netGain: gain - hits * 4 * 0.25,
+            size: 3,
+          });
+        }
+      }
+    }
+  }
+
   candidates.sort((a, b) => b.netGain - a.netGain);
-  // Deduplicate similar
   const seen = new Set();
   const unique = [];
   for (const c of candidates) {
-    const key = c.moves.map(m => m.out.id + "-" + m.inn.id).sort().join("|");
+    const key = c.moves.map(m => m.out.id + ">" + m.inn.id).sort().join("|");
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(c);
-    if (unique.length >= 12) break;
+    if (unique.length >= 10) break;
   }
-  return { currentXp, suggestions: unique, bank: availableBudget };
+
+  return {
+    currentXp,
+    suggestions: unique,
+    bank: availableBudget,
+    unlimited,
+    freeTransfers,
+  };
 }
 
 function applyTransferSuggestion(sug) {
@@ -1494,23 +1581,63 @@ function showTransferResults(res) {
     box.innerHTML = `<p class="muted">No upgrades matched — loosen filters or check your squad is loaded (bank ${money(res.bank)}).</p>`;
     return;
   }
-  box.innerHTML = `<p class="muted">Squad XP ≈ <strong>${res.currentXp.toFixed(1)}</strong> · Bank ${money(res.bank)} · ${res.suggestions.length} ideas</p>` +
-    res.suggestions.map((s, i) => `
-      <div class="transfer-card">
-        <h4>#${i + 1} · ${s.type} · <span class="gain">+${s.gain.toFixed(2)} XP</span>
-          ${s.hits ? `<span class="hit-cost"> · ${s.hits} hit(s)</span>` : ""}
-          · cost ${s.costDiff >= 0 ? "+" : ""}${money(s.costDiff)}</h4>
-        ${s.moves.map(m => `
-          <div class="transfer-row">
-            <span>OUT <strong>${m.out.web_name}</strong> (${m.out.team} ${money(m.out.price)} · ${xpOf(m.out).toFixed(1)} · ${m.out.selected_by_percent}%)</span>
-            <span>→</span>
-            <span>IN <strong>${m.inn.web_name}</strong> (${m.inn.team} ${money(m.inn.price)} · ${xpOf(m.inn).toFixed(1)} · ${m.inn.selected_by_percent}%)</span>
-          </div>`).join("")}
-        <button class="btn btn-cyan apply-tr" data-idx="${i}" style="margin-top:8px">Apply locally</button>
-      </div>`).join("");
+  const ftLabel = res.unlimited
+    ? "Free transfers: <strong>Unlimited this gameweek</strong> (GW1 / WC / FH — no hits)"
+    : `Free transfers available: <strong>${res.freeTransfers}</strong>`;
+  box.innerHTML = `
+    <div class="tr-ft-banner">${ftLabel} · Squad XP ≈ <strong>${res.currentXp.toFixed(1)}</strong> · Bank ${money(res.bank)}</div>
+    <p class="muted" style="font-size:0.85rem;margin-bottom:8px">AI recommendations · multi-moves shown as one bundle</p>
+    ` + res.suggestions.map((s, i) => {
+      const n = s.moves.length;
+      const title = n === 1 ? "1 transfer" : n + " transfer bundle";
+      const rows = s.moves.map(m => {
+        const g = (m.gain != null ? m.gain : (transferXp(m.inn) - transferXp(m.out)));
+        return `<tr>
+          <td class="tr-sell"><strong>${m.out.web_name}</strong><div class="muted" style="font-size:0.75rem">${m.out.position} · ${m.out.team} · ${money(m.out.price)}</div></td>
+          <td class="tr-gain">${g >= 0 ? "+" : ""}${g.toFixed(1)} pts</td>
+          <td class="tr-buy"><strong>${m.inn.web_name}</strong><div class="muted" style="font-size:0.75rem">${m.inn.position} · ${m.inn.team} · ${money(m.inn.price)}</div></td>
+        </tr>`;
+      }).join("");
+      return `<div class="tr-bundle ${i === 0 ? "top" : ""}">
+        <div class="tr-bundle-head">
+          <h4>#${i + 1} · ${title}</h4>
+          <div>
+            <span class="tr-gain">+${s.gain.toFixed(1)} pts</span>
+            ${s.hits ? `<span class="tr-hit"> · −${s.hits * 4} hit</span>` : ""}
+          </div>
+        </div>
+        <table class="tr-move-table">
+          <thead><tr><th>Sell</th><th>Gain</th><th>Buy</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="tr-footer">
+          <span class="muted">Total gain <strong class="tr-gain">+${s.gain.toFixed(1)} pts</strong> · bank ${s.costDiff >= 0 ? "−" : "+"}${money(Math.abs(s.costDiff))}</span>
+          <button class="btn btn-blue apply-tr" data-idx="${i}">Make ${n} transfer${n > 1 ? "s" : ""}</button>
+        </div>
+      </div>`;
+    }).join("");
+
   box.querySelectorAll(".apply-tr").forEach(btn => {
-    btn.addEventListener("click", () => applyTransferSuggestion(res.suggestions[+btn.dataset.idx]));
+    btn.addEventListener("click", () => {
+      applyTransferSuggestion(res.suggestions[+btn.dataset.idx]);
+      saveSquadLocal();
+      setStatus("Applied transfer bundle locally — mirror on official FPL");
+    });
   });
+}
+
+function syncTransferModeUI() {
+  const unlimited = isUnlimitedTransferMode();
+  const hint = $("trModeHint");
+  if (hint) {
+    hint.textContent = unlimited
+      ? "Unlimited mode: plan as many transfers as you like with no hit penalty (typical for GW1, Wildcard, or Free Hit)."
+      : "Normal mode: free transfers use your FT count; extra moves cost −4 hits.";
+  }
+  if (unlimited) {
+    if ($("ftInput")) $("ftInput").value = 15;
+    if ($("hitsInput")) $("hitsInput").value = 0;
+  }
 }
 
 function renderTransfersUI() {
@@ -1519,8 +1646,10 @@ function renderTransfersUI() {
     return;
   }
   populateClubFilter();
-  const ft = parseInt($("ftInput").value, 10) || 1;
-  const hits = parseInt($("hitsInput").value, 10) || 0;
+  syncTransferModeUI();
+  const unlimited = isUnlimitedTransferMode();
+  const ft = unlimited ? 15 : (parseInt($("ftInput").value, 10) || 1);
+  const hits = unlimited ? 0 : (parseInt($("hitsInput").value, 10) || 0);
   showTransferResults(findTransfers(ft, hits, null));
 }
 
@@ -2674,6 +2803,8 @@ on("editBtn", "click", () => setEditMode(true));
 const doneBtn = $("doneEditBtn");
 if (doneBtn) doneBtn.addEventListener("click", () => setEditMode(false));
 on("runTransfersBtn", "click", renderTransfersUI);
+on("trMode", "change", () => { syncTransferModeUI(); renderTransfersUI(); });
+on("trHorizon", "change", () => renderTransfersUI());
 on("runCustomTransfersBtn", "click", renderCustomTransfersUI);
 document.querySelectorAll(".tr-tab").forEach(tab => {
   tab.addEventListener("click", () => {

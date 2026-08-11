@@ -130,12 +130,26 @@
         </div>
 
         <div id="trPaneRecommended" class="tr-pane">
-          <p class="muted">Upgrades that raise predicted points while respecting budget and free transfers.</p>
+          <p class="muted">Hub-style recommendations: single moves and multi-transfer <strong>bundles</strong>. GW1 / Wildcard / Free Hit = unlimited free transfers (no hits).</p>
           <div class="controls-row">
-            <label>Free transfers <input type="number" id="ftInput" value="1" min="0" max="5" /></label>
-            <label>Max hits <input type="number" id="hitsInput" value="1" min="0" max="3" /></label>
+            <label>Mode
+              <select id="trMode">
+                <option value="unlimited">Unlimited (GW1 / WC / FH — no hits)</option>
+                <option value="normal">Normal gameweek</option>
+              </select>
+            </label>
+            <label>Free transfers <input type="number" id="ftInput" value="1" min="0" max="15" /></label>
+            <label>Max hits <input type="number" id="hitsInput" value="0" min="0" max="3" /></label>
+            <label>Horizon
+              <select id="trHorizon">
+                <option value="1">Next GW</option>
+                <option value="3" selected>Next 3 GWs</option>
+                <option value="6">Next 6 GWs</option>
+              </select>
+            </label>
             <button id="runTransfersBtn" class="btn btn-blue">Find transfers</button>
           </div>
+          <p class="muted" id="trModeHint" style="font-size:0.8rem;margin-top:6px"></p>
         </div>
 
         <div id="trPaneCustom" class="tr-pane hidden">

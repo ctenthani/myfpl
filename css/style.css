@@ -1133,3 +1133,42 @@ body {
   padding: 8px 10px;
   margin-top: 8px;
 }
+
+.tr-bundle {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px;
+  margin: 12px 0;
+  background: #fff;
+}
+.tr-bundle.top {
+  border-color: #7dd3fc;
+  background: linear-gradient(180deg, #f0f9ff 0%, #fff 40%);
+}
+.tr-bundle-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.tr-bundle-head h4 { margin: 0; font-size: 0.95rem; }
+.tr-gain { color: #059669; font-weight: 700; }
+.tr-hit { color: #dc2626; font-weight: 600; font-size: 0.85rem; }
+.tr-move-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.tr-move-table th {
+  text-align: left; font-size: 0.7rem; text-transform: uppercase;
+  color: #64748b; padding: 4px 6px; border-bottom: 1px solid #e2e8f0;
+}
+.tr-move-table td { padding: 10px 6px; vertical-align: middle; border-bottom: 1px solid #f1f5f9; }
+.tr-sell { color: #0f172a; }
+.tr-buy { color: #0f172a; }
+.tr-footer {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #e2e8f0;
+}
+.tr-ft-banner {
+  background: #e0f2fe; border-radius: 10px; padding: 10px 12px;
+  margin-bottom: 12px; font-size: 0.9rem; color: #0c4a6e;
+}
