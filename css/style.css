@@ -1042,3 +1042,94 @@ body {
   .pcard .pname { font-size: 0.5rem; }
   .nav-btn { padding: 8px 10px; font-size: 0.75rem; }
 }
+
+.pcard .ppos {
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.bench .pcard .ppos { display: block; }
+.pcard .ppos.gk { color: #059669; }
+.pcard .ppos.def { color: #2563eb; }
+.pcard .ppos.mid { color: #d97706; }
+.pcard .ppos.fwd { color: #dc2626; }
+
+.team-filter-label {
+  display: block;
+  margin: 8px 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.team-filter-label select {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+/* Player info modal — clear card over dimmed pitch */
+#playerInfoModal {
+  z-index: 3000;
+}
+#playerInfoModal .player-info-card {
+  background: #fff;
+  color: #0f172a;
+  border-radius: 16px;
+  padding: 16px 18px 20px;
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(85vh, 640px);
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+  position: relative;
+}
+#playerInfoModal .modal-close {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  border: none;
+  background: #f1f5f9;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.pi-title { text-align: center; margin: 8px 0 4px; font-size: 1.35rem; }
+.pi-sub { text-align: center; color: #64748b; font-size: 0.9rem; margin-bottom: 12px; }
+.pi-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 8px;
+  margin: 12px 0;
+}
+.pi-stats div { text-align: center; }
+.pi-stats strong { display: block; font-size: 1.05rem; color: #0f172a; }
+.pi-stats span { font-size: 0.68rem; color: #64748b; }
+.pi-section { font-size: 0.95rem; font-weight: 700; margin: 14px 0 8px; }
+.pi-fix-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #ecfdf5;
+  border: 1px solid #bbf7d0;
+  margin: 6px 0;
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+.pi-news {
+  font-size: 0.85rem;
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 8px;
+}

@@ -81,6 +81,7 @@
           <button id="optimiseBtn" class="btn btn-blue">✨ Optimise lineup</button>
           <button id="editBtn" class="btn btn-cyan">✎ Edit team</button>
           <button id="resetBtn" class="btn btn-ghost">🗑 Reset team</button>
+          <button id="shareTeamBtn" class="btn btn-outline" title="Copy link to open this squad on another device">Share squad link</button>
         </div>
       </section>
       <aside class="players-panel card">
@@ -92,6 +93,9 @@
           <button class="pos-tab" data-pos="MID">MID</button>
           <button class="pos-tab" data-pos="FWD">FWD</button>
         </div>
+        <label class="team-filter-label">Club
+          <select id="teamFilter"><option value="">All clubs</option></select>
+        </label>
         <label class="sort-label">Sort by
           <select id="sortBy">
             <option value="xp">Predicted points</option>

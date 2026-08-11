@@ -319,7 +319,7 @@ let chipModalKey = null;
 
 const SQUAD_LIMITS = { GKP: 2, DEF: 5, MID: 5, FWD: 3 };
 
-// XifundoFC GW1 draft — used only for DEFAULT_TEAM_ID when API picks not public
+// Optional default draft IDs (unused when user has a Team ID / saved squad)
 const DEFAULT_SQUAD_IDS = {
   starting: [1, 8, 4, 469, 418, 400, 427, 542, 398, 411, 106],
   bench: [497, 346, 259, 212],
@@ -661,6 +661,7 @@ function optimiseLineup() {
 }
 
 function optimiseSquad(budget = BUDGET, opts = {}) {
+  budget = Math.min(Number(budget) || BUDGET, BUDGET); // hard cap £100.0m starting squads
   // opts.mode: "wildcard" | "freehit" | "balanced"
   // opts.excludeIds: number[]
   // opts.horizonOverride: 1 | 3
@@ -794,16 +795,54 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
   const full = [...bestXI, ...bench].slice(0, 15);
   const xiFinal = full.filter(p => xiIds.has(p.id)).slice(0, 11);
   // if filter order wrong, rebuild
-  const xiOrdered = bestXI.filter(p => full.some(x => x.id === p.id)).slice(0, 11);
-  const benchOut = full.filter(p => !xiOrdered.some(x => x.id === p.id));
-  const squadOut = [...xiOrdered, ...benchOut].slice(0, 15);
-  const realSpent = squadOut.reduce((s, p) => s + p.price, 0);
+  let xiOrdered = bestXI.filter(p => full.some(x => x.id === p.id)).slice(0, 11);
+  let benchOut = full.filter(p => !xiOrdered.some(x => x.id === p.id));
+  let squadOut = [...xiOrdered, ...benchOut].slice(0, 15);
+  // Hard enforce ≤ budget (default £100.0m): swap expensive for cheaper same-pos if needed
+  let realSpent = squadOut.reduce((s, p) => s + p.price, 0);
+  if (realSpent > budget + 0.001) {
+    const byPosPool = { GKP: [], DEF: [], MID: [], FWD: [] };
+    pool.forEach(p => byPosPool[p.position].push(p));
+    Object.keys(byPosPool).forEach(k => byPosPool[k].sort((a, b) => a.price - b.price));
+    for (let guard = 0; guard < 40 && realSpent > budget + 0.001; guard++) {
+      const ordered = [...squadOut].sort((a, b) => b.price - a.price);
+      let fixed = false;
+      for (const expensive of ordered) {
+        const cheaper = byPosPool[expensive.position].find(c =>
+          c.price < expensive.price - 0.05 &&
+          !squadOut.some(s => s.id === c.id) &&
+          squadOut.filter(s => s.team_id === c.team_id && s.id !== expensive.id).length < 3 &&
+          realSpent - expensive.price + c.price <= budget + 0.05
+        );
+        if (!cheaper) continue;
+        squadOut = squadOut.map(s => s.id === expensive.id ? cheaper : s);
+        realSpent = squadOut.reduce((s, p) => s + p.price, 0);
+        fixed = true;
+        break;
+      }
+      if (!fixed) break;
+    }
+    // rebuild XI from adjusted 15
+    const bp = { GKP: [], DEF: [], MID: [], FWD: [] };
+    squadOut.forEach(p => bp[p.position].push(p));
+    Object.keys(bp).forEach(k => bp[k].sort((a, b) => scoreOf(b) - scoreOf(a)));
+    xiOrdered = [bp.GKP[0], ...bp.DEF.slice(0, 3), ...bp.MID.slice(0, 4), ...bp.FWD.slice(0, 3)].filter(Boolean);
+    if (xiOrdered.length < 11) {
+      const rest = squadOut.filter(p => !xiOrdered.includes(p) && p.position !== "GKP").sort((a, b) => scoreOf(b) - scoreOf(a));
+      while (xiOrdered.length < 11 && rest.length) xiOrdered.push(rest.shift());
+    }
+    xiOrdered = xiOrdered.slice(0, 11);
+    const ids = new Set(xiOrdered.map(p => p.id));
+    benchOut = squadOut.filter(p => !ids.has(p.id));
+    squadOut = [...xiOrdered, ...benchOut].slice(0, 15);
+    realSpent = squadOut.reduce((s, p) => s + p.price, 0);
+  }
   const cap = xiOrdered.slice().sort((a, b) => scoreOf(b) - scoreOf(a))[0]?.id || null;
 
   horizon = savedH;
   return {
     spent: realSpent,
-    bank: Math.max(0, budget - realSpent),
+    bank: Math.max(0, +(budget - realSpent).toFixed(1)),
     xiXp: xiOrdered.reduce((s, p) => s + xpOf(p), 0),
     squad: squadOut,
     startingIds: xiOrdered.map(p => p.id),
@@ -983,7 +1022,7 @@ function shirtUrl(p) {
   }
   return `https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${code}-66.webp`;
 }
-function playerCard(p, isCaptain = false, isVice = false) {
+function playerCard(p, isCaptain = false, isVice = false, showPos = false) {
   const pts = xpOf(p).toFixed(1);
   const shirt = shirtUrl(p);
   const shirtHtml = shirt
@@ -993,9 +1032,13 @@ function playerCard(p, isCaptain = false, isVice = false) {
   const cls = ["pcard"];
   if (isCaptain) cls.push("captain");
   else if (isVice) cls.push("vice");
+  const posLab = showPos
+    ? `<div class="ppos ${(p.position || "").toLowerCase()}">${p.position === "GKP" ? "GK" : p.position}</div>`
+    : "";
   return `
     <div class="${cls.join(" ")}" data-id="${p.id}" title="${p.news || p.web_name}">
       ${shirtHtml}
+      ${posLab}
       <div class="pname">${p.web_name}</div>
       <div class="pprice">${money(p.price)}</div>
       <div class="ppts"><span>${pts}</span></div>
@@ -1021,7 +1064,7 @@ function renderMiniPitch(data) {
     rows += `</div>`;
   }
   const bench = (data.benchIds || []).map(id => (data.squad || []).find(x => x.id === id)).filter(Boolean);
-  const benchHtml = bench.map(p => playerCard(p, false)).join("");
+  const benchHtml = bench.map(p => playerCard(p, false, false, true)).join("");
   return `<div class="ai-pitch pitch">${rows}</div>
     <div class="bench-label">Bench</div>
     <div class="bench ai-bench">${benchHtml}</div>`;
@@ -1061,21 +1104,21 @@ function showPlayerInfo(playerId) {
   const modal = $("playerInfoModal");
   if (!body || !modal) return;
   const fxt = nextFixturesFor(p.team_id, 6);
+  const base = expectedPoints(p, 1);
   const rows = fxt.map(f => {
     const home = f.team_h === p.team_id;
     const oppId = home ? f.team_a : f.team_h;
     const opp = (teamsMap[oppId] && (teamsMap[oppId].short_name || teamsMap[oppId].name)) || "?";
-    const xp = xpOf(p).toFixed(1);
-    return `<div class="pi-fix-row"><span>GW${f.event} · ${opp} (${home ? "Home" : "Away"})</span><strong>${xp} pts</strong></div>`;
+    // Scale next-GW base by relative fixture factor for that event
+    const mul = fixtureFactor(p.team_id, f.event || currentGw);
+    const nextMul = fixtureFactor(p.team_id, currentGw) || 1;
+    const pts = (base / (nextMul || 1)) * mul;
+    return `<div class="pi-fix-row"><span>GW${f.event} · ${opp} (${home ? "H" : "A"})</span><strong>${pts.toFixed(1)} pts</strong></div>`;
   }).join("") || `<p class="muted">No upcoming fixtures loaded.</p>`;
+  const posLabel = p.position === "GKP" ? "Goalkeeper" : p.position === "DEF" ? "Defender" : p.position === "MID" ? "Midfielder" : "Forward";
   body.innerHTML = `
-    <h2 style="margin:0 0 8px">${p.web_name}</h2>
-    <div class="pi-header">
-      <div>
-        <div><strong>${p.team}</strong> · ${p.position}</div>
-        <div class="muted">${money(p.price)} · ${p.selected_by_percent}% selected</div>
-      </div>
-    </div>
+    <h2 class="pi-title">${p.web_name}</h2>
+    <div class="pi-sub"><strong>${p.team}</strong> · ${posLabel}<br>${money(p.price)} · Own ${p.selected_by_percent}%</div>
     <div class="pi-stats">
       <div><strong>${p.total_points || 0}</strong><span>Total pts</span></div>
       <div><strong>${p.points_per_game || "–"}</strong><span>Pts / match</span></div>
@@ -1084,9 +1127,14 @@ function showPlayerInfo(playerId) {
       <div><strong>${p.assists || 0}</strong><span>Assists</span></div>
       <div><strong>${p.bonus || 0}</strong><span>Bonus</span></div>
     </div>
-    <p class="muted" style="font-size:0.85rem">${p.news || "No news"} · Form ${p.form || "–"} · ep_next ${p.ep_next || "–"}</p>
-    <h3 style="margin:14px 0 6px;font-size:0.95rem">Predicted points</h3>
+    <div class="pi-stats">
+      <div><strong>${base.toFixed(1)}</strong><span>XP next GW</span></div>
+      <div><strong>${p.form || "–"}</strong><span>Form</span></div>
+      <div><strong>${p.ep_next || "–"}</strong><span>FPL ep_next</span></div>
+    </div>
+    <div class="pi-section">Predicted points by fixture</div>
     ${rows}
+    <div class="pi-news">${p.news ? ("News: " + p.news) : "No team news"} · Status: ${p.status || "a"}</div>
   `;
   modal.classList.remove("hidden");
 }
@@ -1210,7 +1258,7 @@ function renderPitch() {
   }
   $("pitch").innerHTML = html;
   const benchPlayers = benchIds.map(id => squad.find(x => x.id === id)).filter(Boolean);
-  $("bench").innerHTML = benchPlayers.map(p => playerCard(p, false, p.id === viceCaptainId)).join("");
+  $("bench").innerHTML = benchPlayers.map(p => playerCard(p, false, p.id === viceCaptainId, true)).join("");
 
   const xi = squad.filter(p => startingIds.includes(p.id));
   const xiXp = xi.reduce((s, p) => s + xpOf(p), 0);
@@ -1243,16 +1291,32 @@ function renderPitch() {
   });
 }
 
+function populateTeamFilter() {
+  const sel = $("teamFilter");
+  if (!sel || sel.dataset.ready === "1") return;
+  const clubs = Object.values(teamsMap || {}).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  clubs.forEach(c => {
+    const o = document.createElement("option");
+    o.value = c.id;
+    o.textContent = (c.short_name || c.name) + " — " + (c.name || "");
+    sel.appendChild(o);
+  });
+  sel.dataset.ready = "1";
+}
+
 function renderPlayerList() {
+  populateTeamFilter();
   const pos = document.querySelector(".pos-tab.active")?.dataset.pos || "ALL";
   const sort = $("sortBy").value;
   const pMin = parseFloat($("priceMin").value);
   const pMax = parseFloat($("priceMax").value);
   const q = ($("searchInput").value || "").toLowerCase();
   const affordable = $("affordableOnly").checked;
+  const clubFilter = ($("teamFilter") && $("teamFilter").value) || "";
   const inSquad = new Set(squad.map(p => p.id));
   let list = players.filter(p => {
     if (pos !== "ALL" && p.position !== pos) return false;
+    if (clubFilter && String(p.team_id) !== String(clubFilter)) return false;
     if (p.price < pMin || p.price > pMax) return false;
     if (q && !p.web_name.toLowerCase().includes(q) && !p.team.toLowerCase().includes(q)) return false;
     if (affordable && p.price > bank + 0.1) return false;
@@ -1443,7 +1507,7 @@ function renderAITeams() {
     showUpgradePrompt("teams");
     return;
   }
-  const budget = parseFloat($("aiBudget").value) || 100;
+  const budget = Math.min(100, parseFloat($("aiBudget").value) || 100);
   const box = $("aiTeamsResults");
   box.innerHTML = "<p class='muted'>Generating Wildcard & Free Hit squads…</p>";
 
@@ -1599,6 +1663,79 @@ function loadDefaultSquad() {
 }
 
 
+function encodeSquadShare() {
+  if (!squad.length) return "";
+  const ids = squad.map(p => p.id).join(",");
+  const start = startingIds.join(",");
+  const bench = benchIds.join(",");
+  return btoa(unescape(encodeURIComponent([ids, start, bench, captainId || "", viceCaptainId || ""].join("|"))))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function applySquadShare(code) {
+  try {
+    let s = code.replace(/-/g, "+").replace(/_/g, "/");
+    while (s.length % 4) s += "=";
+    const raw = decodeURIComponent(escape(atob(s)));
+    const [ids, start, bench, cap, vice] = raw.split("|");
+    const squadIds = ids.split(",").map(Number).filter(Boolean);
+    const mapped = squadIds.map(id => players.find(p => p.id === id)).filter(Boolean);
+    if (mapped.length < 11) return false;
+    squad = mapped;
+    startingIds = (start || "").split(",").map(Number).filter(id => squad.some(p => p.id === id));
+    benchIds = (bench || "").split(",").map(Number).filter(id => squad.some(p => p.id === id));
+    const placed = new Set([...startingIds, ...benchIds]);
+    squad.forEach(p => {
+      if (!placed.has(p.id)) {
+        if (startingIds.length < 11) startingIds.push(p.id);
+        else benchIds.push(p.id);
+      }
+    });
+    captainId = cap && squad.some(p => p.id === +cap) ? +cap : startingIds[0];
+    viceCaptainId = vice && squad.some(p => p.id === +vice) ? +vice : null;
+    enforceValidXI();
+    bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
+    saveSquadLocal();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function copyShareLink() {
+  if (!squad.length) {
+    setStatus("Build a squad first");
+    return;
+  }
+  const tid = currentTeamId() || "";
+  const code = encodeSquadShare();
+  const url = new URL(location.href);
+  url.searchParams.set("team", tid);
+  url.searchParams.set("s", code);
+  const link = url.toString();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(() => setStatus("Squad link copied — open it on another device")).catch(() => prompt("Copy this squad link:", link));
+  } else {
+    prompt("Copy this squad link:", link);
+  }
+}
+
+function tryLoadShareFromUrl() {
+  try {
+    const u = new URL(location.href);
+    const code = u.searchParams.get("s");
+    const team = u.searchParams.get("team");
+    if (team && $("teamIdInput") && !$("teamIdInput").value) $("teamIdInput").value = team;
+    if (code && players.length) {
+      if (applySquadShare(code)) {
+        setStatus("Squad loaded from shared link (" + squad.length + " players)");
+        return true;
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
 function squadStorageKey(teamId) {
   return "fpl_squad_v1_" + String(teamId || "anon");
 }
@@ -1749,11 +1886,11 @@ async function tryLoadUserTeam(teamId) {
     source: "empty",
     teamName,
     playerName,
-    note: "FPL has not published this team's picks yet. Edit your team here — it will be saved for this Team ID on this device.",
   };
 }
 
 async function init(force = false) {
+  restoreTeamIdInput();
   const rawId = $("teamIdInput") && $("teamIdInput").value;
   const teamId = parseInt(rawId, 10);
   if (!teamId) {
@@ -1762,6 +1899,7 @@ async function init(force = false) {
     squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null;
     try {
       if (!bootstrap) { await loadBootstrap(force); await loadFixtures(); buildPlayers(); }
+      tryLoadShareFromUrl();
       renderPitch(); renderPlayerList(); renderChips(); updatePlanUI();
     } catch (e) { setStatus("Error: " + e.message); }
     return;
@@ -1774,18 +1912,24 @@ async function init(force = false) {
     await loadBootstrap(force);
     await loadFixtures();
     buildPlayers();
-    const loaded = await tryLoadUserTeam(teamId);
+    rememberTeamId(teamId);
+    let loaded = await tryLoadUserTeam(teamId);
+    if ((!loaded || loaded.source === "empty") && tryLoadShareFromUrl()) {
+      loaded = { source: "share", teamName: loaded && loaded.teamName };
+    }
     const tname = (loaded && loaded.teamName) ? loaded.teamName : ("Team " + teamId);
     if (loaded && loaded.source === "api") {
-      setStatus(`GW ${loaded.event || currentGw} · ${tname} · official picks (${squad.length} players)`);
+      setStatus(`GW ${loaded.event || currentGw} · ${tname}: official picks (${squad.length} players)`);
     } else if (loaded && loaded.source === "local") {
-      setStatus(`GW ${currentGw} · ${tname} · saved squad restored (${squad.length} players)`);
+      setStatus(`${tname}: saved squad restored (${squad.length} players)`);
+    } else if (loaded && loaded.source === "share") {
+      setStatus(`${tname}: squad loaded from shared link`);
     } else if (loaded && loaded.source === "error") {
       setStatus(loaded.error || "Could not load team");
     } else if (loaded && loaded.source === "empty") {
-      setStatus(`${tname}: ${loaded.note || "Edit team — progress is saved for this Team ID"}`);
+      setStatus(`${tname}: no public FPL picks yet — Edit team; progress saves for this Team ID`);
     } else {
-      setStatus(`GW ${currentGw} · ${tname}`);
+      setStatus(`${tname}: GW ${currentGw}`);
     }
     updatePlanUI(); // re-check Pro lock if team ID differs from session
     renderPitch();
@@ -2407,8 +2551,17 @@ on("loginCancelBtn", "click", () => {
 // Reload squad when Team ID changes + Enter / blur
 const tidInput = $("teamIdInput");
 if (tidInput) {
-  tidInput.addEventListener("change", () => init(true));
-  tidInput.addEventListener("keydown", (e) => { if (e.key === "Enter") init(true); });
+  tidInput.addEventListener("change", () => {
+    rememberTeamId();
+    init(true);
+  });
+  tidInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      rememberTeamId();
+      init(true);
+    }
+  });
+  tidInput.addEventListener("blur", () => rememberTeamId());
 }
 
 on("refreshRankBtn", "click", () => renderLiveRank());
@@ -2426,6 +2579,8 @@ on("optimiseBtn", "click", () => {
   }
 });
 on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null; renderPitch(); renderPlayerList(); });
+on("shareTeamBtn", "click", copyShareLink);
+on("teamFilter", "change", () => renderPlayerList());
 function setEditMode(on) {
   if (!on) {
     // Finishing edit — require full legal squad
