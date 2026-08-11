@@ -1,11 +1,12 @@
-const CACHE = "fpl-assistant-v29";
+const CACHE = "fpl-assistant-v30";
 const ASSETS = [
   "/",
   "/index.html",
   "/css/style.css",
   "/manifest.json",
   "/icons/icon-192.png",
-  "/icons/icon-512.png"
+  "/icons/icon-512.png",
+  "/icons/apple-touch-icon.png"
 ];
 // Do NOT cache app.js — always network for latest logic
 

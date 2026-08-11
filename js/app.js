@@ -2387,6 +2387,31 @@ async function renderRivalRadar() {
   }
 }
 
+function renderSettings() {
+  const sum = $("settingsAccountSummary");
+  if (sum) {
+    if (!authSession) sum.textContent = "Not signed in · plan: " + activePlanLabel();
+    else sum.textContent = (authSession.email || "Signed in") + " · " + activePlanLabel() +
+      (authSession.teamId ? " · Team " + authSession.teamId : "");
+  }
+  const st = $("settingsTeamId");
+  if (st) st.value = currentTeamId() || localStorage.getItem("fpl_last_team_id") || "";
+  try {
+    const ui = JSON.parse(localStorage.getItem("fpl_ui_prefs_v1") || "{}");
+    if ($("settingsCompactPitch")) $("settingsCompactPitch").checked = !!ui.compactPitch;
+    if ($("settingsHideMetrics")) $("settingsHideMetrics").checked = !!ui.hideMetrics;
+  } catch (_) {}
+}
+
+function applyUiPrefs() {
+  try {
+    const ui = JSON.parse(localStorage.getItem("fpl_ui_prefs_v1") || "{}");
+    document.body.classList.toggle("compact-pitch", !!ui.compactPitch);
+    document.body.classList.toggle("hide-top-metrics", !!ui.hideMetrics);
+  } catch (_) {}
+}
+applyUiPrefs();
+
 function renderTerms() {
   const box = $("termsContent");
   if (!box) return;
@@ -2565,6 +2590,7 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     if (btn.dataset.view === "teams") { /* wait for button */ }
     if (btn.dataset.view === "matchday") renderMatchday();
     if (btn.dataset.view === "terms") renderTerms();
+    if (btn.dataset.view === "settings") renderSettings();
     if (btn.dataset.view === "rank") renderLiveRank();
     if (btn.dataset.view === "chips") renderChips();
   });
@@ -2591,6 +2617,34 @@ on("playerInfoClose", "click", () => {
   if (m) m.classList.add("hidden");
 });
 
+on("settingsSignInBtn", "click", () => {
+  document.querySelector('[data-view="settings"]')?.classList; // noop
+  $("authBtn") && $("authBtn").click();
+});
+on("settingsSignOutBtn", "click", () => {
+  logout();
+  updatePlanUI();
+  renderSettings();
+  setStatus("Signed out");
+});
+on("settingsSaveTeamBtn", "click", () => {
+  const v = parseInt($("settingsTeamId") && $("settingsTeamId").value, 10);
+  if (!v) { setStatus("Enter a valid Team ID"); return; }
+  if ($("teamIdInput")) $("teamIdInput").value = v;
+  rememberTeamId(v);
+  init(true);
+  setStatus("Team ID saved: " + v);
+});
+on("settingsSaveUiBtn", "click", () => {
+  const ui = {
+    compactPitch: !!( $("settingsCompactPitch") && $("settingsCompactPitch").checked),
+    hideMetrics: !!( $("settingsHideMetrics") && $("settingsHideMetrics").checked),
+  };
+  try { localStorage.setItem("fpl_ui_prefs_v1", JSON.stringify(ui)); } catch (_) {}
+  applyUiPrefs();
+  setStatus("Display settings saved");
+});
+on("settingsInstallBtn", "click", openInstallGuide);
 on("footerTermsLink", "click", (e) => {
   e.preventDefault();
   document.querySelector('[data-view="terms"]')?.click();
@@ -2764,14 +2818,74 @@ document.querySelectorAll(".pos-tab").forEach(btn => {
   });
 });
 
+function isIos() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+function isInStandalone() {
+  return window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true;
+}
+
+function installGuideHtml() {
+  if (isIos()) {
+    return `
+      <p><strong>iPhone / iPad (Safari)</strong></p>
+      <ol class="install-steps">
+        <li>Open <strong>https://myfpl.netlify.app</strong> in <strong>Safari</strong>.</li>
+        <li>Tap the <strong>Share</strong> button (square with an arrow) at the bottom.</li>
+        <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+        <li>Tap <strong>Add</strong>. Launch from the new icon anytime.</li>
+      </ol>
+      <p class="muted" style="font-size:0.85rem">Chrome on iPhone cannot fully install PWAs — use Safari.</p>`;
+  }
+  return `
+    <p><strong>Android (Chrome)</strong></p>
+    <ol class="install-steps">
+      <li>Open the site in Chrome.</li>
+      <li>Tap menu <strong>⋮</strong> → <strong>Install app</strong> / <strong>Add to Home screen</strong>.</li>
+      <li>Or tap <strong>Install App</strong> when the browser prompt appears.</li>
+    </ol>`;
+}
+
+function openInstallGuide() {
+  const body = $("installGuideBody");
+  const modal = $("installModal");
+  if (body) body.innerHTML = installGuideHtml();
+  if (modal) modal.classList.remove("hidden");
+}
+
 let deferredPrompt = null;
 window.addEventListener("beforeinstallprompt", e => {
-  e.preventDefault(); deferredPrompt = e; $("installBtn").hidden = false;
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = $("installBtn");
+  if (btn) btn.hidden = false;
 });
-$("installBtn").addEventListener("click", async () => {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt(); await deferredPrompt.userChoice;
-  deferredPrompt = null; $("installBtn").hidden = true;
+
+function wireInstallBtn() {
+  const btn = $("installBtn");
+  if (!btn) return;
+  // Always show on iOS (no beforeinstallprompt); hide if already installed
+  if (isInStandalone()) {
+    btn.hidden = true;
+    return;
+  }
+  if (isIos()) btn.hidden = false;
+  btn.addEventListener("click", async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      try { await deferredPrompt.userChoice; } catch (_) {}
+      deferredPrompt = null;
+      return;
+    }
+    openInstallGuide();
+  });
+}
+wireInstallBtn();
+on("installModalClose", "click", () => {
+  const m = $("installModal");
+  if (m) m.classList.add("hidden");
 });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 

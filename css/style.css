@@ -1172,3 +1172,12 @@ body {
   background: #e0f2fe; border-radius: 10px; padding: 10px 12px;
   margin-bottom: 12px; font-size: 0.9rem; color: #0c4a6e;
 }
+
+.install-guide-card { max-width: 420px; padding: 20px; }
+.install-steps { margin: 12px 0 12px 1.2rem; line-height: 1.55; }
+.install-steps li { margin: 8px 0; }
+.settings-section h3 { font-size: 1rem; margin-bottom: 6px; }
+.settings-check { display: block; margin: 8px 0; font-size: 0.9rem; }
+body.compact-pitch .pcard { width: 56px; }
+body.compact-pitch .pcard .shirt-img { width: 32px; height: 42px; }
+body.hide-top-metrics .topbar-metrics { display: none !important; }

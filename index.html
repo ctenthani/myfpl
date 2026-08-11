@@ -5,9 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#37003c" />
   <meta name="description" content="FPL Assistant – pitch view, AI transfers, AI teams & chip strategy" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="FPL Assistant" />
+  <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png" />
   <title>FPL Assistant 2026/27</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -30,7 +36,7 @@
       <label class="tid">Team ID <input type="number" id="teamIdInput" value="" placeholder="Team ID" title="Enter Team ID then Refresh" /></label>
       <button id="refreshBtn" class="btn btn-pink">Refresh</button>
       <button id="authBtn" class="btn btn-cyan">Sign in</button>
-      <button id="installBtn" class="btn btn-outline" hidden>Install App</button>
+      <button id="installBtn" class="btn btn-outline" type="button">Install App</button>
     </div>
   </header>
 
@@ -55,6 +61,7 @@
     <button class="nav-btn" data-view="rank">Live Rank</button>
     <button class="nav-btn" data-view="chips">Chips</button>
     <button class="nav-btn" data-view="terms">Terms</button>
+    <button class="nav-btn" data-view="settings">Settings</button>
   </nav>
 
   <div class="status-line" id="statusBar">Loading FPL data…</div>
@@ -413,9 +420,16 @@
     <button type="button" data-act="info">ⓘ See player info</button>
   </div>
   <div id="playerInfoModal" class="chip-modal hidden">
-    <div class="chip-modal-card player-info-card">
-      <button type="button" class="modal-close" id="playerInfoClose">←</button>
+    <div class="chip-modal-box player-info-card">
+      <button type="button" class="modal-close" id="playerInfoClose" aria-label="Close">×</button>
       <div id="playerInfoBody"></div>
+    </div>
+  </div>
+    <div id="installModal" class="chip-modal hidden">
+    <div class="chip-modal-box install-guide-card">
+      <button type="button" class="modal-close" id="installModalClose">×</button>
+      <h2 style="margin-top:0">Install FPL Assistant</h2>
+      <div id="installGuideBody"></div>
     </div>
   </div>
   <div id="loginModal" class="chip-modal hidden">
@@ -437,6 +451,51 @@
       <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
         <button type="button" class="btn btn-ghost" id="loginCancelBtn">Cancel</button>
         <button type="button" class="btn btn-blue" id="loginSubmitBtn">Sign in</button>
+      </div>
+    </div>
+  </div>
+
+    <div id="view-settings" class="view">
+    <div class="page-wrap">
+      <div class="card">
+        <h2>Settings</h2>
+        <div class="settings-section">
+          <h3>Account</h3>
+          <p class="muted" id="settingsAccountSummary">Not signed in</p>
+          <div class="controls-row" style="margin-top:8px">
+            <button type="button" id="settingsSignInBtn" class="btn btn-cyan">Sign in</button>
+            <button type="button" id="settingsSignOutBtn" class="btn btn-ghost">Sign out</button>
+          </div>
+          <label style="display:block;margin-top:12px">Team ID
+            <input type="number" id="settingsTeamId" placeholder="Your FPL Team ID" style="width:100%;max-width:220px;padding:8px;border-radius:8px;border:1px solid var(--border)" />
+          </label>
+          <button type="button" id="settingsSaveTeamBtn" class="btn btn-blue" style="margin-top:8px">Save Team ID</button>
+        </div>
+        <div class="settings-section" style="margin-top:20px">
+          <h3>Install app (iPhone / iPad)</h3>
+          <ol class="install-steps">
+            <li>Open this site in <strong>Safari</strong> (not Chrome or in-app browsers).</li>
+            <li>Tap the <strong>Share</strong> button <span aria-hidden="true">□↑</span> at the bottom of Safari.</li>
+            <li>Scroll and tap <strong>Add to Home Screen</strong>.</li>
+            <li>Tap <strong>Add</strong>. The FPL Assistant icon appears on your Home Screen.</li>
+          </ol>
+          <p class="muted" style="font-size:0.85rem">On iPhone, apps install as a Home Screen web app. There is no App Store listing.</p>
+          <button type="button" id="settingsInstallBtn" class="btn btn-outline">Show install guide</button>
+        </div>
+        <div class="settings-section" style="margin-top:20px">
+          <h3>Install app (Android)</h3>
+          <ol class="install-steps">
+            <li>Open in <strong>Chrome</strong>.</li>
+            <li>Tap the menu <strong>⋮</strong> → <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
+            <li>Or use the <strong>Install App</strong> button in the top bar when Chrome offers it.</li>
+          </ol>
+        </div>
+        <div class="settings-section" style="margin-top:20px">
+          <h3>Display</h3>
+          <label class="settings-check"><input type="checkbox" id="settingsCompactPitch" /> Compact pitch cards</label>
+          <label class="settings-check"><input type="checkbox" id="settingsHideMetrics" /> Hide top metrics on small screens</label>
+          <button type="button" id="settingsSaveUiBtn" class="btn btn-blue" style="margin-top:8px">Save display</button>
+        </div>
       </div>
     </div>
   </div>
