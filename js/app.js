@@ -562,6 +562,44 @@ function recomputeAllXP() {
 // ---------- Squad optimise (15 then best XI) ----------
 
 /** Rearrange the *current* 15-man squad into best XI + bench + captain. Does not buy/sell players. */
+/** Exactly 1 GK in XI; rest legal mins where possible. */
+function enforceValidXI() {
+  if (!squad.length) return;
+  const gk = squad.filter(p => p.position === "GKP");
+  const outfield = squad.filter(p => p.position !== "GKP");
+  let xi = [];
+  let bench = [];
+  // Prefer existing starting outfield, then fill
+  const startOut = startingIds
+    .map(id => squad.find(p => p.id === id))
+    .filter(p => p && p.position !== "GKP");
+  const restOut = outfield.filter(p => !startOut.some(x => x.id === p.id))
+    .sort((a, b) => xpOf(b) - xpOf(a));
+  const xiOut = [...startOut, ...restOut].slice(0, 10);
+  const gkStart = gk.slice().sort((a, b) => xpOf(b) - xpOf(a));
+  if (gkStart[0]) xi.push(gkStart[0]);
+  xi.push(...xiOut);
+  // pad if needed
+  while (xi.length < 11 && restOut.length) {
+    const p = restOut.find(x => !xi.some(y => y.id === x.id));
+    if (!p) break;
+    xi.push(p);
+  }
+  const xiIds = new Set(xi.map(p => p.id));
+  bench = squad.filter(p => !xiIds.has(p.id));
+  // second GK always on bench first
+  bench.sort((a, b) => {
+    if (a.position === "GKP" && b.position !== "GKP") return -1;
+    if (b.position === "GKP" && a.position !== "GKP") return 1;
+    return 0;
+  });
+  startingIds = xi.slice(0, 11).map(p => p.id);
+  benchIds = bench.map(p => p.id);
+  if (captainId && !startingIds.includes(captainId)) captainId = startingIds[0] || null;
+  if (viceCaptainId && !startingIds.includes(viceCaptainId)) viceCaptainId = null;
+  if (viceCaptainId === captainId) viceCaptainId = null;
+}
+
 function optimiseLineup() {
   if (!squad || squad.length < 11) {
     return { error: "Need at least 11 players in your squad first. Load a Team ID or use Edit team." };
@@ -615,9 +653,10 @@ function optimiseLineup() {
   startingIds = bestXI.map(p => p.id);
   benchIds = bench.map(p => p.id);
   captainId = bestXI.slice().sort((a, b) => xpOf(b) - xpOf(a))[0]?.id || null;
-  // keep squad membership unchanged — only order/XI/bench/captain
   squad = [...bestXI, ...bench];
+  enforceValidXI();
   bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
+  saveSquadLocal();
   return { ok: true, xiXp: bestXI.reduce((s, p) => s + xpOf(p), 0) };
 }
 
@@ -1262,8 +1301,21 @@ function addPlayer(id) {
   if (p.price > bank + 0.05) { $("editStatusInline").textContent = "Not enough budget"; return; }
   if (squad.filter(x => x.team_id === p.team_id).length >= 3) { $("editStatusInline").textContent = "Max 3 per club"; return; }
   squad.push(p);
-  if (startingIds.length < 11) startingIds.push(p.id); else benchIds.push(p.id);
+  const gkInXi = startingIds.filter(id => {
+    const x = squad.find(s => s.id === id);
+    return x && x.position === "GKP";
+  }).length;
+  if (p.position === "GKP") {
+    if (gkInXi >= 1 || startingIds.length >= 11) benchIds.push(p.id);
+    else startingIds.push(p.id);
+  } else if (startingIds.length < 11) {
+    startingIds.push(p.id);
+  } else {
+    benchIds.push(p.id);
+  }
   bank -= p.price;
+  enforceValidXI();
+  saveSquadLocal();
   renderPitch(); renderPlayerList();
   $("editStatusInline").textContent = `Added ${p.web_name}. ${squad.length}/15 · ${money(bank)}`;
 }
@@ -1276,49 +1328,51 @@ function showUpgradePrompt(feature) {
     <div class="upgrade-card">
       <h3>🔒 Pro feature</h3>
       <p>${feature === "transfers"
-        ? "AI Transfer suggestions (hits, bank, bench coverage) are available on <strong>Pro</strong> and <strong>Ultra</strong>."
-        : "AI Teams generation (multiple optimised squads for WC / FH) is available on <strong>Pro</strong> and <strong>Ultra</strong>."}</p>
-      <p class="muted">Starter keeps the pitch view, predicted points, optimise lineup and chip planner free.</p>
+        ? "AI Transfer suggestions are available on <strong>Pro</strong> and <strong>Ultra</strong>."
+        : "AI Teams (Wildcard / Free Hit squads) are available on <strong>Pro</strong> and <strong>Ultra</strong>."}</p>
 
-      <div style="margin-top:12px">
-        <strong style="font-size:0.9rem">Monthly</strong>
+      <div style="margin-top:14px;padding:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px">
+        <strong>14-day free trial</strong>
+        <p class="muted" style="margin:6px 0 10px;font-size:0.85rem">Unlock all Pro/Ultra features free for 14 days. No payment now.</p>
+        <div class="upgrade-actions" style="flex-wrap:wrap;gap:8px">
+          <button type="button" class="btn btn-blue" id="trialProBtn">Start Pro trial</button>
+          <button type="button" class="btn btn-outline" id="trialUltraBtn">Start Ultra trial</button>
+        </div>
+      </div>
+
+      <div style="margin-top:14px">
+        <strong style="font-size:0.9rem">Or pay monthly / yearly</strong>
         <div class="upgrade-actions" style="flex-wrap:wrap;gap:8px;margin-top:6px">
           <a class="btn btn-blue" href="${PAYPAL_PRO_MONTHLY}" target="_blank" rel="noopener">Pro $${PRICING.pro.monthly}/mo</a>
           <a class="btn btn-outline" href="${PAYPAL_ULTRA_MONTHLY}" target="_blank" rel="noopener">Ultra $${PRICING.ultra.monthly}/mo</a>
-        </div>
-      </div>
-
-      <div style="margin-top:14px">
-        <strong style="font-size:0.9rem">Yearly · save 20%</strong>
-        <div class="upgrade-actions" style="flex-wrap:wrap;gap:8px;margin-top:6px">
           <a class="btn btn-blue" href="${PAYPAL_PRO_YEARLY}" target="_blank" rel="noopener">Pro $${PRICING.pro.yearly}/yr</a>
           <a class="btn btn-outline" href="${PAYPAL_ULTRA_YEARLY}" target="_blank" rel="noopener">Ultra $${PRICING.ultra.yearly}/yr</a>
         </div>
-        <p class="muted" style="font-size:0.75rem;margin-top:4px">Save 20% with yearly billing (USD).</p>
       </div>
 
-      <div class="manual-pay" style="margin-top:18px;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0">
-        <strong>Or pay via mobile money (Malawi)</strong>
-        <p style="margin:8px 0 4px;font-size:0.9rem">
-          <strong>Airtel Money</strong> — *247# → Till <strong>${MERCHANT_TILLS.airtel}</strong><br>
-          <strong>TNM Mpamba</strong> — *444# → Till <strong>${MERCHANT_TILLS.tnm}</strong>
-        </p>
-        <p class="muted" style="font-size:0.8rem;margin:0">
-          Send SMS proof to @ctenthani. State Pro or Ultra (monthly/yearly). You get an unlock link.
-        </p>
+      <div class="manual-pay" style="margin-top:14px;padding:12px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0">
+        <strong>Mobile money (Malawi)</strong>
+        <p style="margin:8px 0 0;font-size:0.85rem">Airtel *247# Till <strong>${MERCHANT_TILLS.airtel}</strong> · TNM *444# Till <strong>${MERCHANT_TILLS.tnm}</strong></p>
       </div>
 
-      <div style="margin-top:14px">
-        <button type="button" class="btn btn-ghost" id="demoUnlockBtn">Demo unlock (local only – for testing)</button>
+      <div style="margin-top:12px">
+        <button type="button" class="btn btn-ghost" id="demoUnlockBtn">Demo unlock (this device only)</button>
       </div>
     </div>`;
-  const demo = $("demoUnlockBtn");
-  if (demo) demo.addEventListener("click", () => {
-    const tid = currentTeamId();
-    saveAuthSession({ teamId: tid, plan: "pro", email: "demo" });
-    setStatus("Demo Pro unlocked for team " + tid + " on this device only");
+  const afterUnlock = () => {
+    updatePlanUI();
     if (feature === "transfers") renderTransfersUI();
     else renderAITeams();
+  };
+  const tp = $("trialProBtn");
+  if (tp) tp.addEventListener("click", () => { startTrial("pro"); afterUnlock(); });
+  const tu = $("trialUltraBtn");
+  if (tu) tu.addEventListener("click", () => { startTrial("ultra"); afterUnlock(); });
+  const demo = $("demoUnlockBtn");
+  if (demo) demo.addEventListener("click", () => {
+    saveAuthSession({ teamId: currentTeamId(), plan: "pro", email: "demo" });
+    setStatus("Demo Pro unlocked on this device");
+    afterUnlock();
   });
 }
 
@@ -1550,10 +1604,11 @@ function squadStorageKey(teamId) {
 }
 
 function saveSquadLocal(teamId) {
-  teamId = teamId || currentTeamId();
-  if (!teamId || !squad.length) return;
+  teamId = teamId || currentTeamId() || "anon";
+  if (!squad.length) return false;
+  enforceValidXI();
   const payload = {
-    teamId: Number(teamId),
+    teamId: teamId === "anon" ? null : Number(teamId),
     squadIds: squad.map(p => p.id),
     startingIds: [...startingIds],
     benchIds: [...benchIds],
@@ -1566,12 +1621,17 @@ function saveSquadLocal(teamId) {
   };
   try {
     localStorage.setItem(squadStorageKey(teamId), JSON.stringify(payload));
-  } catch (_) {}
+    // also mirror to anon so refresh without id can recover last edit
+    if (teamId !== "anon") localStorage.setItem(squadStorageKey("anon"), JSON.stringify(payload));
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 function loadSquadLocal(teamId) {
-  teamId = teamId || currentTeamId();
-  if (!teamId || !players.length) return false;
+  teamId = teamId || currentTeamId() || "anon";
+  if (!players.length) return false;
   try {
     const raw = localStorage.getItem(squadStorageKey(teamId));
     if (!raw) return false;
@@ -1596,6 +1656,7 @@ function loadSquadLocal(teamId) {
     if (typeof data.bank === "number") bank = data.bank;
     squadLockedValue = !!data.squadLockedValue;
     if (data.entryBank != null) entryBank = data.entryBank;
+    enforceValidXI();
     return true;
   } catch (_) {
     return false;
@@ -2353,17 +2414,72 @@ if (tidInput) {
 on("refreshRankBtn", "click", () => renderLiveRank());
 on("refreshLiveBtn", "click", () => renderLiveBoard());
 on("rivalScanBtn", "click", () => renderRivalRadar());
-on("optimiseBtn", "click", () => { const r = optimiseLineup(); if (r && r.error) setStatus(r.error); else { renderPitch(); renderPlayerList(); setStatus("Lineup optimised from your current squad (best XI + captain)"); } });
+on("optimiseBtn", "click", () => {
+  const r = optimiseLineup();
+  if (r && r.error) setStatus(r.error);
+  else {
+    enforceValidXI();
+    saveSquadLocal();
+    renderPitch();
+    renderPlayerList();
+    setStatus("Lineup optimised (1 GK in XI) and saved");
+  }
+});
 on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null; renderPitch(); renderPlayerList(); });
 function setEditMode(on) {
+  if (!on) {
+    // Finishing edit — require full legal squad
+    if (squad.length !== 15) {
+      setStatus("Complete your squad first: " + squad.length + "/15 players selected");
+      const st = $("editStatusInline");
+      if (st) {
+        st.textContent = "Need 15 players before Done (" + squad.length + "/15)";
+        st.style.color = "#dc2626";
+      }
+      return false;
+    }
+    const gk = squad.filter(p => p.position === "GKP").length;
+    const def = squad.filter(p => p.position === "DEF").length;
+    const mid = squad.filter(p => p.position === "MID").length;
+    const fwd = squad.filter(p => p.position === "FWD").length;
+    if (gk !== 2 || def !== 5 || mid !== 5 || fwd !== 3) {
+      setStatus("Invalid squad: need 2 GKP, 5 DEF, 5 MID, 3 FWD (now " + gk + "/" + def + "/" + mid + "/" + fwd + ")");
+      const st = $("editStatusInline");
+      if (st) {
+        st.textContent = "Invalid positions — need 2/5/5/3";
+        st.style.color = "#dc2626";
+      }
+      return false;
+    }
+    if (!currentTeamId()) {
+      setStatus("Enter your Team ID in the header so this squad is saved for you");
+      const st = $("editStatusInline");
+      if (st) {
+        st.textContent = "Enter Team ID above, then Done again";
+        st.style.color = "#dc2626";
+      }
+      return false;
+    }
+    enforceValidXI();
+    const saved = saveSquadLocal();
+    if (!saved) {
+      setStatus("Could not save squad (browser storage full or blocked)");
+      return false;
+    }
+    setStatus("Squad saved for Team ID " + currentTeamId() + " (" + squad.length + " players)");
+  }
   editMode = on;
   document.body.classList.toggle("editing", on);
   const banner = $("editBanner");
   if (banner) banner.classList.toggle("hidden", !on);
   const st = $("editStatusInline");
-  if (st) st.textContent = `Squad ${squad.length}/15 · Bank ${money(bank)}`;
+  if (st) {
+    st.style.color = "";
+    st.textContent = on ? ("Squad " + squad.length + "/15 · Bank " + money(bank)) : "";
+  }
   renderPitch();
   renderPlayerList();
+  return true;
 }
 on("editBtn", "click", () => setEditMode(true));
 const doneBtn = $("doneEditBtn");
