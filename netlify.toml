@@ -1,20 +1,33 @@
-# BT42.195 km Race 2026 — Netlify configuration
-
 [build]
-  command = "npm install"
   publish = "."
+  functions = "netlify/functions"
 
-# Do not SPA-redirect API/functions
-[[redirects]]
-  from = "/.netlify/functions/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
-  force = false
+# Schedule via free external cron (cron-job.org) hitting the function URL
+# every hour — Netlify free scheduled functions can return 403 on HTTP invoke.
 
 [[redirects]]
-  from = "/*"
-  to = "/index.html"
+  from = "/api/fpl"
+  to = "/.netlify/functions/fpl"
   status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/votes"
+  to = "/.netlify/functions/votes"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/subscribe"
+  to = "/.netlify/functions/subscribe"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/matchday-digest"
+  to = "/.netlify/functions/matchday-digest"
+  status = 200
+  force = true
 
 [[headers]]
   for = "/*"
@@ -24,15 +37,18 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
 
 [[headers]]
-  for = "/css/*"
+  for = "/sw.js"
   [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+    Cache-Control = "no-cache"
 
 [[headers]]
-  for = "/js/*"
+  for = "/index.html"
   [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+    Cache-Control = "no-cache"
 
-[functions]
-  directory = "netlify/functions"
-  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/.well-known/assetlinks.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Access-Control-Allow-Origin = "*"

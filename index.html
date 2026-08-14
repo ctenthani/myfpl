@@ -2,589 +2,557 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#1B4F72" />
-  <meta name="description" content="BT42.195 km Race 2026 — Full marathon, 10 km & 5 km fun runs. 19 September 2026, Blantyre." />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#37003c" />
+  <meta name="description" content="FPL Assistant – pitch view, AI transfers, AI teams & chip strategy" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>BT42.195 km Race 2026</title>
+  <meta name="apple-mobile-web-app-title" content="FPL Assistant" />
+  <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="css/styles.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png" />
+  <title>FPL Assistant 2026/27</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").catch(function () {});
+      });
+    }
+  </script>
 </head>
 <body>
-  <!-- App Shell -->
-  <div id="app">
-    <button class="control-entry" onclick="location.hash='control'; navigate('control')" title="Committee Control Room">📋 Control</button>
-    <!-- Header -->
-    <header class="header" id="header">
-      <div class="header-inner">
-        <a href="#home" class="logo" onclick="navigate('home')">
-          <span class="logo-mark">BT</span>
-          <span class="logo-text">42.195<span class="logo-year">2026</span></span>
-        </a>
-        <button class="nav-toggle" id="navToggle" aria-label="Menu">
-          <span></span><span></span><span></span>
-        </button>
-        <nav class="nav" id="nav">
-          <a href="#home" data-page="home">Home</a>
-          <a href="#races" data-page="races">Races</a>
-          <a href="#register" data-page="register" class="nav-cta">Register</a>
-          <a href="#course" data-page="course">Course</a>
-          <a href="#sponsors" data-page="sponsors">Sponsors</a>
-          <a href="#info" data-page="info">Info</a>
-          <a href="#control" data-page="control" class="nav-control">Control</a>
-        </nav>
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="logo">⚽ FPL Assistant</span>
+      <span class="season">2026/27</span>
+    </div>
+    <div class="topbar-metrics" id="topMetrics">
+      <div class="tm tm-gw"><span class="tm-label" id="gwLabel">Gameweek</span><span class="tm-val" id="mGw">–</span></div>
+      <div class="tm tm-deadline"><span class="tm-label">Deadline</span><span class="tm-val" id="mDeadline">–</span></div>
+      <div class="tm"><span class="tm-label">Team rating</span><span class="tm-val" id="mRating">–</span></div>
+      <div class="tm"><span class="tm-label">Predicted</span><span class="tm-val" id="mPred">–</span></div>
+      <div class="tm"><span class="tm-label">In the bank</span><span class="tm-val" id="mBank">£0.0m</span></div>
+      <div class="tm"><span class="tm-label">Team value</span><span class="tm-val" id="mCost">£0.0m</span></div>
+    </div>
+    <div class="topbar-right">
+      <span id="planBadge" class="plan-badge starter" title="Current plan">Starter</span>
+      <label class="tid">Team ID <input type="number" id="teamIdInput" value="" placeholder="Team ID" title="Enter Team ID then Refresh" /></label>
+      <button id="refreshBtn" class="btn btn-pink">Refresh</button>
+      <button id="authBtn" class="btn btn-cyan">Sign in</button>
+      <button id="installBtn" class="btn btn-outline" type="button">Install App</button>
+    </div>
+  </header>
+
+  <div class="gw-banner" id="gwBanner">
+    <div class="gw-banner-inner">
+      <div class="gw-title" id="gwBannerTitle">Gameweek 1</div>
+      <div class="gw-deadline" id="gwBannerDeadline">Deadline: –</div>
+      <div class="gw-stats">
+        <div><strong id="mRating2">–</strong><span>Team rating</span></div>
+        <div><strong id="mPred2">–</strong><span>Predicted</span></div>
+        <div><strong id="mBank2">£0.0m</strong><span>In the bank</span></div>
+        <div><strong id="mTransfers">∞</strong><span>Transfers</span></div>
       </div>
-    </header>
-
-    <!-- Main Content -->
-    <main id="main">
-      <!-- HOME -->
-      <section id="page-home" class="page active">
-        <div class="hero">
-          <div class="hero-content">
-            <p class="hero-eyebrow">Malawi National Council of Sports</p>
-            <h1>BT<span class="accent">42.195</span></h1>
-            <p class="hero-sub">Blantyre · 19 September 2026</p>
-            <p class="hero-date">Saturday, 19 September 2026</p>
-            <p class="hero-tagline">Embrace the Challenge · Race Up Blantyre</p>
-            <div class="hero-actions">
-              <a href="#register" class="btn btn-primary" onclick="navigate('register')">Register Now</a>
-              <a href="#races" class="btn btn-outline" onclick="navigate('races')">View Races</a>
-            </div>
-            <div class="countdown" id="countdown">
-              <div class="cd-item"><span id="cd-days">--</span><label>Days</label></div>
-              <div class="cd-item"><span id="cd-hours">--</span><label>Hours</label></div>
-              <div class="cd-item"><span id="cd-mins">--</span><label>Mins</label></div>
-              <div class="cd-item"><span id="cd-secs">--</span><label>Secs</label></div>
-            </div>
-          </div>
-          <div class="hero-visual">
-            <div class="hero-badge">
-              <span class="badge-num">42.195</span>
-              <span class="badge-unit">km</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="section container">
-          <h2 class="section-title">Three Distances. One Great Day.</h2>
-          <div class="race-cards">
-            <article class="race-card marathon">
-              <div class="race-dist">42.195 km</div>
-              <h3>Full Marathon</h3>
-              <p>The flagship race for elite and serious runners. Competitive prizes and age-group categories.</p>
-              <ul>
-                <li>Elite & age groups</li>
-                <li>Chip timing (planned)</li>
-                <li>Strong prize structure</li>
-              </ul>
-              <a href="#register" class="btn btn-sm" onclick="navigate('register')">Enter Marathon</a>
-            </article>
-            <article class="race-card tenk">
-              <div class="race-dist">10 km</div>
-              <h3>10 km Race</h3>
-              <p>Perfect balance of challenge and accessibility. Competitive and fun categories.</p>
-              <ul>
-                <li>Competitive + recreational</li>
-                <li>Great for club runners</li>
-                <li>Medals for finishers</li>
-              </ul>
-              <a href="#register" class="btn btn-sm" onclick="navigate('register')">Enter 10 km</a>
-            </article>
-            <article class="race-card fivek">
-              <div class="race-dist">5 km</div>
-              <h3>5 km Fun Run</h3>
-              <p>Community-focused. Families, first-timers, and anyone who wants to be part of the day.</p>
-              <ul>
-                <li>Inclusive & welcoming</li>
-                <li>Family friendly</li>
-                <li>Festival atmosphere</li>
-              </ul>
-              <a href="#register" class="btn btn-sm" onclick="navigate('register')">Enter 5 km</a>
-            </article>
-          </div>
-        </div>
-
-        <div class="section section-alt">
-          <div class="container">
-            <h2 class="section-title">Why Run BT42.195?</h2>
-            <div class="features">
-              <div class="feature">
-                <div class="feature-icon">🏁</div>
-                <h3>Established Event</h3>
-                <p>Part of Malawi’s growing long-distance calendar under the National Council of Sports.</p>
-              </div>
-              <div class="feature">
-                <div class="feature-icon">🏙️</div>
-                <h3>Blantyre Streets</h3>
-                <p>A challenging yet rewarding city course finishing at the iconic Kamuzu Stadium.</p>
-              </div>
-              <div class="feature">
-                <div class="feature-icon">🤝</div>
-                <h3>Community Festival</h3>
-                <p>5 km & 10 km fun runs, aerobics, and a lively finish area for everyone.</p>
-              </div>
-              <div class="feature">
-                <div class="feature-icon">📱</div>
-                <h3>Digital First</h3>
-                <p>Easy registration, mobile-money payments, and live updates via this platform.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- RACES -->
-      <section id="page-races" class="page">
-        <div class="page-header">
-          <div class="container">
-            <h1>Race Information</h1>
-            <p>Choose your distance and prepare for 19 September 2026</p>
-          </div>
-        </div>
-        <div class="container section">
-          <div class="info-grid">
-            <div class="info-card">
-              <h3>42.195 km Marathon</h3>
-              <table class="info-table">
-                <tr><td>Distance</td><td>42.195 km</td></tr>
-                <tr><td>Start (target)</td><td>~06:30</td></tr>
-                <tr><td>Categories</td><td>Open, Age Groups, Veterans</td></tr>
-                <tr><td>Prizes</td><td>Competitive (details soon)</td></tr>
-                <tr><td>Entry (indicative)</td><td>From K20,000</td></tr>
-              </table>
-            </div>
-            <div class="info-card">
-              <h3>10 km Race</h3>
-              <table class="info-table">
-                <tr><td>Distance</td><td>10 km</td></tr>
-                <tr><td>Start (target)</td><td>~06:45–07:00</td></tr>
-                <tr><td>Categories</td><td>Open + recreational</td></tr>
-                <tr><td>Prizes</td><td>Scaled prizes</td></tr>
-                <tr><td>Entry (indicative)</td><td>From K15,000</td></tr>
-              </table>
-            </div>
-            <div class="info-card">
-              <h3>5 km Fun Run</h3>
-              <table class="info-table">
-                <tr><td>Distance</td><td>5 km</td></tr>
-                <tr><td>Start (target)</td><td>~07:15–07:30</td></tr>
-                <tr><td>Focus</td><td>Community & families</td></tr>
-                <tr><td>Prizes</td><td>Recognition + medals</td></tr>
-                <tr><td>Entry (indicative)</td><td>Affordable / early bird</td></tr>
-              </table>
-            </div>
-          </div>
-          <div class="notice">
-            <strong>Entry fees (MWK):</strong> Marathon 15,000 · 10 km 8,000 · 5 km 5,000.
-              Pay via TNM Mpamba: dial <code>*444#</code> → <strong>4</strong> → code <code>500204</code> (amount for your race is confirmed on your phone).
-              Bank: NBM <code>1802283</code>. Exact start times and prizes remain subject to OC confirmation.
-          </div>
-        </div>
-      </section>
-
-      <!-- REGISTER -->
-      <section id="page-register" class="page">
-        <div class="page-header">
-          <div class="container">
-            <h1>Register</h1>
-            <p>Secure your place — registration opens mid-August 2026</p>
-          </div>
-        </div>
-        <div class="container section">
-          <div class="register-layout">
-            <form id="regForm" class="reg-form" name="bt42-registration" method="POST" data-netlify="true" netlify-honeypot="bot-field" onsubmit="return handleRegister(event)">
-              <input type="hidden" name="form-name" value="bt42-registration" />
-              <p class="hidden" style="display:none"><label>Don’t fill this out: <input name="bot-field" /></label></p>
-              <h2>Entry Form</h2>
-              <p class="form-note">Complete the form below. After submission you will receive payment instructions (TNM Mpamba or National Bank of Malawi). Your place is confirmed once payment is received.</p>
-              <p class="form-note" style="margin-top:0.5rem"><strong>Age rule:</strong> Marathon (42.195 km) entrants must be <strong>at least 20 years old on race day</strong> (19 September 2026). 10 km and 5 km have no minimum age beyond parental consent where required.</p>
-
-              <div class="form-group">
-                <label for="fullName">Full Name *</label>
-                <input type="text" id="fullName" name="fullName" required placeholder="As on ID / passport" />
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="phone">Mobile Number *</label>
-                  <input type="tel" id="phone" name="phone" required placeholder="e.g. 0999 123 456" />
-                </div>
-                <div class="form-group">
-                  <label for="email">Email</label>
-                  <input type="email" id="email" name="email" placeholder="optional" />
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="gender">Gender *</label>
-                  <select id="gender" name="gender" required>
-                    <option value="">Select</option>
-                    <option value="M">Male</option>
-                    <option value="F">Female</option>
-                    <option value="O">Prefer not to say</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label for="dob">Date of Birth *</label>
-                  <input type="date" id="dob" name="dob" required />
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="distance">Distance *</label>
-                <select id="distance" name="distance" required>
-                  <option value="">Choose your race</option>
-                  <option value="42.195">42.195 km Marathon (must be 20+ on race day)</option>
-                  <option value="10">10 km Race</option>
-                  <option value="5">5 km Fun Run</option>
-                </select>
-                <p id="marathon-age-hint" class="form-note" style="display:none;color:#C0392B;margin-top:0.35rem"></p>
-                <p id="fee-preview" class="form-note" style="display:none;margin-top:0.35rem"></p>
-              </div>
-              <div class="form-group">
-                <label for="emergency">Emergency Contact Name & Phone *</label>
-                <input type="text" id="emergency" name="emergency" required placeholder="Name + number" />
-              </div>
-              <div class="form-group checkbox">
-                <label>
-                  <input type="checkbox" id="terms" name="terms" required />
-                  I agree to the event rules, medical disclaimer, and data use for race organisation.
-                </label>
-              </div>
-              <button type="submit" class="btn btn-primary btn-block">Submit &amp; Get Payment Instructions</button>
-              <p class="form-foot">After you pay using the reference shown next, the team will confirm your entry (usually within 1–2 working days).</p>
-            </form>
-
-            <aside class="reg-sidebar">
-              <div class="sidebar-card">
-                <h3>Registration Status</h3>
-                <p class="status-pill open">Registration Open</p>
-                <ul class="checklist">
-                  <li>Online form (this page)</li>
-                  <li>Mobile money payments</li>
-                  <li>Physical registration points (TBC)</li>
-                  <li>Early-bird discounts planned</li>
-                </ul>
-              </div>
-              <div class="sidebar-card">
-                <h3>Payment details</h3>
-                <p><strong>TNM Mpamba</strong></p>
-                <ol style="margin:0.35rem 0 0.75rem 1.1rem;font-size:0.9rem;padding:0">
-                  <li>Dial <code>*444#</code></li>
-                  <li>Select <strong>4</strong></li>
-                  <li>Enter business code <code>500204</code></li>
-                  <li>Amount for your race distance appears — confirm and pay</li>
-                </ol>
-                <p><strong>National Bank of Malawi:</strong> account <code>1802283</code></p>
-                <p style="font-size:0.85rem;margin-top:0.5rem">Keep the SMS / deposit slip as proof of payment.</p>
-              </div>
-              <div class="sidebar-card">
-                <h3>Need Help?</h3>
-                <p>Contact the organising team via the channels published by MNCS closer to opening.</p>
-              </div>
-            </aside>
-          </div>
-          <div id="regSuccess" class="success-msg hidden">
-            <h3>Registration received</h3>
-            <p><strong>Next step: Complete payment</strong></p>
-            <div id="regSuccessDetail"></div>
-            <button class="btn btn-outline" onclick="document.getElementById('regSuccess').classList.add('hidden')">Close</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- COURSE -->
-      <section id="page-course" class="page">
-        <div class="page-header">
-          <div class="container">
-            <h1>Course</h1>
-            <p>Blantyre city route — final map to be confirmed with authorities</p>
-          </div>
-        </div>
-        <div class="container section">
-          <div class="course-placeholder">
-            <div class="map-mock">
-              <p>📍 Course Map</p>
-              <p class="map-note">Interactive map will be embedded here once the official route is locked (historically involving Kamuzu Highway, key Blantyre arteries, and finish at Kamuzu Stadium).</p>
-            </div>
-          </div>
-          <div class="info-grid two-col">
-            <div class="info-card">
-              <h3>Key Points (Indicative)</h3>
-              <ul class="simple-list">
-                <li>Start / Finish area near Kamuzu Stadium</li>
-                <li>Major roads under traffic management</li>
-                <li>Water & medical stations approximately every 5 km</li>
-                <li>Clear kilometre markers</li>
-              </ul>
-            </div>
-            <div class="info-card">
-              <h3>What to Expect</h3>
-              <ul class="simple-list">
-                <li>Urban course with some hills</li>
-                <li>Early morning start (cooler temperatures)</li>
-                <li>Police and marshal support</li>
-                <li>Live tracking / updates via this app (planned)</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- SPONSORS -->
-      <section id="page-sponsors" class="page">
-        <div class="page-header">
-          <div class="container">
-            <h1>Partners & Sponsors</h1>
-            <p>Supporting long-distance running and community sport in Malawi</p>
-          </div>
-        </div>
-        <div class="container section">
-          <p class="sponsors-intro">We are actively engaging partners for the 2026 edition. Previous and target partners include leading Malawian brands in telecom, banking, beverages, and more.</p>
-          <div class="sponsor-tiers">
-            <div class="tier">
-              <h3>Platinum / Title</h3>
-              <div class="sponsor-slots">
-                <div class="sponsor-slot">Premier Bet (previous Platinum)</div>
-                <div class="sponsor-slot open">Open — Major Partner</div>
-              </div>
-            </div>
-            <div class="tier">
-              <h3>Gold</h3>
-              <div class="sponsor-slots">
-                <div class="sponsor-slot open">Telecom / Mobile Money</div>
-                <div class="sponsor-slot open">Banking Partner</div>
-                <div class="sponsor-slot open">Hydration Partner</div>
-              </div>
-            </div>
-            <div class="tier">
-              <h3>Supporting & In-kind</h3>
-              <div class="sponsor-slots">
-                <div class="sponsor-slot open">Media Partners</div>
-                <div class="sponsor-slot open">Medical & Logistics</div>
-                <div class="sponsor-slot open">Community Partners</div>
-              </div>
-            </div>
-          </div>
-          <div class="cta-box">
-            <h3>Interested in sponsoring?</h3>
-            <p>Contact the Organising Committee for packages (Platinum, Gold, Silver, In-kind). Strong visibility across race materials, digital platforms, and race-day activation.</p>
-            <a href="#info" class="btn btn-primary" onclick="navigate('info')">Get in Touch</a>
-          </div>
-        </div>
-      </section>
-
-      <!-- INFO -->
-      <section id="page-info" class="page">
-        <div class="page-header">
-          <div class="container">
-            <h1>Event Info</h1>
-            <p>Everything you need to know</p>
-          </div>
-        </div>
-        <div class="container section">
-          <div class="accordion">
-            <details open>
-              <summary>About the Event</summary>
-              <p>The BT42.195 km Race is an annual long-distance event organised under the Malawi National Council of Sports. It features a full marathon, 10 km, and 5 km races, attracting elite athletes and community runners from across Malawi and beyond.</p>
-            </details>
-            <details>
-              <summary>Key Dates</summary>
-              <ul>
-                <li><strong>Registration opens:</strong> 18 August 2026 (target)</li>
-                <li><strong>Packet pickup / Expo:</strong> 17–18 September 2026</li>
-                <li><strong>Race Day:</strong> Saturday, 19 September 2026</li>
-                <li><strong>Marathon minimum age:</strong> 20 years old on race day</li>
-              </ul>
-            </details>
-            <details>
-              <summary>What to Bring on Race Day</summary>
-              <ul>
-                <li>Your bib and timing chip (if issued)</li>
-                <li>Appropriate running kit and shoes</li>
-                <li>Personal hydration if preferred (stations will be available)</li>
-                <li>ID for collection if required</li>
-              </ul>
-            </details>
-            <details>
-              <summary>Medical & Safety</summary>
-              <p>Professional medical cover, ambulances, and first-aid posts will be positioned along the course and at the finish. Participants with medical conditions should consult a doctor before racing and declare relevant information at registration.</p>
-            </details>
-            <details>
-              <summary>Contact</summary>
-              <p>Organising Committee Chair and MNCS contacts will be published here once the committee is fully constituted. For now, monitor official MNCS channels and this platform for updates.</p>
-            </details>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <!-- Bottom Tab Bar (App-like on mobile) -->
-    <nav class="tabbar" id="tabbar">
-      <a href="#home" data-page="home" class="tab active">
-        <span class="tab-icon">🏠</span>
-        <span>Home</span>
-      </a>
-      <a href="#races" data-page="races" class="tab">
-        <span class="tab-icon">🏃</span>
-        <span>Races</span>
-      </a>
-      <a href="#register" data-page="register" class="tab">
-        <span class="tab-icon">📝</span>
-        <span>Register</span>
-      </a>
-      <a href="#course" data-page="course" class="tab">
-        <span class="tab-icon">🗺️</span>
-        <span>Course</span>
-      </a>
-      <a href="#info" data-page="info" class="tab">
-        <span class="tab-icon">ℹ️</span>
-        <span>Info</span>
-      </a>
-    </nav>
-
-
-      <!-- CONTROL ROOM -->
-      <section id="page-control" class="page">
-        <div class="page-header">
-          <div class="container">
-            <h1>Committee Control Room</h1>
-            <p>Shared planner for the OC · Chair notes private to the Chair</p>
-          </div>
-        </div>
-
-        <div class="container section">
-          <!-- PIN Gate -->
-          <div id="control-gate" class="control-gate">
-            <h2>Committee Control Room</h2>
-            <p>Enter the <strong>committee password</strong> to open the shared planner (checklist, deadlines, sponsors, participants, budget, race day).</p>
-            <p style="font-size:0.9rem;color:var(--text-muted)">Chair password unlocks the same planner <em>plus</em> private Chair meeting notes and editable metrics.</p>
-            <form id="control-pin-form">
-              <input type="password" id="control-pin" placeholder="Password" autocomplete="off" />
-              <button type="submit" class="btn btn-primary btn-block">Enter Control Room</button>
-            </form>
-            <p style="margin-top:1rem;font-size:0.8rem;opacity:0.7">Passwords are distributed by the Chair. Contact the Chair if you need access.</p>
-          </div>
-
-          <!-- Control Room content -->
-          <div id="control-room" class="control-room hidden">
-            <div class="ctrl-toolbar">
-              <span id="ctrl-role-badge" class="role-badge committee">Signed in</span>
-              <button type="button" id="ctrl-logout" class="btn-logout">Log out</button>
-            </div>
-            <div class="ctrl-tabs">
-              <button class="ctrl-tab active" data-panel="dash">Dashboard</button>
-              <button class="ctrl-tab" data-panel="deadlines">Deadlines</button>
-              <button class="ctrl-tab" data-panel="chair">Chair notes</button>
-              <button class="ctrl-tab" data-panel="participants">Participants</button>
-              <button class="ctrl-tab" data-panel="checklist">Checklist</button>
-              <button class="ctrl-tab" data-panel="meetings">Meetings</button>
-              <button class="ctrl-tab" data-panel="attendance">Attendance</button>
-              <button class="ctrl-tab" data-panel="sponsors">Sponsors</button>
-              <button class="ctrl-tab" data-panel="budget">Budget</button>
-              <button class="ctrl-tab" data-panel="runsheet">Race Day</button>
-              <button class="ctrl-tab" data-panel="roles">Roles</button>
-              <button class="ctrl-tab" data-panel="notes">Notes</button>
-            </div>
-
-            <!-- Dashboard -->
-            <div id="panel-dash" class="ctrl-panel active">
-              <div id="ctrl-metrics" class="metrics-grid"></div>
-              <div class="progress-wrap"><div id="ctrl-progress-bar" class="progress-bar"></div></div>
-              <div id="ctrl-next-meeting" class="next-meeting-box"></div>
-              <div id="ctrl-dash-edit"></div>
-              <h3 class="ctrl-section-title">Success Targets</h3>
-              <div id="ctrl-targets"></div>
-            </div>
-
-            <div id="panel-deadlines" class="ctrl-panel">
-              <h3 class="ctrl-section-title">Chair deadlines — when everything should be done</h3>
-              <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">Tap status to update. Red flag = critical path. Overdue items highlight automatically.</p>
-              <div id="ctrl-deadlines"></div>
-            </div>
-
-            <div id="panel-chair" class="ctrl-panel">
-              <h3 class="ctrl-section-title">Chair meeting notes</h3>
-              <div id="ctrl-chair-notes"></div>
-            </div>
-
-            <!-- Checklist -->
-            <div id="panel-participants" class="ctrl-panel">
-              <h3 class="ctrl-section-title">Participants · Payment · Certificates</h3>
-              <div class="notice" style="margin-bottom:1rem">
-                <strong>Shared with all committee members:</strong> full participant list and payment/finish status.<br>
-                <strong>Chair only:</strong> Verify / Reject payment, e-signatures.<br>
-                Master list after deploy: Netlify Forms → <code>bt42-registration</code>. Pay: Mpamba <code>*444#</code> → 4 → <code>500204</code> or NBM <code>1802283</code>.
-              </div>
-              <div id="ctrl-sync-bar"></div>
-              <div id="ctrl-participants"></div>
-            </div>
-
-            <div id="panel-checklist" class="ctrl-panel">
-              <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">Tap the status icon to cycle: To do → In progress → Done → Blocked. Status is saved on this device.</p>
-              <div id="ctrl-checklist"></div>
-            </div>
-
-            <!-- Meetings -->
-            <div id="panel-meetings" class="ctrl-panel">
-              <p class="form-note" style="margin-bottom:0.5rem">Standing Google Meet for all OC meetings: <a href="https://meet.google.com/ixu-kyfn-pvc" target="_blank" rel="noopener">https://meet.google.com/ixu-kyfn-pvc</a></p>
-              <div id="ctrl-meetings"></div>
-            </div>
-
-            <div id="panel-attendance" class="ctrl-panel">
-              <h3 class="ctrl-section-title">Meeting attendance</h3>
-              <p class="form-note" style="margin-bottom:0.75rem">Mark who attended each OC meeting. Names come from Roles (assign them first). Changes save on this device.</p>
-              <div id="ctrl-attendance"></div>
-            </div>
-
-            <!-- Sponsors -->
-            <div id="panel-sponsors" class="ctrl-panel">
-              <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">Update status as outreach progresses. Changes are saved locally.</p>
-              <div id="ctrl-sponsors"></div>
-            </div>
-
-            <!-- Budget -->
-            <div id="panel-budget" class="ctrl-panel">
-              <p class="form-note" style="margin-bottom:0.75rem">All budget figures are <strong>tentative</strong> until confirmed by the Chair / Finance. Chair can edit amounts in this view.</p>
-              <div id="ctrl-budget"></div>
-            </div>
-
-            <!-- Race Day -->
-            <div id="panel-runsheet" class="ctrl-panel">
-              <h3 class="ctrl-section-title">Race Day Run Sheet (Draft)</h3>
-              <div id="ctrl-runsheet"></div>
-            </div>
-
-            <!-- Roles -->
-            <div id="panel-roles" class="ctrl-panel">
-              <h3 class="ctrl-section-title">OC Roles & Contacts</h3>
-              <div id="ctrl-roles"></div>
-            </div>
-
-            <!-- Notes -->
-            <div id="panel-notes" class="ctrl-panel">
-              <h3 class="ctrl-section-title">Shared Notes (this device)</h3>
-              <textarea id="ctrl-notes" placeholder="Action items, decisions, reminders…"></textarea>
-              <p style="font-size:0.8rem;color:var(--text-muted);margin-top:0.5rem">Notes are stored in this browser only. For shared notes use a WhatsApp group or Google Doc linked from here later.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-    <footer class="footer">
-      <div class="container">
-        <p><strong>BT42.195 km Race 2026</strong> · Blantyre, Malawi</p>
-        <p>Organised under the Malawi National Council of Sports</p>
-        <p class="footer-note">BT42.195 km Race · 19 September 2026</p>
-      </div>
-    </footer>
+    </div>
   </div>
 
-  <script src="js/control-data.js"></script>
-  <script src="js/control.js"></script>
+  <nav class="main-nav">
+    <button class="nav-btn active" data-view="pick">Pick</button>
+    <button class="nav-btn" data-view="transfers">AI Transfers</button>
+    <button class="nav-btn" data-view="teams">AI Teams</button>
+    <button class="nav-btn" data-view="matchday">Matchday</button>
+    <button class="nav-btn" data-view="rank">Live Rank</button>
+    <button class="nav-btn" data-view="chips">Chips</button>
+    <button class="nav-btn" data-view="terms">Terms</button>
+    <button class="nav-btn" data-view="settings">Settings</button>
+  </nav>
+
+  <div class="status-line" id="statusBar">Loading FPL data…</div>
+  <div class="edit-banner hidden" id="editBanner">
+    <strong>Edit mode on</strong> — click a pitch/bench player to remove · click a list player to add ·
+    <span id="editStatusInline"></span>
+    <button id="doneEditBtn" class="btn btn-pink" style="margin-left:12px">Done editing</button>
+  </div>
+
+  <!-- ========== PICK VIEW ========== -->
+  <div id="view-pick" class="view active">
+    <div class="layout">
+      <section class="pitch-area">
+        <div class="horizon-toggle">
+          <button class="hz active" data-hz="1">Next GW</button>
+          <button class="hz" data-hz="3">Next 3 GWs</button>
+        </div>
+        <div class="pitch" id="pitch"></div>
+        <div class="bench-section">
+          <div class="bench-label">Bench</div>
+          <div class="bench" id="bench"></div>
+        </div>
+        <div class="pitch-actions">
+          <button id="optimiseBtn" class="btn btn-blue">✨ Optimise lineup</button>
+          <button id="editBtn" class="btn btn-cyan">✎ Edit team</button>
+          <button id="resetBtn" class="btn btn-ghost">🗑 Reset team</button>
+        </div>
+      </section>
+      <aside class="players-panel card">
+        <h2>Players</h2>
+        <div class="pos-tabs" id="posTabs">
+          <button class="pos-tab active" data-pos="ALL">All</button>
+          <button class="pos-tab" data-pos="GKP">GK</button>
+          <button class="pos-tab" data-pos="DEF">DEF</button>
+          <button class="pos-tab" data-pos="MID">MID</button>
+          <button class="pos-tab" data-pos="FWD">FWD</button>
+        </div>
+        <label class="team-filter-label">Club
+          <select id="teamFilter"><option value="">All clubs</option></select>
+        </label>
+        <label class="sort-label">Sort by
+          <select id="sortBy">
+            <option value="xp">Predicted points</option>
+            <option value="price">Price</option>
+            <option value="own">Ownership</option>
+            <option value="name">Name</option>
+          </select>
+        </label>
+        <div class="price-filter">
+          <span>Price</span>
+          <div class="range-row">
+            <input type="range" id="priceMin" min="4" max="15.5" step="0.5" value="4" />
+            <input type="range" id="priceMax" min="4" max="15.5" step="0.5" value="15.5" />
+          </div>
+          <span id="priceRangeLabel">£4.0 – £15.5m</span>
+        </div>
+        <input type="search" id="searchInput" placeholder="Search by player or team name" />
+        <label class="check"><input type="checkbox" id="affordableOnly" /> Affordable only</label>
+        <div class="player-list" id="playerList"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ========== AI TRANSFERS ========== -->
+  <div id="view-transfers" class="view">
+    <div class="page-wrap">
+      <div class="card">
+        <h2>AI Transfers</h2>
+        <div class="tr-tabs">
+          <button type="button" class="tr-tab active" data-tr-tab="recommended">Recommended</button>
+          <button type="button" class="tr-tab" data-tr-tab="custom">Custom transfers</button>
+        </div>
+
+        <div id="trPaneRecommended" class="tr-pane">
+          <p class="muted">Hub-style recommendations: single moves and multi-transfer <strong>bundles</strong>. GW1 / Wildcard / Free Hit = unlimited free transfers (no hits).</p>
+          <div class="controls-row">
+            <label>Mode
+              <select id="trMode">
+                <option value="unlimited">Unlimited (GW1 / WC / FH — no hits)</option>
+                <option value="normal">Normal gameweek</option>
+              </select>
+            </label>
+            <label>Free transfers <input type="number" id="ftInput" value="1" min="0" max="15" /></label>
+            <label>Max hits <input type="number" id="hitsInput" value="0" min="0" max="3" /></label>
+            <label>Horizon
+              <select id="trHorizon">
+                <option value="1">Next GW</option>
+                <option value="3" selected>Next 3 GWs</option>
+                <option value="6">Next 6 GWs</option>
+              </select>
+            </label>
+            <button id="runTransfersBtn" class="btn btn-blue">Find transfers</button>
+          </div>
+          <p class="muted" id="trModeHint" style="font-size:0.8rem;margin-top:6px"></p>
+        </div>
+
+        <div id="trPaneCustom" class="tr-pane hidden">
+          <p class="muted">Adjust AI recommendations with your own filters (Hub-style custom transfers).</p>
+          <div class="custom-filters" id="customFilters">
+            <div class="filter-row">
+              <label># No. of transfers
+                <select id="cfNumTransfers">
+                  <option value="1">1 transfer</option>
+                  <option value="2">2 transfers</option>
+                  <option value="3">3 transfers</option>
+                </select>
+              </label>
+              <label>Player position
+                <select id="cfPosition">
+                  <option value="">Any</option>
+                  <option value="GKP">GKP</option>
+                  <option value="DEF">DEF</option>
+                  <option value="MID">MID</option>
+                  <option value="FWD">FWD</option>
+                </select>
+              </label>
+            </div>
+            <div class="filter-row">
+              <label>Team (in)
+                <select id="cfTeam"><option value="">Any club</option></select>
+              </label>
+              <label>Effective ownership max %
+                <input type="number" id="cfMaxEO" value="100" min="0" max="100" step="1" />
+              </label>
+            </div>
+            <div class="filter-row">
+              <label>Player price max £
+                <input type="number" id="cfMaxPrice" value="15" min="4" max="15" step="0.5" />
+              </label>
+              <label>Player price min £
+                <input type="number" id="cfMinPrice" value="4" min="4" max="15" step="0.5" />
+              </label>
+            </div>
+            <div class="filter-row">
+              <label>Player in (name contains)
+                <input type="text" id="cfPlayerIn" placeholder="e.g. Saka" />
+              </label>
+              <label>Player out (name contains)
+                <input type="text" id="cfPlayerOut" placeholder="e.g. weak mid" />
+              </label>
+            </div>
+            <div class="controls-row">
+              <label>Free transfers <input type="number" id="ftInputCustom" value="1" min="0" max="5" /></label>
+              <label>Max hits <input type="number" id="hitsInputCustom" value="2" min="0" max="3" /></label>
+              <button id="runCustomTransfersBtn" class="btn btn-blue">Run custom transfers</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="transferResults"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== AI TEAMS ========== -->
+  <div id="view-teams" class="view">
+    <div class="page-wrap">
+      <div class="card">
+        <h2>AI Teams</h2>
+        <p class="muted">Alternative strong squads for Wildcard / Free Hit / building from scratch. Optimised for XI points under £100m.</p>
+        <div class="controls-row">
+          <label>Budget £<input type="number" id="aiBudget" value="100" min="90" max="100" step="0.5" /></label>
+          <button id="genTeamsBtn" class="btn btn-blue">Generate AI teams</button>
+        </div>
+        <div id="aiTeamsResults"></div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ========== LIVE RANK ========== -->
+
+  <!-- ========== MATCHDAY VIEW ========== -->
+  <div id="view-matchday" class="view">
+    <div class="matchday-grid">
+      <section class="md-card">
+        <h2>Captain poll · Top 10 prospects</h2>
+        <p class="muted">Automated ranking from predicted points (xG, fixtures, FDR, availability). Tap to set captain on Pick.</p>
+        <div id="captainPoll" class="poll-list"></div>
+      </section>
+
+      <section class="md-card">
+        <h2>Chip poll</h2>
+        <p class="muted">AI recommendation for this gameweek based on fixtures, blanks/doubles proxy and your squad.</p>
+        <div id="chipPoll" class="chip-poll"></div>
+      </section>
+
+      <section class="md-card md-wide">
+        <h2>Fixtures · FDR</h2>
+        <p class="muted">Next gameweek fixtures with difficulty (1 easy → 5 hard). Home / Away shown for each side.</p>
+        <div id="fixtureBoard" class="fixture-board"></div>
+      </section>
+
+      <section class="md-card md-wide">
+        <h2>Live scoring</h2>
+        <p class="muted">How players are earning points during the gameweek (goals, assists, CS, bonus). Updates when FPL publishes live data.</p>
+        <div class="md-toolbar">
+          <button id="refreshLiveBtn" class="btn btn-pink">Refresh live</button>
+          <span id="liveStatus" class="muted"></span>
+        </div>
+        <div id="liveBoard" class="live-board"></div>
+      </section>
+
+      <section class="md-card md-wide">
+        <h2>xG · Clean sheets · Key metrics</h2>
+        <p class="muted">Highest xG/xA and clean-sheet leaning defenders/GKs for the next GW.</p>
+        <div id="metricsBoard" class="metrics-board"></div>
+      </section>
+
+      <section class="md-card md-wide">
+        <h2>Mini-league rival radar</h2>
+        <p class="muted">Enter a classic league ID. We compare your squad to rivals’ last published picks (best after deadline / during GW).</p>
+        <div class="md-toolbar">
+          <label>League ID <input type="number" id="rivalLeagueId" placeholder="e.g. 123456" style="width:140px;padding:6px;border-radius:8px;border:1px solid var(--border)" /></label>
+          <button id="rivalScanBtn" class="btn btn-blue">Scan rivals</button>
+        </div>
+        <div id="rivalBoard" class="metrics-board" style="margin-top:12px"></div>
+      </section>
+
+      <section class="md-card md-wide">
+        <h2>Price change watchlist</h2>
+        <p class="muted">Likely rises / falls from net transfers this GW (proxy — official changes run overnight ~1:30 UK).</p>
+        <div id="priceBoard" class="metrics-board"></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="view-rank" class="view">
+    <div class="page-wrap">
+      <div class="card">
+        <h2>Live Rank</h2>
+        <p class="muted">Overall rank, gameweek points and mini-league standing from the official FPL API. Available once Gameweek 1 is live.</p>
+        <div class="controls-row" style="margin-bottom:12px">
+          <label>Team ID <input type="number" id="rankTeamId" value="" placeholder="Team ID" /></label>
+          <button id="refreshRankBtn" class="btn btn-blue">Refresh rank</button>
+        </div>
+        <div id="rankSummary" class="rank-summary">
+          <p class="muted">Loading…</p>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Gameweek history</h2>
+        <div id="rankHistory" class="rank-history">
+          <p class="muted">History appears after the first scored gameweek.</p>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Classic leagues</h2>
+        <div id="rankLeagues" class="rank-leagues">
+          <p class="muted">Your classic leagues will show here.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== CHIPS ========== -->
+  <div id="view-chips" class="view">
+    <div class="page-wrap">
+      <div class="card">
+        <h2>Chip strategy</h2>
+        <p class="muted">Plan which gameweek to play each chip. Saved on this device only (not sent to official FPL).</p>
+        <div class="chip-grid" id="chipGrid"></div>
+        <div id="chipAdviceShort" class="chip-advice" style="margin-top:16px"></div>
+        <div id="chipModal" class="chip-modal hidden">
+          <div class="chip-modal-box">
+            <h3 id="chipModalTitle">Chip</h3>
+            <p id="chipModalDesc" class="muted"></p>
+            <label>Choose gameweek
+              <select id="chipGwSelect"></select>
+            </label>
+            <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+              <button type="button" class="btn btn-ghost" id="chipClearBtn">Clear</button>
+              <button type="button" class="btn btn-cyan" id="chipCancelBtn">Cancel</button>
+              <button type="button" class="btn btn-blue" id="chipSaveBtn">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Plans & pricing</h2>
+        <p class="trial-note" style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px 12px;font-size:0.9rem">
+          <strong>14-day free trial:</strong> Start Pro or Ultra free for 14 days — all features unlocked. Cancel anytime before the trial ends; no charge if you don’t continue.
+        </p>
+        <p class="muted">Prices in USD. Yearly = 20% off. Local Malawi payments use merchant Till codes only (no personal numbers on this site).</p>
+        <div class="price-grid">
+          <div class="price-card">
+            <h3>Starter</h3>
+            <div class="price">Free</div>
+            <ul>
+              <li>Pitch view & your squad</li>
+              <li>Predicted points (xG + fixtures)</li>
+              <li>Chip planner</li>
+              <li>Optimise lineup</li>
+            </ul>
+            <button type="button" class="btn btn-ghost" disabled>Always free</button>
+          </div>
+          <div class="price-card featured">
+            <div class="badge">Most popular</div>
+            <h3>Pro</h3>
+            <div class="price">$2.49<span>/mo</span></div>
+            <div class="price" style="font-size:1rem;margin-top:-6px;color:var(--muted)">or <strong>$23.90/yr</strong> <span style="color:#16a34a;font-size:0.8rem">save 20%</span></div>
+            <ul>
+              <li>Unlimited AI Transfers</li>
+              <li>Unlimited AI Teams</li>
+              <li>Improved projections (xG + FDR)</li>
+              <li>Live Rank tab</li>
+              <li>Mini-league rival diffs</li>
+            </ul>
+            <a id="upgradeProBtn" class="btn btn-blue" href="https://www.paypal.com/ncp/payment/J6DP32LZ7ZMZA" target="_blank" rel="noopener">PayPal · Pro monthly</a>
+            <button type="button" id="startTrialPro" class="btn btn-outline" style="margin-top:6px">Start 14-day Pro trial</button>
+            <a id="upgradeProYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/6BS7Z7XPV4FFL" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Pro yearly $23.90</a>
+          </div>
+          <div class="price-card">
+            <h3>Ultra</h3>
+            <div class="price">$4.99<span>/mo</span></div>
+            <div class="price" style="font-size:1rem;margin-top:-6px;color:var(--muted)">or <strong>$47.90/yr</strong> <span style="color:#16a34a;font-size:0.8rem">save 20%</span></div>
+            <ul>
+              <li><strong>Everything in Pro</strong></li>
+              <li>Multi-week transfer planner</li>
+              <li>Draft + Challenge trackers</li>
+              <li>Priority data refresh</li>
+              <li>Early access to new tools</li>
+            </ul>
+            <a id="upgradeUltraBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ZXB3XQA3BJG9A" target="_blank" rel="noopener">PayPal · Ultra monthly</a>
+            <button type="button" id="startTrialUltra" class="btn btn-outline" style="margin-top:6px">Start 14-day Ultra trial</button>
+            <a id="upgradeUltraYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ELGD2S687MS7Q" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Ultra yearly $47.90</a>
+          </div>
+        </div>
+
+        <div class="manual-pay-box" style="margin-top:20px;padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0">
+          <h3 style="margin:0 0 8px;font-size:1rem">Pay via Airtel Money / TNM Mpamba (Malawi)</h3>
+          <p class="muted" style="margin:0 0 8px;font-size:0.9rem">
+            Use the merchant Till codes below. Your personal numbers are never shown. After payment, send proof and you receive an unlock link.
+          </p>
+          <p id="manualPayDetails" style="margin:0;font-size:0.9rem"></p>
+        </div>
+
+        <p class="muted" style="margin-top:14px;font-size:0.85rem">
+          Testing: AI Transfers / AI Teams → <strong>Demo unlock</strong>.<br>
+          Reset plan: console → <code>localStorage.removeItem('fpl_plan_v1')</code> then Refresh.
+        </p>
+      </div>
+    </div>
+  </div>
+
+
+
+  
+  <!-- Player context menu (Hub-style) -->
+  <div id="playerMenu" class="player-menu hidden">
+    <button type="button" data-act="captain">© Make captain</button>
+    <button type="button" data-act="vice">ⓥ Make vice captain</button>
+    <button type="button" data-act="sub">⇄ Substitute</button>
+    <button type="button" data-act="transfer">↗ Transfer out</button>
+    <button type="button" data-act="recommend">✦ Recommend transfer</button>
+    <button type="button" data-act="info">ⓘ See player info</button>
+  </div>
+  <div id="playerInfoModal" class="chip-modal hidden">
+    <div class="chip-modal-box player-info-card">
+      <button type="button" class="modal-close" id="playerInfoClose" aria-label="Close">×</button>
+      <div id="playerInfoBody"></div>
+    </div>
+  </div>
+    <div id="installModal" class="chip-modal hidden">
+    <div class="chip-modal-box install-guide-card">
+      <button type="button" class="modal-close" id="installModalClose">×</button>
+      <h2 style="margin-top:0">Install FPL Assistant</h2>
+      <div id="installGuideBody"></div>
+    </div>
+  </div>
+  <div id="loginModal" class="chip-modal hidden">
+    <div class="chip-modal-box" style="max-width:420px">
+      <h3>Sign in</h3>
+      <p class="muted" style="font-size:0.9rem">Pro / Ultra is bound to your <strong>email + Team ID</strong> after payment. Enter both to unlock AI features for that team only.</p>
+      <label style="display:block">Email
+        <input type="email" id="loginEmail" placeholder="you@email.com" required style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border)" />
+      </label>
+      <label style="display:block;margin-top:10px">Team ID
+        <input type="number" id="loginTeamId" placeholder="e.g. 3748215" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border)" />
+      </label>
+      <input type="hidden" id="loginCode" value="" />
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.9rem">
+        <input type="checkbox" id="loginMatchdayEmail" />
+        Email me Matchday digests (captain poll, chip tip, fixtures)
+      </label>
+      <p id="loginMsg" style="margin-top:10px;font-size:0.85rem"></p>
+      <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn btn-ghost" id="loginCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-blue" id="loginSubmitBtn">Sign in</button>
+      </div>
+    </div>
+  </div>
+
+      <div id="view-settings" class="view">
+    <div class="page-wrap settings-page">
+      <div class="card">
+        <h2>Settings</h2>
+        <p class="muted">Manage your account, team, display, and app install options.</p>
+
+        <div class="settings-section">
+          <h3>Account</h3>
+          <div class="settings-grid" id="settingsAccountCard">
+            <div><span class="settings-label">Status</span><strong id="settingsAuthStatus">Not signed in</strong></div>
+            <div><span class="settings-label">Plan</span><strong id="settingsPlan">Starter</strong></div>
+            <div><span class="settings-label">Email</span><strong id="settingsEmail">—</strong></div>
+            <div><span class="settings-label">Bound Team ID</span><strong id="settingsBoundTeam">—</strong></div>
+          </div>
+          <div class="controls-row" style="margin-top:12px">
+            <button type="button" id="settingsSignInBtn" class="btn btn-cyan">Sign in</button>
+            <button type="button" id="settingsSignOutBtn" class="btn btn-ghost">Sign out</button>
+            <button type="button" id="settingsStartTrialBtn" class="btn btn-outline">Start 14-day Pro trial</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>My FPL team</h3>
+          <label class="settings-field">Team ID
+            <input type="number" id="settingsTeamId" placeholder="e.g. 1932256" />
+          </label>
+          <p class="muted" style="font-size:0.8rem;margin:6px 0">Saved on this device and auto-loaded when you reopen the app.</p>
+          <div class="controls-row">
+            <button type="button" id="settingsSaveTeamBtn" class="btn btn-blue">Save &amp; load team</button>
+            <button type="button" id="settingsClearSquadBtn" class="btn btn-ghost">Clear saved squad</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Notifications</h3>
+          <label class="settings-check">
+            <input type="checkbox" id="settingsMatchdayEmail" />
+            Matchday deadline emails (uses sign-in email)
+          </label>
+          <button type="button" id="settingsSaveNotifyBtn" class="btn btn-blue" style="margin-top:8px">Save notification preference</button>
+        </div>
+
+        <div class="settings-section">
+          <h3>Display &amp; UI</h3>
+          <label class="settings-check"><input type="checkbox" id="settingsCompactPitch" /> Compact pitch cards (better on small phones)</label>
+          <label class="settings-check"><input type="checkbox" id="settingsHideMetrics" /> Hide top metrics bar on small screens</label>
+          <label class="settings-check"><input type="checkbox" id="settingsHideGwBanner" /> Hide large Gameweek banner</label>
+          <label class="settings-field" style="margin-top:10px">Default predicted-points horizon
+            <select id="settingsDefaultHorizon">
+              <option value="1">Next GW only</option>
+              <option value="3">Next 3 GWs</option>
+            </select>
+          </label>
+          <label class="settings-field">Theme
+            <select id="settingsTheme">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="system">System</option>
+            </select>
+          </label>
+          <button type="button" id="settingsSaveUiBtn" class="btn btn-blue" style="margin-top:10px">Save display settings</button>
+        </div>
+
+        <div class="settings-section">
+          <h3>Install app</h3>
+          <p class="muted" style="font-size:0.85rem;margin-bottom:8px"><strong>iPhone:</strong> Safari → Share → Add to Home Screen</p>
+          <p class="muted" style="font-size:0.85rem;margin-bottom:8px"><strong>Android:</strong> Chrome → menu → Install app / Add to Home screen</p>
+          <button type="button" id="settingsInstallBtn" class="btn btn-outline">Show install guide</button>
+        </div>
+
+        <div class="settings-section">
+          <h3>Data &amp; legal</h3>
+          <div class="controls-row">
+            <button type="button" id="settingsClearLocalBtn" class="btn btn-ghost">Clear all local data</button>
+            <a class="btn btn-outline" href="/privacy.html">Privacy policy</a>
+            <button type="button" id="settingsOpenTermsBtn" class="btn btn-outline">Terms of use</button>
+          </div>
+          <p class="muted" style="font-size:0.75rem;margin-top:8px">Clearing local data removes saved squad, Team ID memory, trial session, and UI preferences on this device only.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<div id="view-terms" class="view">
+    <div class="terms-doc" id="termsContent"></div>
+  </div>
+
+  <footer class="footer">
+    Data from the official Fantasy Premier League API · <a href="#" id="footerTermsLink">Terms of Use</a> · <a href="/privacy.html">Privacy</a> · Not affiliated with the Premier League ·
+    <span id="lastUpdated"></span>
+  </footer>
   <script src="js/app.js"></script>
 </body>
 </html>

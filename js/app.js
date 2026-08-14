@@ -1,268 +1,2980 @@
-/* BT42.195 km Race 2026 — App logic (launch version) */
+/* FPL Assistant – pitch UI, AI Transfers, AI Teams, Netlify proxy */
 
-(function () {
-  const RACE_DATE = new Date('2026-09-19T06:30:00+02:00'); // CAT
+const API = "/api/fpl?path=";
+const DEFAULT_TEAM_ID = null; // public site: no default team
+const BUDGET = 100.0; // Starting budget only (£100.0m). Team *value* can rise above 100 as player prices rise.
 
-  // ---- Navigation ----
-  function navigate(pageId) {
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    const target = document.getElementById('page-' + pageId);
-    if (target) {
-      target.classList.add('active');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+// ============================================================
+// PRICING (USD) + PAYPAL LINKS
+// Annual = monthly × 12 × 0.80  (20% discount)
+// ============================================================
+const PRICING = {
+  pro:   { monthly: 2.49, yearly: +(2.49 * 12 * 0.8).toFixed(2) },   // $2.49 / $23.90
+  ultra: { monthly: 4.99, yearly: +(4.99 * 12 * 0.8).toFixed(2) },   // $4.99 / $47.90
+};
+
+const PAYPAL_PRO_MONTHLY   = "https://www.paypal.com/ncp/payment/J6DP32LZ7ZMZA";
+const PAYPAL_ULTRA_MONTHLY = "https://www.paypal.com/ncp/payment/ZXB3XQA3BJG9A";
+const PAYPAL_PRO_YEARLY    = "https://www.paypal.com/ncp/payment/6BS7Z7XPV4FFL";
+const PAYPAL_ULTRA_YEARLY  = "https://www.paypal.com/ncp/payment/ELGD2S687MS7Q";
+
+const CHECKOUT_PRO_LINK   = PAYPAL_PRO_MONTHLY;
+const CHECKOUT_ULTRA_LINK = PAYPAL_ULTRA_MONTHLY;
+
+// Mobile money – Merchant Till codes only (no personal numbers on site)
+// Replace TILL_xxx with the codes Airtel / TNM give you after merchant registration.
+const MERCHANT_TILLS = {
+  airtel: "AIRTEL_TILL_XXXX",   // e.g. 123456
+  tnm:    "TNM_TILL_YYYY",      // e.g. 654321
+  // Optional National Bank merchant / account reference (not personal account)
+  nbm:    "",                   // leave blank if not using NBM yet
+};
+
+// Owner sign-in: use this email (any Team ID)
+const OWNER_EMAIL = "ctenthani@gmail.com";
+
+// Paid subscribers — you add a row after each payment (email lowercased)
+// plan: "pro" | "ultra"
+const PAID_USERS = [
+  // { email: "customer@example.com", teamId: 1234567, plan: "pro" },
+];
+
+function moneyUsd(n) { return "$" + Number(n).toFixed(2); }
+
+function voterKey() {
+  try {
+    let k = localStorage.getItem("fpl_voter_v1");
+    if (!k) {
+      k = "v_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem("fpl_voter_v1", k);
     }
-    document.querySelectorAll('.nav a, .tab').forEach(el => {
-      el.classList.toggle('active', el.dataset.page === pageId);
+    return k;
+  } catch (_) {
+    return "anon_" + Date.now();
+  }
+}
+
+async function apiVotes(gw) {
+  try {
+    const r = await fetch("/api/votes?gw=" + encodeURIComponent(gw));
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (_) { return null; }
+}
+
+async function castVote(type, choice) {
+  try {
+    const r = await fetch("/api/votes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, gw: currentGw, choice: String(choice), voterKey: voterKey() }),
     });
-    document.getElementById('nav')?.classList.remove('open');
-
-    // Initialise Control Room when that page is shown
-    if (pageId === 'control' && window.BT42Control) {
-      window.BT42Control.init();
-    }
+    return await r.json();
+  } catch (e) {
+    return { error: String(e) };
   }
+}
 
-  window.navigate = navigate;
-
-  function handleHash() {
-    const hash = (location.hash || '#home').replace('#', '') || 'home';
-    navigate(hash);
+async function setMatchdaySubscription(email, teamId, matchday) {
+  try {
+    const r = await fetch("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        teamId,
+        matchday: !!matchday,
+        plan: (authSession && authSession.plan) || "starter",
+      }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { error: String(e) };
   }
+}
 
-  window.addEventListener('hashchange', handleHash);
-  document.addEventListener('DOMContentLoaded', handleHash);
 
-  const toggle = document.getElementById('navToggle');
-  const nav = document.getElementById('nav');
-  if (toggle && nav) {
-    toggle.addEventListener('click', () => nav.classList.toggle('open'));
+function $(id) { return document.getElementById(id); }
+function on(id, evt, fn) {
+  const el = $(id);
+  if (el) el.addEventListener(evt, fn);
+}
+function money(n) { return "£" + Number(n).toFixed(1) + "m"; }
+
+/** Current squad value at today's prices (can exceed £100.0m). */
+function squadValue() {
+  return squad.reduce((s, p) => s + (p.price || 0), 0);
+}
+
+/**
+ * FPL money model:
+ * - New / AI draft: total spend ≤ £100.0m, bank = 100 − spent
+ * - Loaded entry: team value can be >100 after price rises; bank comes from API (or estimated)
+ * Never force bank = 100 − value for a live team (that would go negative wrongly).
+ */
+function refreshBankAndValueDisplay() {
+  const cost = squadValue();
+  if (!squadLockedValue) {
+    // Draft / editor starting from scratch
+    bank = Math.max(0, BUDGET - cost);
+  } else if (entryBank != null) {
+    bank = entryBank;
   }
+  // else keep existing bank (e.g. after local transfers)
+  const ratingEl = $("mRating");
+  // metrics updated by caller
+  return { cost, bank };
+}
 
-  document.querySelectorAll('[data-page]').forEach(link => {
-    link.addEventListener('click', (e) => {
-      const page = link.dataset.page;
-      if (page) {
-        e.preventDefault();
-        location.hash = page;
+function setStatus(m) { const el = $("statusBar"); if (el) el.textContent = m; }
+function xpOf(p) { return horizon === 3 ? p.xp3 : p.xp; }
+
+
+
+
+let authSession = null; // { teamId, plan, email }
+
+function loadAuthSession() {
+  try {
+    const raw = localStorage.getItem("fpl_auth_v1");
+    if (raw) authSession = JSON.parse(raw);
+  } catch (_) { authSession = null; }
+  // URL one-time login: ?login=TEAM&plan=pro&code=XXXX  or ?owner=CODE
+  try {
+    const params = new URLSearchParams(location.search);
+    // Optional deep-link activate: ?email=x&team=123&plan=pro (must match PAID_USERS)
+    const qEmail = (params.get("email") || "").toLowerCase();
+    const qTeam = parseInt(params.get("team") || params.get("login") || "", 10);
+    const qPlan = params.get("plan");
+    if (qEmail && qTeam && (qPlan === "pro" || qPlan === "ultra")) {
+      const hit = PAID_USERS.find(u => String(u.email).toLowerCase() === qEmail && Number(u.teamId) === qTeam && u.plan === qPlan);
+      if (hit || qEmail === OWNER_EMAIL.toLowerCase()) {
+        authSession = { teamId: qEmail === OWNER_EMAIL.toLowerCase() ? null : qTeam, plan: qEmail === OWNER_EMAIL.toLowerCase() ? "owner" : qPlan, email: qEmail };
+        localStorage.setItem("fpl_auth_v1", JSON.stringify(authSession));
+        history.replaceState({}, "", location.pathname);
+        if ($("teamIdInput") && qTeam) $("teamIdInput").value = qTeam;
       }
+    }
+  } catch (_) {}
+}
+
+function saveAuthSession(sess) {
+  authSession = sess;
+  try {
+    if (sess) localStorage.setItem("fpl_auth_v1", JSON.stringify(sess));
+    else localStorage.removeItem("fpl_auth_v1");
+  } catch (_) {}
+  updatePlanUI();
+}
+
+function currentTeamId() {
+  const v = parseInt($("teamIdInput") && $("teamIdInput").value, 10);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+function rememberTeamId(id) {
+  id = id || currentTeamId();
+  try {
+    if (id) localStorage.setItem("fpl_last_team_id", String(id));
+  } catch (_) {}
+}
+
+function restoreTeamIdInput() {
+  const input = $("teamIdInput");
+  if (!input) return null;
+  try {
+    const u = new URL(location.href);
+    const fromUrl = parseInt(u.searchParams.get("team"), 10);
+    if (fromUrl > 0) {
+      input.value = fromUrl;
+      rememberTeamId(fromUrl);
+      return fromUrl;
+    }
+  } catch (_) {}
+  const typed = parseInt(input.value, 10);
+  if (typed > 0) {
+    rememberTeamId(typed);
+    return typed;
+  }
+  try {
+    const saved = parseInt(localStorage.getItem("fpl_last_team_id"), 10);
+    if (saved > 0) {
+      input.value = saved;
+      return saved;
+    }
+  } catch (_) {}
+  return null;
+}
+
+/** Pro only if session matches the Team ID currently loaded (owner always). */
+function trialStillValid(sess) {
+  if (!sess || !sess.trialEnds) return false;
+  return Date.now() < Number(sess.trialEnds);
+}
+
+function isPro() {
+  if (!authSession) return false;
+  if (authSession.plan === "owner") return true;
+  if (authSession.plan !== "pro" && authSession.plan !== "ultra" && authSession.plan !== "trial_pro" && authSession.plan !== "trial_ultra") return false;
+  if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") {
+    if (!trialStillValid(authSession)) return false;
+  }
+  // trials are not team-bound so user can explore; paid stays team-bound
+  if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") return true;
+  return Number(authSession.teamId) === Number(currentTeamId());
+}
+function isUltra() {
+  if (!authSession) return false;
+  if (authSession.plan === "owner") return true;
+  if (authSession.plan === "trial_ultra" && trialStillValid(authSession)) return true;
+  if (authSession.plan !== "ultra") return false;
+  return Number(authSession.teamId) === Number(currentTeamId());
+}
+function activePlanLabel() {
+  if (!authSession) return "Starter";
+  if (authSession.plan === "owner") return "Owner";
+  if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") {
+    if (!trialStillValid(authSession)) return "Starter";
+    const days = Math.max(0, Math.ceil((Number(authSession.trialEnds) - Date.now()) / 86400000));
+    return (authSession.plan === "trial_ultra" ? "Ultra trial" : "Pro trial") + " · " + days + "d left";
+  }
+  if (isPro()) return authSession.plan === "ultra" ? "Ultra" : "Pro";
+  return "Starter";
+}
+
+function startTrial(level) {
+  // level: "pro" | "ultra"
+  const ends = Date.now() + 14 * 24 * 60 * 60 * 1000;
+  saveAuthSession({
+    teamId: currentTeamId() || null,
+    plan: level === "ultra" ? "trial_ultra" : "trial_pro",
+    email: (authSession && authSession.email) || "trial@local",
+    trialEnds: ends,
+    trialStarted: Date.now(),
+  });
+  setStatus((level === "ultra" ? "Ultra" : "Pro") + " trial started — 14 days, all features unlocked");
+  updatePlanUI();
+}
+
+function setPlan() { /* legacy no-op – use login */ }
+
+function attemptLogin(teamId, code, email) {
+  // code arg kept for backward compat but ignored — login is email + teamId
+  teamId = parseInt(teamId, 10);
+  email = String(email || "").trim().toLowerCase();
+  if (!email) return { ok: false, msg: "Enter your email" };
+  if (!teamId) return { ok: false, msg: "Enter a valid Team ID" };
+
+  // Owner
+  if (email === OWNER_EMAIL.toLowerCase()) {
+    saveAuthSession({ teamId: null, plan: "owner", email });
+    if ($("teamIdInput")) $("teamIdInput").value = teamId;
+    return { ok: true, msg: "Signed in as Owner (full access on any team)" };
+  }
+
+  // Paid allowlist
+  const hit = PAID_USERS.find(u =>
+    String(u.email || "").toLowerCase() === email && Number(u.teamId) === teamId
+  );
+  if (hit && (hit.plan === "pro" || hit.plan === "ultra")) {
+    saveAuthSession({ teamId, plan: hit.plan, email });
+    if ($("teamIdInput")) $("teamIdInput").value = teamId;
+    return { ok: true, msg: `Signed in · ${hit.plan.toUpperCase()} · team ${teamId}` };
+  }
+  return { ok: false, msg: "No Pro/Ultra found for that email + Team ID. Pay first, then we activate your account." };
+}
+
+function logout() {
+  saveAuthSession(null);
+  setStatus("Signed out — Pro features locked");
+}
+
+function loadPlan() {
+  loadAuthSession();
+}
+
+function updatePlanUI() {
+  const badge = $("planBadge");
+  if (badge) {
+    const label = activePlanLabel();
+    badge.textContent = label;
+    badge.className = "plan-badge " + (label === "Owner" || label === "Ultra" ? "ultra" : label === "Pro" ? "pro" : "starter");
+  }
+  const authBtn = $("authBtn");
+  if (authBtn) {
+    const signed = authSession && (authSession.plan === "owner" || authSession.plan === "pro" || authSession.plan === "ultra" || ((authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") && trialStillValid(authSession)));
+    authBtn.textContent = signed ? "Sign out" : "Sign in";
+  }
+  document.querySelectorAll(".pro-only").forEach(el => {
+    el.classList.toggle("locked", !isPro());
+  });
+  const proBtn = $("upgradeProBtn");
+  const ultraBtn = $("upgradeUltraBtn");
+  const proY = $("upgradeProYearlyBtn");
+  const ultraY = $("upgradeUltraYearlyBtn");
+  if (proBtn) proBtn.href = PAYPAL_PRO_MONTHLY;
+  if (ultraBtn) ultraBtn.href = PAYPAL_ULTRA_MONTHLY;
+  if (proY) proY.href = PAYPAL_PRO_YEARLY;
+  if (ultraY) ultraY.href = PAYPAL_ULTRA_YEARLY;
+
+  const man = $("manualPayDetails");
+  if (man) {
+    const nbm = MERCHANT_TILLS.nbm
+      ? `<br>National Bank merchant ref: <strong>${MERCHANT_TILLS.nbm}</strong>`
+      : "";
+    man.innerHTML = `
+      <strong>Airtel Money</strong> — dial <code>*247#</code> → Pay to Till <strong>${MERCHANT_TILLS.airtel}</strong><br>
+      <strong>TNM Mpamba</strong> — dial <code>*444#</code> → Pay to Till <strong>${MERCHANT_TILLS.tnm}</strong>${nbm}<br>
+      <span class="muted" style="font-size:0.85rem">
+        After paying, send the SMS confirmation (or screenshot) on WhatsApp / X (@ctenthani).
+        Include your email, Team ID, and plan (Pro/Ultra). We activate email + Team ID for Sign in.
+      </span>`;
+  }
+}
+
+
+let bootstrap = null;
+let players = [];
+let fixtures = [];
+let teamsMap = {};
+let posMap = {};
+let currentGw = 1;
+let horizon = 1;
+let squad = [];
+let startingIds = [];
+let benchIds = [];
+let captainId = null;
+let viceCaptainId = null;
+let menuPlayerId = null;
+let editMode = false;
+let bank = 0;
+let entryBank = 0;
+let chipModalKey = null;
+
+const SQUAD_LIMITS = { GKP: 2, DEF: 5, MID: 5, FWD: 3 };
+
+// Optional default draft IDs (unused when user has a Team ID / saved squad)
+const DEFAULT_SQUAD_IDS = {
+  starting: [1, 8, 4, 469, 418, 400, 427, 542, 398, 411, 106],
+  bench: [497, 346, 259, 212],
+  captain: 411
+};
+
+async function fetchJson(path) {
+  const url = API + encodeURIComponent(path);
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+async function loadBootstrap(force = false) {
+  // Do not cache full bootstrap in localStorage — payload is ~1MB+ and
+  // exceeds browser quota (QuotaExceededError), which previously aborted init.
+  // Netlify function already sets short Cache-Control on the proxy response.
+  bootstrap = await fetchJson("bootstrap-static/");
+  if (!bootstrap || !bootstrap.elements) {
+    throw new Error("Bootstrap data missing elements");
+  }
+}
+
+async function loadFixtures() {
+  try {
+    fixtures = await fetchJson("fixtures/");
+  } catch (_) {
+    fixtures = [];
+  }
+}
+
+function buildPlayers() {
+  teamsMap = Object.fromEntries(bootstrap.teams.map(t => [t.id, t]));
+  posMap = Object.fromEntries(bootstrap.element_types.map(p => [p.id, p.singular_name_short]));
+  players = bootstrap.elements.map(p => {
+    const team = teamsMap[p.team] || {};
+    const status = p.status || "a";
+    let availability = 1;
+    if (status === "u" || status === "s") availability = 0;
+    else if (status === "i") availability = 0.15;
+    else if (status === "d") availability = 0.45;
+    else if (p.chance_of_playing_next_round != null)
+      availability = Number(p.chance_of_playing_next_round) / 100;
+    const pl = {
+      id: p.id, web_name: p.web_name, team_id: p.team,
+      team: team.short_name || "?", team_name: team.name || "?", team_code: team.code || 0,
+      position: posMap[p.element_type] || "?", element_type: p.element_type,
+      price: p.now_cost / 10, form: parseFloat(p.form) || 0,
+      points_per_game: parseFloat(p.points_per_game) || 0,
+      total_points: p.total_points || 0,
+      selected_by_percent: parseFloat(p.selected_by_percent) || 0,
+      ep_next: parseFloat(p.ep_next) || 0, status, news: p.news || "",
+      availability,
+      expected_goals: parseFloat(p.expected_goals) || 0,
+      expected_assists: parseFloat(p.expected_assists) || 0,
+      xg90: parseFloat(p.expected_goals_per_90) || 0,
+      xa90: parseFloat(p.expected_assists_per_90) || 0,
+      xgi90: parseFloat(p.expected_goal_involvements_per_90) || 0,
+      xgc90: parseFloat(p.expected_goals_conceded_per_90) || 0,
+      minutes: p.minutes || 0,
+      influence: parseFloat(p.influence) || 0,
+      creativity: parseFloat(p.creativity) || 0,
+      threat: parseFloat(p.threat) || 0,
+      goals_scored: p.goals_scored || 0,
+      assists: p.assists || 0,
+      clean_sheets: p.clean_sheets || 0,
+      saves: p.saves || 0,
+      bonus: p.bonus || 0,
+      transfers_in_event: p.transfers_in_event || 0,
+      transfers_out_event: p.transfers_out_event || 0,
+      xp: 0, xp3: 0,
+    };
+    return pl;
+  });
+  const ev = bootstrap.events.find(e => e.is_next || e.is_current);
+  currentGw = ev ? ev.id : 1;
+  recomputeAllXP();
+  updateGwBanner();
+}
+
+/**
+ * Predicted points model (Hub-style components, public data only).
+ * Uses official ep_next + xG/xA rates + minutes likelihood + position scoring.
+ * Hub is higher because they blend Opta + bookie CS odds + proprietary minutes.
+ * We scale toward realistic GW totals using the components below.
+ */
+function expectedPoints(p, hz = 1) {
+  /**
+   * Hybrid model:
+   * - Trust official ep_next heavily pre-season / low sample
+   * - Do NOT invent attacking upside for fringe players (low mins, low EO, cheap)
+   * - Premiums (price/ownership) get limited structural floors only
+   */
+  const avail = p.availability ?? 1;
+  const mins = p.minutes || 0;
+  const own = p.selected_by_percent || 0;
+  const price = p.price || 4;
+  const ep = parseFloat(p.ep_next) || 0;
+  const form = parseFloat(p.form) || 0;
+
+  // Meaningful playing time only — 1–2 token minutes must NOT count as "played"
+  const realMins = mins >= 90 ? mins : 0;
+  const minsShare = Math.min(1, realMins / (Math.max(currentGw, 1) * 70));
+
+  // Start probability: fringe players stay low
+  let startProb =
+    0.45 * avail +
+    0.30 * minsShare +
+    0.15 * Math.min(own / 25, 1) +
+    0.10 * Math.min(price / 11, 1);
+
+  // FPL ep_next is the best public minutes proxy pre-season
+  if (ep >= 4.5) startProb += 0.20;
+  else if (ep >= 3.5) startProb += 0.12;
+  else if (ep >= 2.5) startProb += 0.05;
+  else if (ep > 0 && ep < 2.0) startProb -= 0.12;
+
+  // Unknown / unused attackers
+  if (realMins < 90 && own < 5 && price < 7) startProb *= 0.45;
+  if (realMins < 90 && own < 2 && price <= 5.5) startProb *= 0.55;
+
+  startProb = Math.max(0.05, Math.min(0.95, startProb));
+
+  const appearance = 2 * startProb;
+  const goalPts = { GKP: 10, DEF: 6, MID: 5, FWD: 4 }[p.position] || 4;
+
+  let xg90 = p.xg90 || 0;
+  let xa90 = p.xa90 || 0;
+  if (realMins > 200) {
+    if (xg90 < 0.02 && (p.expected_goals || 0) > 0) xg90 = (Number(p.expected_goals) * 90) / realMins;
+    if (xa90 < 0.02 && (p.expected_assists || 0) > 0) xa90 = (Number(p.expected_assists) * 90) / realMins;
+  }
+
+  // Floors ONLY for clearly nailed premiums — never for £4.5–6.0 squad fillers
+  if (realMins < 200) {
+    if (price >= 12 && own >= 15) { xg90 = Math.max(xg90, 0.40); xa90 = Math.max(xa90, 0.12); }
+    else if (price >= 10 && own >= 10) { xg90 = Math.max(xg90, 0.22); xa90 = Math.max(xa90, 0.10); }
+    else if (price >= 8 && own >= 8 && (p.position === "MID" || p.position === "FWD")) {
+      xg90 = Math.max(xg90, 0.12); xa90 = Math.max(xa90, 0.08);
+    }
+    // else: leave xg/xa at true rates (often 0) for fringe players
+  }
+
+  const goalsXP = xg90 * (75 / 90) * goalPts * startProb;
+  const assistsXP = xa90 * (75 / 90) * 3 * startProb;
+
+  let csXP = 0;
+  const fixMulNext = fixtureFactor(p.team_id, currentGw);
+  if (p.position === "GKP" || p.position === "DEF") {
+    const xgc = p.xgc90 || 1.25;
+    let csProb = Math.max(0.04, Math.min(0.55, 0.48 - 0.14 * xgc));
+    csProb *= 0.85 + 0.3 * (fixMulNext - 0.9);
+    if (price >= 5.5 && own >= 5) csProb += 0.03;
+    csXP = csProb * 4 * startProb;
+  } else if (p.position === "MID") {
+    csXP = 0.04 * startProb;
+  }
+
+  const ict = (p.influence || 0) + (p.creativity || 0) + (p.threat || 0);
+  const bonusXP = (realMins > 200 || price >= 9)
+    ? Math.min(1.2, ict / 800 + (price >= 9 ? 0.2 : 0)) * startProb
+    : Math.min(0.35, ict / 1200) * startProb;
+
+  const savesXP = p.position === "GKP" ? 0.5 * startProb : 0;
+  const formXP = Math.min(1.2, form * 0.12);
+
+  const component = appearance + goalsXP + assistsXP + csXP + bonusXP + savesXP + formXP;
+
+  let base;
+  if (form >= 1 || realMins > 400) {
+    // In-season with sample: blend FPL + components
+    base = 0.55 * ep + 0.45 * component;
+  } else if (ep >= 3.5) {
+    // FPL thinks they start — lean on ep, mild components
+    base = 0.65 * ep + 0.35 * component;
+  } else {
+    // Pre-season fringe / low ep: STAY CLOSE to official ep_next
+    // (fixes Dasilva-style £5.0m with 2 mins + ep 1.5 being inflated to 6+)
+    base = 0.75 * ep + 0.25 * Math.min(component, ep + 1.2);
+  }
+
+  // Soft floors only if FPL itself projects a real starter
+  if (ep >= 4) base = Math.max(base, ep * 0.9);
+  else if (ep >= 2.5) base = Math.max(base, ep * 0.85);
+  else base = Math.max(0.2, Math.min(base, Math.max(ep, 0.5) + 0.8));
+
+  base *= fixMulNext;
+  base *= avail;
+
+  if (hz <= 1) return +base.toFixed(3);
+
+  const weights = [1, 0.93, 0.86, 0.8, 0.75];
+  let total = base * weights[0];
+  for (let i = 1; i < hz; i++) {
+    total += base * (weights[i] || 0.7) * fixtureFactor(p.team_id, currentGw + i);
+  }
+  return +total.toFixed(3);
+}
+
+function fixtureFactor(teamId, gw) {
+  if (!fixtures || !fixtures.length) return 1;
+  const f = fixtures.find(x => x.event === gw && (x.team_h === teamId || x.team_a === teamId));
+  if (!f) return 0.62; // likely blank / no fixture
+  const isHome = f.team_h === teamId;
+  const diff = isHome ? (f.team_h_difficulty || 3) : (f.team_a_difficulty || 3);
+  // FDR 1–5 → multiplier ~1.22 … 0.87
+  const diffMul = 1.22 - 0.07 * diff;
+  const homeMul = isHome ? 1.07 : 0.96;
+  return Math.max(0.55, Math.min(1.28, diffMul * homeMul));
+}
+
+function formatDeadline(iso) {
+  if (!iso) return "–";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      weekday: "short", day: "numeric", month: "short",
+      hour: "2-digit", minute: "2-digit",
     });
+  } catch (_) { return iso; }
+}
+
+function updateGwBanner() {
+  if (!bootstrap) return;
+  const ev =
+    bootstrap.events.find(e => e.is_next) ||
+    bootstrap.events.find(e => e.is_current) ||
+    bootstrap.events.find(e => e.id === currentGw);
+  const name = ev ? (ev.name || ("Gameweek " + ev.id)) : ("Gameweek " + currentGw);
+  const dl = ev ? formatDeadline(ev.deadline_time) : "–";
+  const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+  set("mGw", ev ? String(ev.id) : String(currentGw));
+  set("gwLabel", "Gameweek");
+  set("mDeadline", dl);
+  set("gwBannerTitle", name);
+  set("gwBannerDeadline", "Deadline: " + dl);
+}
+
+function recomputeAllXP() {
+  players.forEach(p => {
+    p.xp = expectedPoints(p, 1);
+    p.xp3 = expectedPoints(p, 3);
+  });
+}
+
+// ---------- Squad optimise (15 then best XI) ----------
+
+/** Rearrange the *current* 15-man squad into best XI + bench + captain. Does not buy/sell players. */
+/** Exactly 1 GK in XI; rest legal mins where possible. */
+function enforceValidXI() {
+  if (!squad.length) return;
+  const gk = squad.filter(p => p.position === "GKP");
+  const outfield = squad.filter(p => p.position !== "GKP");
+  let xi = [];
+  let bench = [];
+  // Prefer existing starting outfield, then fill
+  const startOut = startingIds
+    .map(id => squad.find(p => p.id === id))
+    .filter(p => p && p.position !== "GKP");
+  const restOut = outfield.filter(p => !startOut.some(x => x.id === p.id))
+    .sort((a, b) => xpOf(b) - xpOf(a));
+  const xiOut = [...startOut, ...restOut].slice(0, 10);
+  const gkStart = gk.slice().sort((a, b) => xpOf(b) - xpOf(a));
+  if (gkStart[0]) xi.push(gkStart[0]);
+  xi.push(...xiOut);
+  // pad if needed
+  while (xi.length < 11 && restOut.length) {
+    const p = restOut.find(x => !xi.some(y => y.id === x.id));
+    if (!p) break;
+    xi.push(p);
+  }
+  const xiIds = new Set(xi.map(p => p.id));
+  bench = squad.filter(p => !xiIds.has(p.id));
+  // second GK always on bench first
+  bench.sort((a, b) => {
+    if (a.position === "GKP" && b.position !== "GKP") return -1;
+    if (b.position === "GKP" && a.position !== "GKP") return 1;
+    return 0;
+  });
+  startingIds = xi.slice(0, 11).map(p => p.id);
+  benchIds = bench.map(p => p.id);
+  if (captainId && !startingIds.includes(captainId)) captainId = startingIds[0] || null;
+  if (viceCaptainId && !startingIds.includes(viceCaptainId)) viceCaptainId = null;
+  if (viceCaptainId === captainId) viceCaptainId = null;
+}
+
+function optimiseLineup() {
+  if (!squad || squad.length < 11) {
+    return { error: "Need at least 11 players in your squad first. Load a Team ID or use Edit team." };
+  }
+  const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
+  squad.forEach(p => {
+    if (byPos[p.position]) byPos[p.position].push(p);
+  });
+  Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => xpOf(b) - xpOf(a)));
+
+  if (byPos.GKP.length < 1) return { error: "Need at least 1 goalkeeper in the squad." };
+
+  const formations = [
+    { DEF: 3, MID: 4, FWD: 3 }, { DEF: 3, MID: 5, FWD: 2 }, { DEF: 4, MID: 4, FWD: 2 },
+    { DEF: 4, MID: 3, FWD: 3 }, { DEF: 5, MID: 3, FWD: 2 }, { DEF: 5, MID: 4, FWD: 1 }, { DEF: 4, MID: 5, FWD: 1 },
+  ];
+  let bestXI = null, bestScore = -1;
+  for (const f of formations) {
+    if (byPos.DEF.length < f.DEF || byPos.MID.length < f.MID || byPos.FWD.length < f.FWD) continue;
+    const xi = [byPos.GKP[0], ...byPos.DEF.slice(0, f.DEF), ...byPos.MID.slice(0, f.MID), ...byPos.FWD.slice(0, f.FWD)];
+    if (xi.length !== 11) continue;
+    const score = xi.reduce((s, p) => s + xpOf(p) * (0.7 + 0.3 * (p.availability || 1)), 0);
+    if (score > bestScore) { bestScore = score; bestXI = xi; }
+  }
+  if (!bestXI) {
+    // fallback: top XP available under legal min formation
+    bestXI = [byPos.GKP[0]];
+    const rest = [...byPos.DEF, ...byPos.MID, ...byPos.FWD].sort((a, b) => xpOf(b) - xpOf(a));
+    // ensure min 3 DEF, 2 MID, 1 FWD if possible
+    const pick = { DEF: 0, MID: 0, FWD: 0 };
+    const chosen = [];
+    for (const p of rest) {
+      if (chosen.length >= 10) break;
+      if (p.position === "DEF" && pick.DEF >= 5) continue;
+      if (p.position === "MID" && pick.MID >= 5) continue;
+      if (p.position === "FWD" && pick.FWD >= 3) continue;
+      chosen.push(p); pick[p.position]++;
+    }
+    bestXI = [byPos.GKP[0], ...chosen].slice(0, 11);
+  }
+  if (bestXI.length !== 11) {
+    return { error: "Could not form a valid XI from this squad (check positions)." };
+  }
+  const xiIds = new Set(bestXI.map(p => p.id));
+  const bench = squad.filter(p => !xiIds.has(p.id));
+  bench.sort((a, b) => {
+    if (a.position === "GKP" && b.position !== "GKP") return -1;
+    if (b.position === "GKP" && a.position !== "GKP") return 1;
+    return xpOf(b) - xpOf(a);
+  });
+  startingIds = bestXI.map(p => p.id);
+  benchIds = bench.map(p => p.id);
+  captainId = bestXI.slice().sort((a, b) => xpOf(b) - xpOf(a))[0]?.id || null;
+  squad = [...bestXI, ...bench];
+  enforceValidXI();
+  bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
+  saveSquadLocal();
+  return { ok: true, xiXp: bestXI.reduce((s, p) => s + xpOf(p), 0) };
+}
+
+function optimiseSquad(budget = BUDGET, opts = {}) {
+  budget = Math.min(Number(budget) || BUDGET, BUDGET); // hard cap £100.0m starting squads
+  // opts.mode: "wildcard" | "freehit" | "balanced"
+  // opts.excludeIds: number[]
+  // opts.horizonOverride: 1 | 3
+  const mode = opts.mode || "balanced";
+  const exclude = new Set(opts.excludeIds || []);
+  const savedH = horizon;
+  if (opts.horizonOverride) horizon = opts.horizonOverride;
+
+  const scoreOf = (p) => {
+    let s = xpOf(p);
+    if (mode === "freehit") {
+      // single-GW: lean harder on next fixture + form
+      s = (p.xp || s) * 1.15 + (p.form || 0) * 0.2;
+    } else if (mode === "wildcard") {
+      // multi-week structure: xp3 + ownership stability for premiums
+      s = (p.xp3 || s) + (p.price >= 7 ? 0.3 : 0) - (p.selected_by_percent > 40 ? 0.1 : 0);
+    }
+    return s;
+  };
+
+  let pool = players.filter(p =>
+    p.availability >= 0.25 &&
+    !["u", "s"].includes(p.status) &&
+    !exclude.has(p.id)
+  );
+  pool.sort((a, b) => scoreOf(b) - scoreOf(a));
+
+  const need = { GKP: 2, DEF: 5, MID: 5, FWD: 3 };
+  const counts = { GKP: 0, DEF: 0, MID: 0, FWD: 0 };
+  const club = {};
+  const picked = [];
+  let spent = 0;
+
+  // Phase 1: fill each position quota by score within budget
+  for (const pos of ["GKP", "DEF", "MID", "FWD"]) {
+    const candidates = pool.filter(p => p.position === pos);
+    for (const p of candidates) {
+      if (counts[pos] >= need[pos]) break;
+      if ((club[p.team_id] || 0) >= 3) continue;
+      if (spent + p.price > budget + 0.05) continue;
+      picked.push(p);
+      counts[pos]++;
+      club[p.team_id] = (club[p.team_id] || 0) + 1;
+      spent += p.price;
+    }
+  }
+
+  // Phase 2: fill remaining slots with cheapest valid players
+  if (picked.length < 15) {
+    const rest = pool
+      .filter(p => !picked.includes(p))
+      .sort((a, b) => a.price - b.price || scoreOf(b) - scoreOf(a));
+    for (const p of rest) {
+      if (picked.length >= 15) break;
+      if (counts[p.position] >= need[p.position]) continue;
+      if ((club[p.team_id] || 0) >= 3) continue;
+      if (spent + p.price > budget + 0.05) continue;
+      picked.push(p);
+      counts[p.position]++;
+      club[p.team_id] = (club[p.team_id] || 0) + 1;
+      spent += p.price;
+    }
+  }
+
+  // Phase 3: if still short, relax budget slightly (up to 100.5) then availability
+  if (picked.length < 15) {
+    const rest = pool.filter(p => !picked.includes(p)).sort((a, b) => a.price - b.price);
+    for (const p of rest) {
+      if (picked.length >= 15) break;
+      if (counts[p.position] >= need[p.position]) continue;
+      if ((club[p.team_id] || 0) >= 3) continue;
+      picked.push(p);
+      counts[p.position]++;
+      club[p.team_id] = (club[p.team_id] || 0) + 1;
+      spent += p.price;
+    }
+  }
+
+  // Phase 4: upgrade weak picks while staying in budget
+  for (let pass = 0; pass < 4; pass++) {
+    picked.sort((a, b) => scoreOf(a) - scoreOf(b));
+    for (let j = 0; j < picked.length; j++) {
+      const weak = picked[j];
+      for (const cand of pool) {
+        if (picked.includes(cand) || cand.position !== weak.position) continue;
+        if (scoreOf(cand) <= scoreOf(weak) + 0.05) continue;
+        const newSpent = spent - weak.price + cand.price;
+        if (newSpent > budget + 0.05) continue;
+        const nc = (club[cand.team_id] || 0) - (cand.team_id === weak.team_id ? 1 : 0) + 1;
+        if (cand.team_id !== weak.team_id && (club[cand.team_id] || 0) >= 3) continue;
+        club[weak.team_id] = (club[weak.team_id] || 1) - 1;
+        club[cand.team_id] = (club[cand.team_id] || 0) + 1;
+        spent = newSpent;
+        picked[j] = cand;
+        break;
+      }
+    }
+  }
+
+  // Build best XI from the 15
+  const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
+  picked.forEach(p => byPos[p.position].push(p));
+  Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => scoreOf(b) - scoreOf(a)));
+  const formations = [
+    { DEF: 3, MID: 4, FWD: 3 }, { DEF: 3, MID: 5, FWD: 2 }, { DEF: 4, MID: 4, FWD: 2 },
+    { DEF: 4, MID: 3, FWD: 3 }, { DEF: 5, MID: 3, FWD: 2 }, { DEF: 5, MID: 4, FWD: 1 }, { DEF: 4, MID: 5, FWD: 1 },
+  ];
+  let bestXI = null, bestScore = -1;
+  for (const f of formations) {
+    if (byPos.GKP.length < 1 || byPos.DEF.length < f.DEF || byPos.MID.length < f.MID || byPos.FWD.length < f.FWD) continue;
+    const xi = [byPos.GKP[0], ...byPos.DEF.slice(0, f.DEF), ...byPos.MID.slice(0, f.MID), ...byPos.FWD.slice(0, f.FWD)];
+    if (xi.length !== 11) continue;
+    const score = xi.reduce((s, p) => s + scoreOf(p), 0);
+    if (score > bestScore) { bestScore = score; bestXI = xi; }
+  }
+  if (!bestXI || bestXI.length !== 11) {
+    bestXI = [];
+    if (byPos.GKP[0]) bestXI.push(byPos.GKP[0]);
+    bestXI.push(...byPos.DEF.slice(0, 3), ...byPos.MID.slice(0, 4), ...byPos.FWD.slice(0, 3));
+    bestXI = bestXI.slice(0, 11);
+  }
+
+  const xiIds = new Set(bestXI.map(p => p.id));
+  const bench = picked.filter(p => !xiIds.has(p.id));
+  bench.sort((a, b) => {
+    if (a.position === "GKP" && b.position !== "GKP") return -1;
+    if (b.position === "GKP" && a.position !== "GKP") return 1;
+    return scoreOf(b) - scoreOf(a);
   });
 
-  // ---- Countdown ----
-  function updateCountdown() {
-    const now = new Date();
-    const diff = RACE_DATE - now;
-    if (diff <= 0) {
-      ['cd-days', 'cd-hours', 'cd-mins', 'cd-secs'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = '0';
-      });
-      return;
+  const full = [...bestXI, ...bench].slice(0, 15);
+  const xiFinal = full.filter(p => xiIds.has(p.id)).slice(0, 11);
+  // if filter order wrong, rebuild
+  let xiOrdered = bestXI.filter(p => full.some(x => x.id === p.id)).slice(0, 11);
+  let benchOut = full.filter(p => !xiOrdered.some(x => x.id === p.id));
+  let squadOut = [...xiOrdered, ...benchOut].slice(0, 15);
+  // Hard enforce ≤ budget (default £100.0m): swap expensive for cheaper same-pos if needed
+  let realSpent = squadOut.reduce((s, p) => s + p.price, 0);
+  if (realSpent > budget + 0.001) {
+    const byPosPool = { GKP: [], DEF: [], MID: [], FWD: [] };
+    pool.forEach(p => byPosPool[p.position].push(p));
+    Object.keys(byPosPool).forEach(k => byPosPool[k].sort((a, b) => a.price - b.price));
+    for (let guard = 0; guard < 40 && realSpent > budget + 0.001; guard++) {
+      const ordered = [...squadOut].sort((a, b) => b.price - a.price);
+      let fixed = false;
+      for (const expensive of ordered) {
+        const cheaper = byPosPool[expensive.position].find(c =>
+          c.price < expensive.price - 0.05 &&
+          !squadOut.some(s => s.id === c.id) &&
+          squadOut.filter(s => s.team_id === c.team_id && s.id !== expensive.id).length < 3 &&
+          realSpent - expensive.price + c.price <= budget + 0.05
+        );
+        if (!cheaper) continue;
+        squadOut = squadOut.map(s => s.id === expensive.id ? cheaper : s);
+        realSpent = squadOut.reduce((s, p) => s + p.price, 0);
+        fixed = true;
+        break;
+      }
+      if (!fixed) break;
     }
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const secs = Math.floor((diff % (1000 * 60)) / 1000);
-    const set = (id, val) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = String(val).padStart(2, '0');
-    };
-    set('cd-days', days);
-    set('cd-hours', hours);
-    set('cd-mins', mins);
-    set('cd-secs', secs);
+    // rebuild XI from adjusted 15
+    const bp = { GKP: [], DEF: [], MID: [], FWD: [] };
+    squadOut.forEach(p => bp[p.position].push(p));
+    Object.keys(bp).forEach(k => bp[k].sort((a, b) => scoreOf(b) - scoreOf(a)));
+    xiOrdered = [bp.GKP[0], ...bp.DEF.slice(0, 3), ...bp.MID.slice(0, 4), ...bp.FWD.slice(0, 3)].filter(Boolean);
+    if (xiOrdered.length < 11) {
+      const rest = squadOut.filter(p => !xiOrdered.includes(p) && p.position !== "GKP").sort((a, b) => scoreOf(b) - scoreOf(a));
+      while (xiOrdered.length < 11 && rest.length) xiOrdered.push(rest.shift());
+    }
+    xiOrdered = xiOrdered.slice(0, 11);
+    const ids = new Set(xiOrdered.map(p => p.id));
+    benchOut = squadOut.filter(p => !ids.has(p.id));
+    squadOut = [...xiOrdered, ...benchOut].slice(0, 15);
+    realSpent = squadOut.reduce((s, p) => s + p.price, 0);
+  }
+  const cap = xiOrdered.slice().sort((a, b) => scoreOf(b) - scoreOf(a))[0]?.id || null;
+
+  horizon = savedH;
+  return {
+    spent: realSpent,
+    bank: Math.max(0, +(budget - realSpent).toFixed(1)),
+    xiXp: xiOrdered.reduce((s, p) => s + xpOf(p), 0),
+    squad: squadOut,
+    startingIds: xiOrdered.map(p => p.id),
+    benchIds: benchOut.map(p => p.id),
+    captainId: cap,
+    counts: {
+      GKP: squadOut.filter(p => p.position === "GKP").length,
+      DEF: squadOut.filter(p => p.position === "DEF").length,
+      MID: squadOut.filter(p => p.position === "MID").length,
+      FWD: squadOut.filter(p => p.position === "FWD").length,
+      total: squadOut.length,
+    },
+  };
+}
+
+// ---------- AI Transfers ----------
+function getTransferFilters() {
+  return {
+    numTransfers: parseInt(($("cfNumTransfers") && $("cfNumTransfers").value) || "1", 10) || 1,
+    position: ($("cfPosition") && $("cfPosition").value) || "",
+    teamId: parseInt(($("cfTeam") && $("cfTeam").value) || "", 10) || 0,
+    maxEO: parseFloat(($("cfMaxEO") && $("cfMaxEO").value) || "100") || 100,
+    maxPrice: parseFloat(($("cfMaxPrice") && $("cfMaxPrice").value) || "15") || 15,
+    minPrice: parseFloat(($("cfMinPrice") && $("cfMinPrice").value) || "4") || 4,
+    playerIn: (($("cfPlayerIn") && $("cfPlayerIn").value) || "").trim().toLowerCase(),
+    playerOut: (($("cfPlayerOut") && $("cfPlayerOut").value) || "").trim().toLowerCase(),
+  };
+}
+
+function passInFilters(p, f) {
+  if (!f) return true;
+  if (f.position && p.position !== f.position) return false;
+  if (f.teamId && p.team_id !== f.teamId) return false;
+  if ((p.selected_by_percent || 0) > f.maxEO + 0.01) return false;
+  if (p.price > f.maxPrice + 0.05) return false;
+  if (p.price < f.minPrice - 0.05) return false;
+  if (f.playerIn && !p.web_name.toLowerCase().includes(f.playerIn)) return false;
+  return true;
+}
+
+function passOutFilters(p, f) {
+  if (!f) return true;
+  if (f.position && p.position !== f.position) return false;
+  if (f.playerOut && !p.web_name.toLowerCase().includes(f.playerOut)) return false;
+  return true;
+}
+
+function isUnlimitedTransferMode() {
+  const modeEl = $("trMode");
+  if (modeEl && modeEl.value === "unlimited") return true;
+  // Auto: GW1 before first deadline behaves like unlimited squad building
+  if (currentGw <= 1) return true;
+  return false;
+}
+
+function transferXp(p) {
+  const hz = parseInt(($("trHorizon") && $("trHorizon").value) || "3", 10) || 3;
+  if (hz <= 1) return expectedPoints(p, 1);
+  if (hz >= 6) return expectedPoints(p, 3) * 2; // rough 6-GW scale from 3-GW model
+  return expectedPoints(p, 3);
+}
+
+function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
+  if (!squad.length) {
+    return { error: "No squad loaded. Enter Team ID and Refresh, or Edit a full 15." };
+  }
+  const unlimited = isUnlimitedTransferMode();
+  if (unlimited) {
+    freeTransfers = 15;
+    maxHits = 0;
+  }
+  const squadIds = new Set(squad.map(p => p.id));
+  const currentXp = squad.reduce((s, p) => s + transferXp(p), 0);
+  const availableBudget = bank;
+  const wantN = filters ? (filters.numTransfers || 1) : null;
+  const candidates = [];
+
+  let outs = [...squad].sort((a, b) => transferXp(a) - transferXp(b));
+  if (filters) outs = outs.filter(p => passOutFilters(p, filters));
+  outs = outs.slice(0, 12);
+
+  function bestInsFor(out, usedInIds, budgetLeft) {
+    return players
+      .filter(p =>
+        p.position === out.position &&
+        !squadIds.has(p.id) &&
+        !usedInIds.has(p.id) &&
+        p.price <= budgetLeft + 0.05 &&
+        p.availability > 0.3 &&
+        transferXp(p) > transferXp(out) + 0.05 &&
+        // avoid recommending unused fringe players as "upgrades"
+        (parseFloat(p.ep_next) >= 2.0 || (p.selected_by_percent || 0) >= 5 || (p.minutes || 0) >= 200 || (filters && filters.playerIn)) &&
+        passInFilters(p, filters)
+      )
+      .sort((a, b) => transferXp(b) - transferXp(a))
+      .slice(0, 8);
   }
 
-  updateCountdown();
-  setInterval(updateCountdown, 1000);
-
-  // ---- Registration form ----
-  // Works with Netlify Forms. Shows success panel after submit.
-  const RACE_DAY_ISO = '2026-09-19'; // age calculated on race day
-
-  // Entry fees (MWK) — shown after race selection; must match Mpamba merchant setup for 500204
-  const ENTRY_FEES = {
-    '42.195': 15000,
-    '10': 8000,
-    '5': 5000
-  };
-  const FEE_LABELS = {
-    '42.195': '42.195 km Marathon',
-    '10': '10 km Race',
-    '5': '5 km Fun Run'
-  };
-
-  function ageOnRaceDay(dobStr) {
-    if (!dobStr) return null;
-    const dob = new Date(dobStr + 'T12:00:00');
-    const race = new Date(RACE_DAY_ISO + 'T12:00:00');
-    let age = race.getFullYear() - dob.getFullYear();
-    const m = race.getMonth() - dob.getMonth();
-    if (m < 0 || (m === 0 && race.getDate() < dob.getDate())) age--;
-    return age;
-  }
-
-  window.handleRegister = function (e) {
-    const form = document.getElementById('regForm');
-    if (!form.checkValidity()) {
-      e.preventDefault();
-      form.reportValidity();
-      return false;
-    }
-
-    e.preventDefault();
-
-    const formData = new FormData(form);
-    const distance = (formData.get('distance') || '').toString();
-    const dob = (formData.get('dob') || '').toString();
-    const age = ageOnRaceDay(dob);
-
-    // Reject marathon if under 20 on race day
-    if (distance === '42.195') {
-      if (age === null || age < 20) {
-        alert('Marathon entries are only open to runners who will be at least 20 years old on race day (19 September 2026). Please choose the 10 km or 5 km, or update your date of birth if it was entered incorrectly.');
-        return false;
+  // --- 1-transfer ideas ---
+  if (!wantN || wantN === 1) {
+    for (const out of outs) {
+      const ins = bestInsFor(out, new Set(), availableBudget + out.price);
+      for (const inn of ins.slice(0, 4)) {
+        const clubCount = squad.filter(x => x.team_id === inn.team_id && x.id !== out.id).length;
+        if (clubCount >= 3) continue;
+        const gain = transferXp(inn) - transferXp(out);
+        const costDiff = inn.price - out.price;
+        candidates.push({
+          moves: [{ out, inn, gain }],
+          gain,
+          costDiff,
+          hits: 0,
+          netGain: gain,
+          size: 1,
+        });
       }
     }
-
-    // Also keep a local copy for offline/admin use
-    let data = Object.fromEntries(formData.entries());
-    data.submittedAt = new Date().toISOString();
-    data.ageOnRaceDay = age;
-    data.feeMwk = ENTRY_FEES[distance] || null;
-    try {
-      const existing = JSON.parse(localStorage.getItem('bt42_registrations') || '[]');
-      existing.push(data);
-      localStorage.setItem('bt42_registrations', JSON.stringify(existing));
-    } catch (err) {
-      console.warn('localStorage save failed', err);
-    }
-
-    // Submit to Netlify Forms when deployed
-    fetch('/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams(formData).toString()
-    })
-      .then(() => {
-        showSuccess(data);
-        form.reset();
-      })
-      .catch(() => {
-        showSuccess(data);
-        form.reset();
-      });
-
-    return false;
-  };
-
-  let lastReg = null;
-
-  function formatMwk(n) {
-    return Number(n).toLocaleString('en-MW') + ' MWK';
   }
 
-  function showSuccess(reg) {
-    lastReg = reg || lastReg;
-    const el = document.getElementById('regSuccess');
-    if (!el) return;
-
-    const name = (lastReg && lastReg.fullName) || 'Athlete';
-    const distance = (lastReg && lastReg.distance) || '';
-    const fee = ENTRY_FEES[distance] || null;
-    const distLabel = FEE_LABELS[distance] || distance || 'your race';
-    const phone = (lastReg && lastReg.phone) || '';
-
-    const feeLine = fee
-      ? formatMwk(fee)
-      : 'the amount shown for your race';
-
-    const detail = document.getElementById('regSuccessDetail');
-    if (detail) {
-      detail.innerHTML = `
-        <p>Thank you, <strong>${escapeHtml(name)}</strong>. Your registration for the <strong>${escapeHtml(distLabel)}</strong> has been received.</p>
-
-        <div class="mpamba-confirm-card">
-          <p class="mpamba-confirm-title">Pay now with TNM Mpamba</p>
-          <ol class="mpamba-steps">
-            <li>Dial <code>*444#</code></li>
-            <li>Select <strong>4</strong></li>
-            <li>Enter business code <code>500204</code></li>
-            <li>Confirm amount <strong>${feeLine}</strong> for ${escapeHtml(distLabel)}</li>
-          </ol>
-          <div class="mpamba-sms-preview">
-            <p class="sms-label">You should then get a confirmation like this:</p>
-            <p class="sms-body">
-              ${escapeHtml(name)} please confirm payment of
-              <strong>${fee ? formatMwk(fee) : '… MWK'}</strong> to
-              <strong>BT42.195 KM RACE / MNCS</strong>.
-              Enter PIN to confirm or Press Cancel to Reject
-            </p>
-          </div>
-          <p class="form-note" style="margin-top:0.75rem">Alternative: National Bank of Malawi account <code>1802283</code> — reference: your name + mobile${phone ? ' (' + escapeHtml(phone) + ')' : ''}.</p>
-        </div>
-
-        <div class="post-pay-info">
-          <p><strong>After payment</strong></p>
-          <ul>
-            <li>Keep the Mpamba SMS / bank slip as proof.</li>
-            <li>Organisers verify payment, then assign your <strong>bib number</strong>.</li>
-            <li>Bib details and packet-pickup info are sent to your phone/email once verified (closer to race week).</li>
-            <li>Certificates: entry cert after payment verification; completion cert after you finish — emailed if you provided an email and email sending is configured on the server.</li>
-          </ul>
-        </div>`;
-    }
-
-    el.classList.remove('hidden');
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-
-  function escapeHtml(str) {
-    return String(str || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  // Live hint when marathon selected
-  const distSel = document.getElementById('distance');
-  const dobInput = document.getElementById('dob');
-  function checkMarathonAgeHint() {
-    const hint = document.getElementById('marathon-age-hint');
-    if (!distSel || !dobInput) return;
-    if (distSel.value === '42.195' && dobInput.value) {
-      const age = ageOnRaceDay(dobInput.value);
-      if (hint) {
-        if (age !== null && age < 20) {
-          hint.textContent = 'Not eligible for the marathon: must be 20+ on 19 Sep 2026 (you would be ' + age + ').';
-          hint.style.display = 'block';
-        } else if (age !== null) {
-          hint.textContent = 'Age on race day: ' + age + ' — eligible for the marathon.';
-          hint.style.display = 'block';
-        } else {
-          hint.style.display = 'none';
+  // --- 2-transfer bundles ---
+  if ((!wantN || wantN === 2) && freeTransfers + maxHits >= 2) {
+    const weak = outs.slice(0, 8);
+    for (let i = 0; i < weak.length; i++) {
+      for (let j = i + 1; j < weak.length; j++) {
+        const o1 = weak[i], o2 = weak[j];
+        if (filters && filters.position && o1.position !== filters.position && o2.position !== filters.position) continue;
+        const budget2 = availableBudget + o1.price + o2.price;
+        const ins1 = bestInsFor(o1, new Set(), budget2);
+        for (const a of ins1.slice(0, 4)) {
+          const ins2 = bestInsFor(o2, new Set([a.id]), budget2 - a.price);
+          for (const b of ins2.slice(0, 4)) {
+            if (a.id === b.id) continue;
+            if (a.price + b.price > budget2 + 0.05) continue;
+            // club limit after both
+            const temp = squad.filter(x => x.id !== o1.id && x.id !== o2.id);
+            const cA = temp.filter(x => x.team_id === a.team_id).length + 1;
+            const cB = temp.filter(x => x.team_id === b.team_id).length + (a.team_id === b.team_id ? 1 : 0) + 1;
+            if (cA > 3 || cB > 3) continue;
+            const hits = unlimited ? 0 : Math.max(0, 2 - freeTransfers);
+            if (hits > maxHits) continue;
+            const g1 = transferXp(a) - transferXp(o1);
+            const g2 = transferXp(b) - transferXp(o2);
+            const gain = g1 + g2;
+            const hitPenalty = hits * 4;
+            candidates.push({
+              moves: [
+                { out: o1, inn: a, gain: g1 },
+                { out: o2, inn: b, gain: g2 },
+              ],
+              gain,
+              costDiff: a.price + b.price - o1.price - o2.price,
+              hits,
+              netGain: gain - hitPenalty * 0.25,
+              size: 2,
+            });
+          }
         }
       }
-    } else if (hint) {
-      hint.style.display = 'none';
     }
   }
-  function updateFeePreview() {
-    const el = document.getElementById('fee-preview');
-    if (!el || !distSel) return;
-    const d = distSel.value;
-    if (d && ENTRY_FEES[d] != null) {
-      el.innerHTML = 'Entry fee: <strong>' + formatMwk(ENTRY_FEES[d]) + '</strong> — pay via Mpamba <code>*444#</code> → 4 → <code>500204</code>';
-      el.style.display = 'block';
-    } else {
-      el.style.display = 'none';
-    }
-  }
-  if (distSel) {
-    distSel.addEventListener('change', () => { checkMarathonAgeHint(); updateFeePreview(); });
-  }
-  if (dobInput) dobInput.addEventListener('change', checkMarathonAgeHint);
 
-  console.log('BT42.195 Race App — launch ready');
-})();
+  // --- 3-transfer bundles (unlimited / high FT only) ---
+  if ((!wantN || wantN === 3) && freeTransfers + maxHits >= 3) {
+    const weak3 = outs.slice(0, 6);
+    for (let i = 0; i < weak3.length; i++) {
+      for (let j = i + 1; j < Math.min(i + 4, weak3.length); j++) {
+        for (let k = j + 1; k < Math.min(j + 3, weak3.length); k++) {
+          const trio = [weak3[i], weak3[j], weak3[k]];
+          const budget3 = availableBudget + trio.reduce((s, p) => s + p.price, 0);
+          const picks = [];
+          let left = budget3;
+          const used = new Set();
+          let ok = true;
+          for (const out of trio) {
+            const ins = bestInsFor(out, used, left).filter(p => {
+              const tempIds = new Set([...squad.map(x => x.id)].filter(id => !trio.some(o => o.id === id)).concat([...used]));
+              // rough club check later
+              return true;
+            });
+            if (!ins.length) { ok = false; break; }
+            const inn = ins[0];
+            picks.push({ out, inn, gain: transferXp(inn) - transferXp(out) });
+            used.add(inn.id);
+            left -= inn.price;
+          }
+          if (!ok || picks.length !== 3) continue;
+          if (picks.reduce((s, m) => s + m.inn.price, 0) > budget3 + 0.05) continue;
+          const hits = unlimited ? 0 : Math.max(0, 3 - freeTransfers);
+          if (hits > maxHits) continue;
+          const gain = picks.reduce((s, m) => s + m.gain, 0);
+          candidates.push({
+            moves: picks,
+            gain,
+            costDiff: picks.reduce((s, m) => s + m.inn.price - m.out.price, 0),
+            hits,
+            netGain: gain - hits * 4 * 0.25,
+            size: 3,
+          });
+        }
+      }
+    }
+  }
+
+  candidates.sort((a, b) => b.netGain - a.netGain);
+  const seen = new Set();
+  const unique = [];
+  for (const c of candidates) {
+    const key = c.moves.map(m => m.out.id + ">" + m.inn.id).sort().join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(c);
+    if (unique.length >= 10) break;
+  }
+
+  return {
+    currentXp,
+    suggestions: unique,
+    bank: availableBudget,
+    unlimited,
+    freeTransfers,
+  };
+}
+
+function applyTransferSuggestion(sug) {
+  for (const m of sug.moves) {
+    const idx = squad.findIndex(p => p.id === m.out.id);
+    if (idx >= 0) {
+      const old = squad[idx];
+      squad[idx] = m.inn;
+      bank = bank - m.inn.price + old.price;
+      startingIds = startingIds.map(id => id === m.out.id ? m.inn.id : id);
+      benchIds = benchIds.map(id => id === m.out.id ? m.inn.id : id);
+      if (captainId === m.out.id) captainId = m.inn.id;
+    }
+  }
+  // Rebuild XI preference by XP
+  const all = [...squad];
+  const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
+  all.forEach(p => byPos[p.position].push(p));
+  Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => xpOf(b) - xpOf(a)));
+  const xi = [];
+  if (byPos.GKP[0]) xi.push(byPos.GKP[0]);
+  xi.push(...byPos.DEF.slice(0, 4));
+  xi.push(...byPos.MID.slice(0, 4));
+  xi.push(...byPos.FWD.slice(0, 2));
+  while (xi.length < 11) {
+    const rest = all.filter(p => !xi.includes(p)).sort((a, b) => xpOf(b) - xpOf(a));
+    if (!rest.length) break;
+    xi.push(rest[0]);
+  }
+  startingIds = xi.slice(0, 11).map(p => p.id);
+  benchIds = all.filter(p => !startingIds.includes(p.id)).map(p => p.id);
+  captainId = xi.slice().sort((a, b) => xpOf(b) - xpOf(a))[0]?.id;
+  renderPitch();
+  renderPlayerList();
+  setStatus("Transfer applied locally – copy to official FPL site before deadline");
+}
+
+// ---------- Render ----------
+function shirtUrl(p) {
+  const code = p.team_code || 0;
+  if (!code) return "";
+  // Official FPL kit art (home). GK uses _1 suffix.
+  if (p.position === "GKP") {
+    return `https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${code}_1-66.webp`;
+  }
+  return `https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${code}-66.webp`;
+}
+function playerCard(p, isCaptain = false, isVice = false, showPos = false) {
+  const pts = xpOf(p).toFixed(1);
+  const shirt = shirtUrl(p);
+  const shirtHtml = shirt
+    ? `<img class="shirt-img" src="${shirt}" alt="${p.team}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+       <div class="shirt shirt-fallback" style="display:none;background:${shirtFor(p.team)}">${posEmoji(p.position)}</div>`
+    : `<div class="shirt" style="background:${shirtFor(p.team)}">${posEmoji(p.position)}</div>`;
+  const cls = ["pcard"];
+  if (isCaptain) cls.push("captain");
+  else if (isVice) cls.push("vice");
+  const posLab = showPos
+    ? `<div class="ppos ${(p.position || "").toLowerCase()}">${p.position === "GKP" ? "GK" : p.position}</div>`
+    : "";
+  return `
+    <div class="${cls.join(" ")}" data-id="${p.id}" title="${p.news || p.web_name}">
+      ${shirtHtml}
+      ${posLab}
+      <div class="pname">${p.web_name}</div>
+      <div class="pprice">${money(p.price)}</div>
+      <div class="ppts"><span>${pts}</span></div>
+    </div>`;
+}
+function posEmoji(pos) { return { GKP: "🧤", DEF: "🛡️", MID: "⚙️", FWD: "⚽" }[pos] || "•"; }
+function shirtFor(team) {
+  const map = { ARS:"#ef0107",AVL:"#670e36",BOU:"#da291c",BRE:"#e30613",BHA:"#0057b8",CHE:"#034694",CRY:"#1b458f",EVE:"#003399",FUL:"#000000",LIV:"#c8102e",MCI:"#6cabdd",MUN:"#da291c",NEW:"#241f20",NFO:"#e53233",TOT:"#132257",WHU:"#7a263a",WOL:"#fdb913",LEE:"#1d428a",SUN:"#eb172b",IPS:"#0033a0",SOU:"#d71920",LEI:"#003090",HUL:"#f5a12d",BUR:"#6c1d45" };
+  return map[team] || "#64748b";
+}
+
+/** Mini pitch HTML for AI Teams (Wildcard / Free Hit) */
+function renderMiniPitch(data) {
+  const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
+  (data.startingIds || []).forEach(id => {
+    const p = (data.squad || []).find(x => x.id === id);
+    if (p) byPos[p.position].push(p);
+  });
+  let rows = "";
+  for (const pos of ["GKP", "DEF", "MID", "FWD"]) {
+    rows += `<div class="pitch-row">`;
+    byPos[pos].forEach(p => { rows += playerCard(p, p.id === data.captainId); });
+    rows += `</div>`;
+  }
+  const bench = (data.benchIds || []).map(id => (data.squad || []).find(x => x.id === id)).filter(Boolean);
+  const benchHtml = bench.map(p => playerCard(p, false, false, true)).join("");
+  return `<div class="ai-pitch pitch">${rows}</div>
+    <div class="bench-label">Bench</div>
+    <div class="bench ai-bench">${benchHtml}</div>`;
+}
+
+function hidePlayerMenu() {
+  const m = $("playerMenu");
+  if (m) m.classList.add("hidden");
+  menuPlayerId = null;
+}
+
+function openPlayerMenu(playerId, evt) {
+  const p = squad.find(x => x.id === playerId);
+  if (!p) return;
+  menuPlayerId = playerId;
+  const menu = $("playerMenu");
+  if (!menu) return;
+  menu.classList.remove("hidden");
+  const x = Math.min(window.innerWidth - 220, Math.max(8, (evt.clientX || 40) - 20));
+  const y = Math.min(window.innerHeight - 280, Math.max(8, (evt.clientY || 80)));
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
+}
+
+function nextFixturesFor(teamId, n = 5) {
+  if (!fixtures.length) return [];
+  return fixtures
+    .filter(f => !f.finished && (f.team_h === teamId || f.team_a === teamId) && (f.event || 0) >= currentGw)
+    .sort((a, b) => (a.event || 0) - (b.event || 0) || (a.kickoff_time || "").localeCompare(b.kickoff_time || ""))
+    .slice(0, n);
+}
+
+function showPlayerInfo(playerId) {
+  const p = players.find(x => x.id === playerId) || squad.find(x => x.id === playerId);
+  if (!p) return;
+  const body = $("playerInfoBody");
+  const modal = $("playerInfoModal");
+  if (!body || !modal) return;
+  const fxt = nextFixturesFor(p.team_id, 6);
+  const base = expectedPoints(p, 1);
+  const rows = fxt.map(f => {
+    const home = f.team_h === p.team_id;
+    const oppId = home ? f.team_a : f.team_h;
+    const opp = (teamsMap[oppId] && (teamsMap[oppId].short_name || teamsMap[oppId].name)) || "?";
+    // Scale next-GW base by relative fixture factor for that event
+    const mul = fixtureFactor(p.team_id, f.event || currentGw);
+    const nextMul = fixtureFactor(p.team_id, currentGw) || 1;
+    const pts = (base / (nextMul || 1)) * mul;
+    return `<div class="pi-fix-row"><span>GW${f.event} · ${opp} (${home ? "H" : "A"})</span><strong>${pts.toFixed(1)} pts</strong></div>`;
+  }).join("") || `<p class="muted">No upcoming fixtures loaded.</p>`;
+  const posLabel = p.position === "GKP" ? "Goalkeeper" : p.position === "DEF" ? "Defender" : p.position === "MID" ? "Midfielder" : "Forward";
+  body.innerHTML = `
+    <h2 class="pi-title">${p.web_name}</h2>
+    <div class="pi-sub"><strong>${p.team}</strong> · ${posLabel}<br>${money(p.price)} · Own ${p.selected_by_percent}%</div>
+    <div class="pi-stats">
+      <div><strong>${p.total_points || 0}</strong><span>Total pts</span></div>
+      <div><strong>${p.points_per_game || "–"}</strong><span>Pts / match</span></div>
+      <div><strong>${p.selected_by_percent}%</strong><span>Selected by</span></div>
+      <div><strong>${p.goals_scored || 0}</strong><span>Goals</span></div>
+      <div><strong>${p.assists || 0}</strong><span>Assists</span></div>
+      <div><strong>${p.bonus || 0}</strong><span>Bonus</span></div>
+    </div>
+    <div class="pi-stats">
+      <div><strong>${base.toFixed(1)}</strong><span>XP next GW</span></div>
+      <div><strong>${p.form || "–"}</strong><span>Form</span></div>
+      <div><strong>${p.ep_next || "–"}</strong><span>FPL ep_next</span></div>
+    </div>
+    <div class="pi-section">Predicted points by fixture</div>
+    ${rows}
+    <div class="pi-news">${p.news ? ("News: " + p.news) : "No team news"} · Status: ${p.status || "a"}</div>
+  `;
+  modal.classList.remove("hidden");
+}
+
+function recommendTransferFor(playerId) {
+  const out = squad.find(p => p.id === playerId);
+  if (!out) return;
+  const maxPrice = bank + out.price;
+  const ins = players
+    .filter(p => p.position === out.position && !squad.some(s => s.id === p.id) && p.price <= maxPrice + 0.05 && p.availability > 0.35)
+    .sort((a, b) => xpOf(b) - xpOf(a))
+    .slice(0, 5);
+  if (!ins.length) {
+    setStatus("No clear replacement under budget for " + out.web_name);
+    return;
+  }
+  const box = $("transferResults");
+  // Jump to transfers view
+  document.querySelector('[data-view="transfers"]')?.click();
+  const html = `<p class="muted">Recommended replacements for <strong>${out.web_name}</strong> (${money(out.price)} · ${xpOf(out).toFixed(1)} XP)</p>` +
+    ins.map((inn, i) => {
+      const gain = xpOf(inn) - xpOf(out);
+      return `<div class="transfer-card">
+        <h4>#${i + 1} · <span class="gain">${gain >= 0 ? "+" : ""}${gain.toFixed(2)} XP</span> · ${money(inn.price - out.price)}</h4>
+        <div class="transfer-row">
+          <span>OUT <strong>${out.web_name}</strong></span><span>→</span>
+          <span>IN <strong>${inn.web_name}</strong> (${inn.team} · ${xpOf(inn).toFixed(1)})</span>
+        </div>
+        <button class="btn btn-cyan apply-one-tr" data-out="${out.id}" data-in="${inn.id}" style="margin-top:8px">Apply locally</button>
+      </div>`;
+    }).join("");
+  if (box) {
+    box.innerHTML = html;
+    box.querySelectorAll(".apply-one-tr").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const o = squad.find(p => p.id === +btn.dataset.out);
+        const inn = players.find(p => p.id === +btn.dataset.in);
+        if (!o || !inn) return;
+        applyTransferSuggestion({ moves: [{ out: o, inn }] });
+        saveSquadLocal();
+        setStatus(`Transferred ${o.web_name} → ${inn.web_name}`);
+      });
+    });
+  }
+  setStatus("Recommend transfer open on AI Transfers");
+}
+
+function handlePlayerAction(act) {
+  const id = menuPlayerId;
+  hidePlayerMenu();
+  if (!id) return;
+  const p = squad.find(x => x.id === id);
+  if (!p) return;
+  if (act === "captain") {
+    if (viceCaptainId === id) viceCaptainId = null;
+    captainId = id;
+    saveSquadLocal();
+    renderPitch();
+    setStatus("Captain: " + p.web_name);
+  } else if (act === "vice") {
+    if (captainId === id) {
+      setStatus("Already captain — pick someone else as vice");
+      return;
+    }
+    viceCaptainId = id;
+    saveSquadLocal();
+    renderPitch();
+    setStatus("Vice captain: " + p.web_name);
+  } else if (act === "sub") {
+    const isStarter = startingIds.includes(id);
+    if (isStarter) {
+      // swap with best bench same eligibility loosely
+      if (!benchIds.length) { setStatus("Bench is empty"); return; }
+      const outIdx = startingIds.indexOf(id);
+      // prefer same position on bench
+      let inId = benchIds.find(bid => {
+        const bp = squad.find(x => x.id === bid);
+        return bp && bp.position === p.position;
+      }) || benchIds[0];
+      startingIds[outIdx] = inId;
+      benchIds = benchIds.filter(x => x !== inId).concat([id]);
+    } else {
+      // promote to XI — demote lowest XP same or any
+      const weak = [...startingIds]
+        .map(sid => squad.find(x => x.id === sid))
+        .filter(Boolean)
+        .sort((a, b) => xpOf(a) - xpOf(b))[0];
+      if (!weak) return;
+      startingIds = startingIds.map(x => x === weak.id ? id : x);
+      benchIds = benchIds.filter(x => x !== id).concat([weak.id]);
+    }
+    saveSquadLocal();
+    renderPitch();
+    setStatus("Line-up updated");
+  } else if (act === "transfer") {
+    // Soft transfer-out: enter edit mode and highlight
+    editMode = true;
+    const es = $("editStatusInline");
+    if (es) es.textContent = "Transfer out: tap a replacement from the list (or remove " + p.web_name + ")";
+    removePlayer(id);
+    editMode = true;
+    setStatus("Removed " + p.web_name + " — pick a replacement from the player list");
+  } else if (act === "recommend") {
+    recommendTransferFor(id);
+  } else if (act === "info") {
+    showPlayerInfo(id);
+  }
+}
+
+function renderPitch() {
+  const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
+  startingIds.forEach(id => {
+    const p = squad.find(x => x.id === id);
+    if (p) byPos[p.position].push(p);
+  });
+  let html = "";
+  for (const pos of ["GKP", "DEF", "MID", "FWD"]) {
+    html += `<div class="pitch-row">`;
+    byPos[pos].forEach(p => { html += playerCard(p, p.id === captainId, p.id === viceCaptainId); });
+    html += `</div>`;
+  }
+  $("pitch").innerHTML = html;
+  const benchPlayers = benchIds.map(id => squad.find(x => x.id === id)).filter(Boolean);
+  $("bench").innerHTML = benchPlayers.map(p => playerCard(p, false, p.id === viceCaptainId, true)).join("");
+
+  const xi = squad.filter(p => startingIds.includes(p.id));
+  const xiXp = xi.reduce((s, p) => s + xpOf(p), 0);
+  const cap = squad.find(p => p.id === captainId);
+  const pred = xiXp + (cap ? xpOf(cap) : 0);
+  const cost = squadValue();
+  if (!squadLockedValue) {
+    bank = Math.max(0, BUDGET - cost);
+  } else if (entryBank != null) {
+    bank = entryBank;
+  }
+  const rating = Math.min(100, Math.round((pred / (horizon === 3 ? 90 : 55)) * 100));
+  $("mRating").textContent = rating + "%";
+  $("mPred").textContent = pred.toFixed(1);
+  $("mBank").textContent = money(bank);
+  $("mCost").textContent = money(cost);
+  const r2 = $("mRating2"); if (r2) r2.textContent = rating + "%";
+  const p2 = $("mPred2"); if (p2) p2.textContent = pred.toFixed(1);
+  const b2 = $("mBank2"); if (b2) b2.textContent = money(bank);
+  document.querySelectorAll(".pcard").forEach(el => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (editMode) {
+        removePlayer(+el.dataset.id);
+        return;
+      }
+      openPlayerMenu(+el.dataset.id, e);
+    });
+  });
+}
+
+function populateTeamFilter() {
+  const sel = $("teamFilter");
+  if (!sel || sel.dataset.ready === "1") return;
+  const clubs = Object.values(teamsMap || {}).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  clubs.forEach(c => {
+    const o = document.createElement("option");
+    o.value = c.id;
+    o.textContent = (c.short_name || c.name) + " — " + (c.name || "");
+    sel.appendChild(o);
+  });
+  sel.dataset.ready = "1";
+}
+
+function renderPlayerList() {
+  populateTeamFilter();
+  const pos = document.querySelector(".pos-tab.active")?.dataset.pos || "ALL";
+  const sort = $("sortBy").value;
+  const pMin = parseFloat($("priceMin").value);
+  const pMax = parseFloat($("priceMax").value);
+  const q = ($("searchInput").value || "").toLowerCase();
+  const affordable = $("affordableOnly").checked;
+  const clubFilter = ($("teamFilter") && $("teamFilter").value) || "";
+  const inSquad = new Set(squad.map(p => p.id));
+  let list = players.filter(p => {
+    if (pos !== "ALL" && p.position !== pos) return false;
+    if (clubFilter && String(p.team_id) !== String(clubFilter)) return false;
+    if (p.price < pMin || p.price > pMax) return false;
+    if (q && !p.web_name.toLowerCase().includes(q) && !p.team.toLowerCase().includes(q)) return false;
+    if (affordable && p.price > bank + 0.1) return false;
+    return true;
+  });
+  list.sort((a, b) => {
+    if (sort === "xp") return xpOf(b) - xpOf(a);
+    if (sort === "price") return b.price - a.price;
+    if (sort === "own") return b.selected_by_percent - a.selected_by_percent;
+    return a.web_name.localeCompare(b.web_name);
+  });
+  $("playerList").innerHTML = list.slice(0, 80).map(p => `
+    <div class="prow ${inSquad.has(p.id) ? "in-squad" : ""}" data-id="${p.id}">
+      <span class="dot"></span>
+      <div><div class="pname-row">${p.web_name}</div><div class="pmeta">${p.team} · ${p.position}</div></div>
+      <div class="pprice">${money(p.price)}</div>
+      <div class="pxp">${xpOf(p).toFixed(1)}</div>
+    </div>`).join("");
+  if (editMode) {
+    document.querySelectorAll(".prow").forEach(el => {
+      el.addEventListener("click", () => addPlayer(+el.dataset.id));
+    });
+  }
+}
+
+function removePlayer(id) {
+  if (!editMode) return;
+  squad = squad.filter(p => p.id !== id);
+  startingIds = startingIds.filter(x => x !== id);
+  benchIds = benchIds.filter(x => x !== id);
+  if (captainId === id) captainId = startingIds[0] || null;
+  bank = BUDGET - squad.reduce((s, p) => s + p.price, 0);
+  while (startingIds.length < 11 && benchIds.length) startingIds.push(benchIds.shift());
+  saveSquadLocal();
+  renderPitch(); renderPlayerList();
+  $("editStatusInline").textContent = `Squad: ${squad.length}/15 · Bank ${money(bank)}`;
+}
+function addPlayer(id) {
+  if (!editMode) return;
+  if (squad.find(p => p.id === id) || squad.length >= 15) return;
+  const p = players.find(x => x.id === id);
+  if (!p) return;
+  if (squad.filter(x => x.position === p.position).length >= SQUAD_LIMITS[p.position]) {
+    $("editStatusInline").textContent = `Max ${SQUAD_LIMITS[p.position]} ${p.position}`; return;
+  }
+  if (p.price > bank + 0.05) { $("editStatusInline").textContent = "Not enough budget"; return; }
+  if (squad.filter(x => x.team_id === p.team_id).length >= 3) { $("editStatusInline").textContent = "Max 3 per club"; return; }
+  squad.push(p);
+  const gkInXi = startingIds.filter(id => {
+    const x = squad.find(s => s.id === id);
+    return x && x.position === "GKP";
+  }).length;
+  if (p.position === "GKP") {
+    if (gkInXi >= 1 || startingIds.length >= 11) benchIds.push(p.id);
+    else startingIds.push(p.id);
+  } else if (startingIds.length < 11) {
+    startingIds.push(p.id);
+  } else {
+    benchIds.push(p.id);
+  }
+  bank -= p.price;
+  enforceValidXI();
+  saveSquadLocal();
+  renderPitch(); renderPlayerList();
+  $("editStatusInline").textContent = `Added ${p.web_name}. ${squad.length}/15 · ${money(bank)}`;
+}
+
+function showUpgradePrompt(feature) {
+  const boxId = feature === "transfers" ? "transferResults" : "aiTeamsResults";
+  const box = $(boxId);
+  if (!box) return;
+  box.innerHTML = `
+    <div class="upgrade-card">
+      <h3>🔒 Pro feature</h3>
+      <p>${feature === "transfers"
+        ? "AI Transfer suggestions are available on <strong>Pro</strong> and <strong>Ultra</strong>."
+        : "AI Teams (Wildcard / Free Hit squads) are available on <strong>Pro</strong> and <strong>Ultra</strong>."}</p>
+
+      <div style="margin-top:14px;padding:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px">
+        <strong>14-day free trial</strong>
+        <p class="muted" style="margin:6px 0 10px;font-size:0.85rem">Unlock all Pro/Ultra features free for 14 days. No payment now.</p>
+        <div class="upgrade-actions" style="flex-wrap:wrap;gap:8px">
+          <button type="button" class="btn btn-blue" id="trialProBtn">Start Pro trial</button>
+          <button type="button" class="btn btn-outline" id="trialUltraBtn">Start Ultra trial</button>
+        </div>
+      </div>
+
+      <div style="margin-top:14px">
+        <strong style="font-size:0.9rem">Or pay monthly / yearly</strong>
+        <div class="upgrade-actions" style="flex-wrap:wrap;gap:8px;margin-top:6px">
+          <a class="btn btn-blue" href="${PAYPAL_PRO_MONTHLY}" target="_blank" rel="noopener">Pro $${PRICING.pro.monthly}/mo</a>
+          <a class="btn btn-outline" href="${PAYPAL_ULTRA_MONTHLY}" target="_blank" rel="noopener">Ultra $${PRICING.ultra.monthly}/mo</a>
+          <a class="btn btn-blue" href="${PAYPAL_PRO_YEARLY}" target="_blank" rel="noopener">Pro $${PRICING.pro.yearly}/yr</a>
+          <a class="btn btn-outline" href="${PAYPAL_ULTRA_YEARLY}" target="_blank" rel="noopener">Ultra $${PRICING.ultra.yearly}/yr</a>
+        </div>
+      </div>
+
+      <div class="manual-pay" style="margin-top:14px;padding:12px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0">
+        <strong>Mobile money (Malawi)</strong>
+        <p style="margin:8px 0 0;font-size:0.85rem">Airtel *247# Till <strong>${MERCHANT_TILLS.airtel}</strong> · TNM *444# Till <strong>${MERCHANT_TILLS.tnm}</strong></p>
+      </div>
+
+      <div style="margin-top:12px">
+        <button type="button" class="btn btn-ghost" id="demoUnlockBtn">Demo unlock (this device only)</button>
+      </div>
+    </div>`;
+  const afterUnlock = () => {
+    updatePlanUI();
+    if (feature === "transfers") renderTransfersUI();
+    else renderAITeams();
+  };
+  const tp = $("trialProBtn");
+  if (tp) tp.addEventListener("click", () => { startTrial("pro"); afterUnlock(); });
+  const tu = $("trialUltraBtn");
+  if (tu) tu.addEventListener("click", () => { startTrial("ultra"); afterUnlock(); });
+  const demo = $("demoUnlockBtn");
+  if (demo) demo.addEventListener("click", () => {
+    saveAuthSession({ teamId: currentTeamId(), plan: "pro", email: "demo" });
+    setStatus("Demo Pro unlocked on this device");
+    afterUnlock();
+  });
+}
+
+function populateClubFilter() {
+  const sel = $("cfTeam");
+  if (!sel || sel.options.length > 1) return;
+  const clubs = Object.values(teamsMap || {}).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  clubs.forEach(t => {
+    const o = document.createElement("option");
+    o.value = t.id;
+    o.textContent = t.short_name || t.name;
+    sel.appendChild(o);
+  });
+}
+
+function showTransferResults(res) {
+  const box = $("transferResults");
+  if (!box) return;
+  if (res.error) { box.innerHTML = `<p class="muted">${res.error}</p>`; return; }
+  if (!res.suggestions.length) {
+    box.innerHTML = `<p class="muted">No upgrades matched — loosen filters or check your squad is loaded (bank ${money(res.bank)}).</p>`;
+    return;
+  }
+  const ftLabel = res.unlimited
+    ? "Free transfers: <strong>Unlimited this gameweek</strong> (GW1 / WC / FH — no hits)"
+    : `Free transfers available: <strong>${res.freeTransfers}</strong>`;
+  box.innerHTML = `
+    <div class="tr-ft-banner">${ftLabel} · Squad XP ≈ <strong>${res.currentXp.toFixed(1)}</strong> · Bank ${money(res.bank)}</div>
+    <p class="muted" style="font-size:0.85rem;margin-bottom:8px">AI recommendations · multi-moves shown as one bundle</p>
+    ` + res.suggestions.map((s, i) => {
+      const n = s.moves.length;
+      const title = n === 1 ? "1 transfer" : n + " transfer bundle";
+      const rows = s.moves.map(m => {
+        const g = (m.gain != null ? m.gain : (transferXp(m.inn) - transferXp(m.out)));
+        return `<tr>
+          <td class="tr-sell"><strong>${m.out.web_name}</strong><div class="muted" style="font-size:0.75rem">${m.out.position} · ${m.out.team} · ${money(m.out.price)}</div></td>
+          <td class="tr-gain">${g >= 0 ? "+" : ""}${g.toFixed(1)} pts</td>
+          <td class="tr-buy"><strong>${m.inn.web_name}</strong><div class="muted" style="font-size:0.75rem">${m.inn.position} · ${m.inn.team} · ${money(m.inn.price)}</div></td>
+        </tr>`;
+      }).join("");
+      return `<div class="tr-bundle ${i === 0 ? "top" : ""}">
+        <div class="tr-bundle-head">
+          <h4>#${i + 1} · ${title}</h4>
+          <div>
+            <span class="tr-gain">+${s.gain.toFixed(1)} pts</span>
+            ${s.hits ? `<span class="tr-hit"> · −${s.hits * 4} hit</span>` : ""}
+          </div>
+        </div>
+        <table class="tr-move-table">
+          <thead><tr><th>Sell</th><th>Gain</th><th>Buy</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="tr-footer">
+          <span class="muted">Total gain <strong class="tr-gain">+${s.gain.toFixed(1)} pts</strong> · bank ${s.costDiff >= 0 ? "−" : "+"}${money(Math.abs(s.costDiff))}</span>
+          <button class="btn btn-blue apply-tr" data-idx="${i}">Make ${n} transfer${n > 1 ? "s" : ""}</button>
+        </div>
+      </div>`;
+    }).join("");
+
+  box.querySelectorAll(".apply-tr").forEach(btn => {
+    btn.addEventListener("click", () => {
+      applyTransferSuggestion(res.suggestions[+btn.dataset.idx]);
+      saveSquadLocal();
+      setStatus("Applied transfer bundle locally — mirror on official FPL");
+    });
+  });
+}
+
+function syncTransferModeUI() {
+  const unlimited = isUnlimitedTransferMode();
+  const hint = $("trModeHint");
+  if (hint) {
+    hint.textContent = unlimited
+      ? "Unlimited mode: plan as many transfers as you like with no hit penalty (typical for GW1, Wildcard, or Free Hit)."
+      : "Normal mode: free transfers use your FT count; extra moves cost −4 hits.";
+  }
+  if (unlimited) {
+    if ($("ftInput")) $("ftInput").value = 15;
+    if ($("hitsInput")) $("hitsInput").value = 0;
+  }
+}
+
+function renderTransfersUI() {
+  if (!isPro()) {
+    showUpgradePrompt("transfers");
+    return;
+  }
+  populateClubFilter();
+  syncTransferModeUI();
+  const unlimited = isUnlimitedTransferMode();
+  const ft = unlimited ? 15 : (parseInt($("ftInput").value, 10) || 1);
+  const hits = unlimited ? 0 : (parseInt($("hitsInput").value, 10) || 0);
+  showTransferResults(findTransfers(ft, hits, null));
+}
+
+function renderCustomTransfersUI() {
+  if (!isPro()) {
+    showUpgradePrompt("transfers");
+    return;
+  }
+  populateClubFilter();
+  const ft = parseInt($("ftInputCustom").value, 10) || 1;
+  const hits = parseInt($("hitsInputCustom").value, 10) || 0;
+  const filters = getTransferFilters();
+  showTransferResults(findTransfers(ft, hits, filters));
+}
+
+function renderAITeams() {
+  if (!isPro()) {
+    showUpgradePrompt("teams");
+    return;
+  }
+  const budget = Math.min(100, parseFloat($("aiBudget").value) || 100);
+  const box = $("aiTeamsResults");
+  box.innerHTML = "<p class='muted'>Generating Wildcard & Free Hit squads…</p>";
+
+  const savedHorizon = horizon;
+
+  // Wildcard: multi-GW structure (horizon 3)
+  horizon = 3;
+  const wc = optimiseSquad(budget, { mode: "wildcard", horizonOverride: 3 });
+
+  // Free Hit: next GW maximisation; exclude a few WC template players for diversity
+  const templateIds = (wc.squad || [])
+    .filter(p => p.selected_by_percent > 25)
+    .slice(0, 4)
+    .map(p => p.id);
+  horizon = 1;
+  const fh = optimiseSquad(budget, { mode: "freehit", horizonOverride: 1, excludeIds: templateIds });
+
+  horizon = savedHorizon;
+
+  const teams = [
+    {
+      label: "Wildcard Team",
+      blurb: "Built for the next 3 GWs — structure, fixtures and longer-term value. Permanent changes.",
+      data: wc,
+    },
+    {
+      label: "Free Hit Team",
+      blurb: "Built for the next GW only — maximise single-week points. Squad reverts after the GW.",
+      data: fh,
+    },
+  ];
+
+  box.innerHTML = teams.map((t, i) => {
+    const c = t.data.counts || {};
+    const ok15 = (c.total === 15) && c.GKP === 2 && c.DEF === 5 && c.MID === 5 && c.FWD === 3;
+    return `
+      <div class="team-card ai-team-card">
+        <h4>${t.label}</h4>
+        <p class="muted" style="font-size:0.85rem;margin:4px 0 10px">${t.blurb}</p>
+        <div class="ai-meta">
+          <span>XI XP ≈ <strong>${(t.data.xiXp || 0).toFixed(1)}</strong></span>
+          <span>Cost <strong>${money(t.data.spent)}</strong></span>
+          <span>Bank <strong>${money(t.data.bank)}</strong></span>
+          <span>${ok15 ? "15/15 · 2-5-5-3" : `⚠ ${c.total || 0}/15 (${c.GKP}GK ${c.DEF}DF ${c.MID}MD ${c.FWD}FW)`}</span>
+        </div>
+        ${renderMiniPitch(t.data)}
+        <button class="btn btn-blue use-team" data-idx="${i}" style="margin-top:12px">Use this team on Pick tab</button>
+      </div>`;
+  }).join("");
+
+  window.__aiTeams = teams;
+  box.querySelectorAll(".use-team").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const t = window.__aiTeams[+btn.dataset.idx].data;
+      squad = t.squad; startingIds = t.startingIds; benchIds = t.benchIds;
+      captainId = t.captainId; bank = t.bank;
+      squadLockedValue = false; entryBank = null; // AI draft starts under £100.0m
+      renderPitch(); renderPlayerList();
+      document.querySelector('[data-view="pick"]').click();
+      setStatus("AI team applied — review on Pick tab (" + (squad.length) + " players)");
+    });
+  });
+}
+
+function getChipPlan() {
+  try { return JSON.parse(localStorage.getItem("fpl_chip_plan_v1") || "{}"); } catch { return {}; }
+}
+function saveChipPlan(plan) {
+  try { localStorage.setItem("fpl_chip_plan_v1", JSON.stringify(plan)); } catch (_) {}
+}
+
+const CHIP_META = {
+  bb: { name: "Bench boost", desc: "Includes points scored by your benched players in your total for a gameweek. Best in a double gameweek when all 15 play." },
+  fh: { name: "Free hit", desc: "Make unlimited transfers for one gameweek only; squad reverts after. Use on a blank gameweek." },
+  wc: { name: "Wildcard", desc: "Unlimited transfers for the week you activate it; changes are permanent. WC1 early season, WC2 for blank/double clusters." },
+  tc: { name: "Triple captain", desc: "Captain scores 3× points. Best on a premium in a double gameweek." },
+};
+
+function renderChips() {
+  const plan = getChipPlan();
+  const grid = $("chipGrid");
+  if (!grid) return;
+  const keys = ["bb", "fh", "wc", "tc"];
+  grid.innerHTML = keys.map(k => {
+    const gw = plan[k];
+    const meta = CHIP_META[k];
+    return `<div class="chip-item ${gw ? "planned" : ""}" data-chip="${k}" style="cursor:pointer">
+      <div class="chip-name">${meta.name}</div>
+      <div class="chip-state ${gw ? "set" : ""}">${gw ? "GW " + gw : "Not set"}</div>
+    </div>`;
+  }).join("");
+  grid.querySelectorAll(".chip-item").forEach(el => {
+    el.addEventListener("click", () => openChipModal(el.dataset.chip));
+  });
+  $("chipAdviceShort").innerHTML = `<p><strong>Tap a chip</strong> to choose the gameweek you plan to play it.</p>
+    <p class="muted">This is a planner only — you still activate chips on the official FPL site before the deadline.</p>`;
+}
+
+function openChipModal(key) {
+  chipModalKey = key;
+  const meta = CHIP_META[key];
+  const plan = getChipPlan();
+  $("chipModalTitle").textContent = meta.name;
+  $("chipModalDesc").textContent = meta.desc;
+  const sel = $("chipGwSelect");
+  sel.innerHTML = "";
+  const maxGw = 38;
+  for (let g = currentGw; g <= maxGw; g++) {
+    const opt = document.createElement("option");
+    opt.value = g;
+    opt.textContent = "Gameweek " + g;
+    if (plan[key] == g) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  $("chipModal").classList.remove("hidden");
+}
+
+function closeChipModal() {
+  $("chipModal").classList.add("hidden");
+  chipModalKey = null;
+}
+
+// chip modal buttons bound once
+document.addEventListener("DOMContentLoaded", () => {});
+on("chipSaveBtn", "click", () => {
+  if (!chipModalKey) return;
+  const plan = getChipPlan();
+  plan[chipModalKey] = parseInt($("chipGwSelect").value, 10);
+  saveChipPlan(plan);
+  closeChipModal();
+  renderChips();
+});
+on("chipCancelBtn", "click", closeChipModal);
+on("chipClearBtn", "click", () => {
+  if (!chipModalKey) return;
+  const plan = getChipPlan();
+  delete plan[chipModalKey];
+  saveChipPlan(plan);
+  closeChipModal();
+  renderChips();
+});
+
+
+function loadDefaultSquad() {
+  const ids = [...DEFAULT_SQUAD_IDS.starting, ...DEFAULT_SQUAD_IDS.bench];
+  squad = ids.map(id => players.find(p => p.id === id)).filter(Boolean);
+  startingIds = DEFAULT_SQUAD_IDS.starting.filter(id => squad.some(p => p.id === id));
+  benchIds = DEFAULT_SQUAD_IDS.bench.filter(id => squad.some(p => p.id === id));
+  captainId = DEFAULT_SQUAD_IDS.captain;
+  const cost = squad.reduce((s, p) => s + p.price, 0);
+  bank = Math.max(0, BUDGET - cost);
+  return squad.length >= 11;
+}
+
+
+function squadStorageKey(teamId) {
+  return "fpl_squad_v1_" + String(teamId || "anon");
+}
+
+function saveSquadLocal(teamId) {
+  teamId = teamId || currentTeamId() || "anon";
+  if (!squad.length) return false;
+  enforceValidXI();
+  const payload = {
+    teamId: teamId === "anon" ? null : Number(teamId),
+    squadIds: squad.map(p => p.id),
+    startingIds: [...startingIds],
+    benchIds: [...benchIds],
+    captainId,
+    viceCaptainId,
+    bank,
+    squadLockedValue,
+    entryBank,
+    savedAt: Date.now(),
+  };
+  try {
+    localStorage.setItem(squadStorageKey(teamId), JSON.stringify(payload));
+    // also mirror to anon so refresh without id can recover last edit
+    if (teamId !== "anon") localStorage.setItem(squadStorageKey("anon"), JSON.stringify(payload));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function loadSquadLocal(teamId) {
+  teamId = teamId || currentTeamId() || "anon";
+  if (!players.length) return false;
+  try {
+    const raw = localStorage.getItem(squadStorageKey(teamId));
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data.squadIds || data.squadIds.length < 11) return false;
+    const mapped = data.squadIds.map(id => players.find(p => p.id === id)).filter(Boolean);
+    if (mapped.length < 11) return false;
+    squad = mapped;
+    startingIds = (data.startingIds || []).filter(id => squad.some(p => p.id === id));
+    benchIds = (data.benchIds || []).filter(id => squad.some(p => p.id === id));
+    // recover missing from squad
+    const placed = new Set([...startingIds, ...benchIds]);
+    squad.forEach(p => {
+      if (!placed.has(p.id)) {
+        if (startingIds.length < 11) startingIds.push(p.id);
+        else benchIds.push(p.id);
+      }
+    });
+    captainId = data.captainId && squad.some(p => p.id === data.captainId) ? data.captainId : startingIds[0];
+    viceCaptainId = data.viceCaptainId && squad.some(p => p.id === data.viceCaptainId) ? data.viceCaptainId : null;
+    if (viceCaptainId === captainId) viceCaptainId = null;
+    if (typeof data.bank === "number") bank = data.bank;
+    squadLockedValue = !!data.squadLockedValue;
+    if (data.entryBank != null) entryBank = data.entryBank;
+    enforceValidXI();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function tryLoadUserTeam(teamId) {
+  teamId = parseInt(teamId, 10);
+  let teamName = null;
+  let playerName = null;
+  entryBank = null;
+  teamValueOverride = null;
+  squadLockedValue = false;
+
+  try {
+    const entry = await fetchJson(`entry/${teamId}/`);
+    if (entry) {
+      if (entry.name) teamName = entry.name;
+      playerName = [entry.player_first_name, entry.player_last_name].filter(Boolean).join(" ");
+      if (entry.last_deadline_bank != null) entryBank = entry.last_deadline_bank / 10;
+      if (entry.last_deadline_value != null) teamValueOverride = entry.last_deadline_value / 10;
+      // Prefer entry.current_event / started_event when present
+      if (entry.current_event) currentGw = entry.current_event;
+      else if (entry.started_event) currentGw = entry.started_event;
+    }
+  } catch (e) {
+    return { source: "error", teamName: null, error: "Team ID not found on FPL" };
+  }
+
+  // Build list of events to try (next, current, 1..5, history)
+  const tryEvents = [];
+  if (bootstrap && bootstrap.events) {
+    const nx = bootstrap.events.find(e => e.is_next);
+    const cu = bootstrap.events.find(e => e.is_current);
+    if (nx) tryEvents.push(nx.id);
+    if (cu) tryEvents.push(cu.id);
+  }
+  for (let e = 1; e <= 8; e++) tryEvents.push(e);
+  const seenEv = new Set();
+
+  for (const ev of tryEvents) {
+    if (seenEv.has(ev)) continue;
+    seenEv.add(ev);
+    try {
+      const picks = await fetchJson(`entry/${teamId}/event/${ev}/picks/`);
+      if (!picks || !picks.picks || !picks.picks.length) continue;
+      const ordered = [...picks.picks].sort((a, b) => a.position - b.position);
+      const mapped = ordered.map(p => players.find(x => x.id === p.element)).filter(Boolean);
+      if (mapped.length < 11) continue;
+      squad = mapped;
+      startingIds = ordered.filter(p => p.position <= 11).map(p => p.element);
+      benchIds = ordered.filter(p => p.position > 11).map(p => p.element);
+      const cap = ordered.find(p => p.is_captain);
+      captainId = cap ? cap.element : startingIds[0];
+      squadLockedValue = true;
+      if (entryBank != null) bank = entryBank;
+      else {
+        const spent = squad.reduce((s, p) => s + p.price, 0);
+        bank = Math.max(0, BUDGET - spent);
+      }
+      // entry_history bank on picks if present
+      if (picks.entry_history && picks.entry_history.bank != null) {
+        bank = picks.entry_history.bank / 10;
+      }
+      saveSquadLocal(teamId);
+      return { source: "api", teamName, playerName, event: ev };
+    } catch (err) {
+      // 404 until FPL publishes that team's picks for the event
+    }
+  }
+
+  // Prefer squad saved on this device for this Team ID
+  if (loadSquadLocal(teamId)) {
+    return {
+      source: "local",
+      teamName,
+      playerName,
+      note: "Loaded your saved squad for this Team ID (device storage).",
+    };
+  }
+
+  squad = [];
+  startingIds = [];
+  benchIds = [];
+  captainId = null;
+  viceCaptainId = null;
+  bank = BUDGET;
+  squadLockedValue = false;
+  return {
+    source: "empty",
+    teamName,
+    playerName,
+  };
+}
+
+async function init(force = false) {
+  restoreTeamIdInput();
+  const rawId = $("teamIdInput") && $("teamIdInput").value;
+  const teamId = parseInt(rawId, 10);
+  if (!teamId) {
+    setStatus("Enter a Team ID above and press Refresh to load a squad.");
+    loadPlan(); updatePlanUI();
+    squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null;
+    try {
+      if (!bootstrap) { await loadBootstrap(force); await loadFixtures(); buildPlayers(); }
+      renderPitch(); renderPlayerList(); renderChips(); updatePlanUI();
+    } catch (e) { setStatus("Error: " + e.message); }
+    return;
+  }
+  setStatus("Loading official FPL data…");
+  loadPlan();
+  updatePlanUI();
+  try {
+    try { ["fpl_boot_v1","fpl_boot_v2","fpl_boot_v3","fpl_boot_v4"].forEach(k => localStorage.removeItem(k)); } catch (_) {}
+    await loadBootstrap(force);
+    await loadFixtures();
+    buildPlayers();
+    rememberTeamId(teamId);
+    let loaded = await tryLoadUserTeam(teamId);
+    const tname = (loaded && loaded.teamName) ? loaded.teamName : ("Team " + teamId);
+    if (loaded && loaded.source === "api") {
+      setStatus(`GW ${loaded.event || currentGw} · ${tname}: official picks (${squad.length} players)`);
+    } else if (loaded && loaded.source === "local") {
+      setStatus(`${tname}: saved squad restored (${squad.length} players)`);
+    } else if (loaded && loaded.source === "error") {
+      setStatus(loaded.error || "Could not load team");
+    } else if (loaded && loaded.source === "empty") {
+      setStatus(`${tname}: no public FPL picks yet — Edit team; progress saves for this Team ID`);
+    } else {
+      setStatus(`${tname}: GW ${currentGw}`);
+    }
+    updatePlanUI(); // re-check Pro lock if team ID differs from session
+    renderPitch();
+    renderPlayerList();
+    renderChips();
+    updatePlanUI();
+    const lu = $("lastUpdated"); if (lu) lu.textContent = "Updated " + new Date().toLocaleString();
+  } catch (e) {
+    setStatus("Error: " + e.message);
+    console.error(e);
+  }
+}
+
+
+// ---------- Live Rank ----------
+async function loadEntrySummary(teamId) {
+  return fetchJson(`entry/${teamId}/`);
+}
+
+async function loadEntryHistory(teamId) {
+  try {
+    return await fetchJson(`entry/${teamId}/history/`);
+  } catch {
+    return null;
+  }
+}
+
+function formatRank(n) {
+  if (n == null || n === 0) return "–";
+  return Number(n).toLocaleString();
+}
+
+
+// ---------- Matchday: Captain poll, Chip poll, Fixtures, Live ----------
+function fdrClass(d) {
+  const n = Math.min(5, Math.max(1, d || 3));
+  return "fdr fdr-" + n;
+}
+
+function teamName(id) {
+  const t = teamsMap[id];
+  return t ? (t.short_name || t.name) : "?";
+}
+
+function renderCaptainPoll() {
+  const box = $("captainPoll");
+  if (!box || !players.length) return;
+  const top = [...players]
+    .filter(p => p.availability >= 0.4 && !["u", "s"].includes(p.status))
+    .sort((a, b) => xpOf(b) - xpOf(a))
+    .slice(0, 10);
+  box.innerHTML = "<p class='muted'>Loading community votes…</p>";
+
+  apiVotes(currentGw).then(votes => {
+    const counts = (votes && votes.captain) || {};
+    const total = (votes && votes.captainTotal) || 0;
+    const maxXp = top[0] ? xpOf(top[0]) : 1;
+    box.innerHTML = top.map((p, i) => {
+      const v = counts[String(p.id)] || 0;
+      const pct = total ? (100 * v / total) : 0;
+      const modelPct = 100 * Math.pow(Math.max(xpOf(p), 0.5) / maxXp, 1.25);
+      return `<div class="poll-row" data-id="${p.id}">
+        <span class="rank">${i + 1}</span>
+        <div>
+          <strong>${p.web_name}</strong> <span class="muted">${p.team} · ${xpOf(p).toFixed(1)} xp</span>
+          <div class="bar"><i style="width:${(total ? pct : modelPct / 3).toFixed(1)}%"></i></div>
+        </div>
+        <span>${total ? v + " votes" : "no votes yet"}</span>
+        <button type="button" class="btn btn-outline vote-cap" data-id="${p.id}" style="padding:4px 8px;font-size:0.75rem">Vote</button>
+      </div>`;
+    }).join("") + (total ? `<p class="muted" style="margin-top:8px;font-size:0.8rem">${total} community captain votes this GW</p>` : `<p class="muted" style="margin-top:8px;font-size:0.8rem">Be the first to vote this GW</p>`);
+
+    box.querySelectorAll(".vote-cap").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        btn.disabled = true;
+        btn.textContent = "…";
+        const res = await castVote("captain", btn.dataset.id);
+        if (res && res.error) setStatus("Vote failed: " + res.error);
+        else setStatus("Captain vote recorded");
+        renderCaptainPoll();
+      });
+    });
+    box.querySelectorAll(".poll-row").forEach(row => {
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".vote-cap")) return;
+        const id = +row.dataset.id;
+        if (!squad.some(p => p.id === id)) {
+          setStatus("Add player to squad before setting captain");
+          return;
+        }
+        captainId = id;
+        renderPitch();
+        setStatus("Captain set on Pick tab");
+      });
+    });
+  });
+}
+
+function renderChipPoll() {
+  const box = $("chipPoll");
+  if (!box) return;
+  const items = [
+    { key: "tc", name: "Triple Captain", tip: "Premium in a good fixture / DGW" },
+    { key: "bb", name: "Bench Boost", tip: "When all 15 likely play" },
+    { key: "fh", name: "Free Hit", tip: "Blank-heavy one-week template" },
+    { key: "wc", name: "Wildcard", tip: "Rebuild for a fixture run" },
+    { key: "none", name: "Hold chips", tip: "No special edge this week" },
+  ];
+  box.innerHTML = "<p class='muted'>Loading chip votes…</p>";
+  apiVotes(currentGw).then(votes => {
+    const counts = (votes && votes.chip) || {};
+    const total = (votes && votes.chipTotal) || 0;
+    box.innerHTML = items.map(it => {
+      const v = counts[it.key] || 0;
+      const pct = total ? (100 * v / total) : 0;
+      return `<div class="chip-poll-item ${total && pct === Math.max(...items.map(x => total ? 100 * (counts[x.key] || 0) / total : 0)) ? "top" : ""}">
+        <div class="pct">${total ? pct.toFixed(0) + "%" : "—"}</div>
+        <strong>${it.name}</strong>
+        <div class="muted" style="font-size:0.8rem;margin-top:4px">${it.tip}</div>
+        <div class="muted" style="font-size:0.75rem;margin-top:4px">${v} vote${v === 1 ? "" : "s"}</div>
+        <button type="button" class="btn btn-outline vote-chip" data-key="${it.key}" style="margin-top:8px;padding:4px 8px;font-size:0.75rem">Vote</button>
+      </div>`;
+    }).join("");
+    box.querySelectorAll(".vote-chip").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const res = await castVote("chip", btn.dataset.key);
+        if (res && res.error) setStatus("Vote failed: " + res.error);
+        else setStatus("Chip vote recorded");
+        renderChipPoll();
+      });
+    });
+  });
+}
+
+function renderFixtureBoard() {
+  const box = $("fixtureBoard");
+  if (!box) return;
+  const list = (fixtures || [])
+    .filter(f => f.event === currentGw)
+    .sort((a, b) => (a.kickoff_time || "").localeCompare(b.kickoff_time || ""));
+  if (!list.length) {
+    box.innerHTML = `<p class="muted">No fixtures listed for GW ${currentGw} yet.</p>`;
+    return;
+  }
+  box.innerHTML = list.map(f => {
+    const ko = f.kickoff_time ? new Date(f.kickoff_time).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    const hs = f.team_h_score != null ? f.team_h_score : "–";
+    const as_ = f.team_a_score != null ? f.team_a_score : "–";
+    return `<div class="fix-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span>${teamName(f.team_h)} <span class="${fdrClass(f.team_h_difficulty)}">${f.team_h_difficulty || "?"}</span></span>
+        <strong>${hs} – ${as_}</strong>
+        <span><span class="${fdrClass(f.team_a_difficulty)}">${f.team_a_difficulty || "?"}</span> ${teamName(f.team_a)}</span>
+      </div>
+      <div class="muted" style="margin-top:6px;font-size:0.75rem;color:#94a3b8">${ko}${f.started && !f.finished_provisional ? " · LIVE" : f.finished ? " · FT" : ""}</div>
+    </div>`;
+  }).join("");
+}
+
+async function renderLiveBoard() {
+  const box = $("liveBoard");
+  const st = $("liveStatus");
+  if (!box) return;
+  box.innerHTML = `<p class="muted">Loading live data…</p>`;
+  try {
+    const live = await fetchJson(`event/${currentGw}/live/`);
+    const elements = (live && live.elements) || [];
+    if (!elements.length) {
+      box.innerHTML = `<p class="muted">Live breakdown not available yet for GW ${currentGw} (usual before matches start).</p>`;
+      if (st) st.textContent = "Waiting for match data";
+      return;
+    }
+    // Map stats
+    const rows = elements.map(el => {
+      const p = players.find(x => x.id === el.id);
+      if (!p) return null;
+      const stats = {};
+      (el.stats && typeof el.stats === "object" && !Array.isArray(el.stats)
+        ? Object.entries(el.stats)
+        : []).forEach(([k, v]) => { stats[k] = v; });
+      // older shape: el.stats as flat fields
+      const pts = el.stats?.total_points ?? el.stats?.points ?? stats.total_points ?? 0;
+      const minutes = el.stats?.minutes ?? stats.minutes ?? 0;
+      const goals = el.stats?.goals_scored ?? stats.goals_scored ?? 0;
+      const assists = el.stats?.assists ?? stats.assists ?? 0;
+      const cs = el.stats?.clean_sheets ?? stats.clean_sheets ?? 0;
+      const bonus = el.stats?.bonus ?? stats.bonus ?? 0;
+      const xg = el.stats?.expected_goals ?? stats.expected_goals ?? null;
+      const xa = el.stats?.expected_assists ?? stats.expected_assists ?? null;
+      return { p, pts, minutes, goals, assists, cs, bonus, xg, xa };
+    }).filter(Boolean)
+      .filter(r => r.minutes > 0 || r.pts > 0)
+      .sort((a, b) => b.pts - a.pts)
+      .slice(0, 40);
+
+    if (!rows.length) {
+      box.innerHTML = `<p class="muted">No player minutes yet this GW.</p>`;
+      if (st) st.textContent = "GW not started or no minutes";
+      return;
+    }
+    box.innerHTML = `<table class="live-table">
+      <thead><tr>
+        <th>Player</th><th>Pts</th><th>Min</th><th>G</th><th>A</th><th>CS</th><th>B</th><th>xG</th><th>xA</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td><strong>${r.p.web_name}</strong> <span class="muted">${r.p.team}</span></td>
+          <td><strong>${r.pts}</strong></td>
+          <td>${r.minutes}</td>
+          <td>${r.goals}</td>
+          <td>${r.assists}</td>
+          <td>${r.cs}</td>
+          <td>${r.bonus}</td>
+          <td>${r.xg != null ? Number(r.xg).toFixed(2) : "–"}</td>
+          <td>${r.xa != null ? Number(r.xa).toFixed(2) : "–"}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>`;
+    if (st) st.textContent = `GW ${currentGw} · top ${rows.length} by live points · ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    box.innerHTML = `<p class="muted">Live feed unavailable: ${e.message}</p>`;
+    if (st) st.textContent = "Error loading live";
+  }
+}
+
+function renderMetricsBoard() {
+  const box = $("metricsBoard");
+  if (!box || !players.length) return;
+  const attackers = [...players]
+    .filter(p => (p.position === "MID" || p.position === "FWD") && p.availability >= 0.4)
+    .sort((a, b) => (b.xg90 + b.xa90) - (a.xg90 + a.xa90))
+    .slice(0, 8);
+  const defenders = [...players]
+    .filter(p => (p.position === "DEF" || p.position === "GKP") && p.availability >= 0.4)
+    .sort((a, b) => {
+      const csA = Math.max(0.05, Math.min(0.55, 0.42 - 0.12 * (a.xgc90 || 1.3)));
+      const csB = Math.max(0.05, Math.min(0.55, 0.42 - 0.12 * (b.xgc90 || 1.3)));
+      return csB - csA;
+    })
+    .slice(0, 8);
+
+  const row = (p, extra) => `<tr>
+    <td><strong>${p.web_name}</strong> <span class="muted">${p.team}</span></td>
+    <td>${p.position}</td>
+    <td>${xpOf(p).toFixed(1)}</td>
+    <td>${extra}</td>
+  </tr>`;
+
+  box.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <h3 style="margin:0 0 8px;font-size:0.95rem">Attack · xG + xA / 90</h3>
+        <table class="live-table"><thead><tr><th>Player</th><th>Pos</th><th>XP</th><th>xG90 · xA90</th></tr></thead>
+        <tbody>${attackers.map(p => row(p, `${p.xg90.toFixed(2)} · ${p.xa90.toFixed(2)}`)).join("")}</tbody></table>
+      </div>
+      <div>
+        <h3 style="margin:0 0 8px;font-size:0.95rem">Defence · CS lean (via xGC)</h3>
+        <table class="live-table"><thead><tr><th>Player</th><th>Pos</th><th>XP</th><th>xGC90 · CS%</th></tr></thead>
+        <tbody>${defenders.map(p => {
+          const cs = Math.max(0.05, Math.min(0.55, 0.42 - 0.12 * (p.xgc90 || 1.3)));
+          return row(p, `${(p.xgc90 || 0).toFixed(2)} · ${(cs * 100).toFixed(0)}%`);
+        }).join("")}</tbody></table>
+      </div>
+    </div>`;
+}
+
+function renderPriceBoard() {
+  const box = $("priceBoard");
+  if (!box || !players.length) return;
+  // Net transfers this event as rise/fall pressure proxy
+  const withTx = players.map(p => {
+    const tin = p.transfers_in_event || 0;
+    const tout = p.transfers_out_event || 0;
+    return { p, net: tin - tout, tin, tout };
+  });
+  const rises = [...withTx].sort((a, b) => b.net - a.net).slice(0, 10);
+  const falls = [...withTx].sort((a, b) => a.net - b.net).slice(0, 10);
+  const row = (x, label) => `<tr>
+    <td><strong>${x.p.web_name}</strong> <span class="muted">${x.p.team}</span></td>
+    <td>${money(x.p.price)}</td>
+    <td>${x.tin}</td>
+    <td>${x.tout}</td>
+    <td style="color:${x.net >= 0 ? "#16a34a" : "#dc2626"}"><strong>${x.net >= 0 ? "+" : ""}${x.net}</strong></td>
+  </tr>`;
+  box.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <h3 style="margin:0 0 8px;font-size:0.95rem">Likely to rise</h3>
+      <table class="live-table"><thead><tr><th>Player</th><th>£</th><th>In</th><th>Out</th><th>Net</th></tr></thead>
+      <tbody>${rises.map(x => row(x)).join("")}</tbody></table>
+    </div>
+    <div>
+      <h3 style="margin:0 0 8px;font-size:0.95rem">Likely to fall</h3>
+      <table class="live-table"><thead><tr><th>Player</th><th>£</th><th>In</th><th>Out</th><th>Net</th></tr></thead>
+      <tbody>${falls.map(x => row(x)).join("")}</tbody></table>
+    </div>
+  </div>
+  <p class="muted" style="font-size:0.8rem;margin-top:8px">Not official FPL predictions — based on transfers_in/out this GW.</p>`;
+}
+
+async function renderRivalRadar() {
+  const box = $("rivalBoard");
+  if (!box) return;
+  const leagueId = parseInt($("rivalLeagueId") && $("rivalLeagueId").value, 10);
+  const myId = currentTeamId();
+  if (!leagueId) {
+    box.innerHTML = `<p class="muted">Enter a classic league ID to scan.</p>`;
+    return;
+  }
+  if (!myId) {
+    box.innerHTML = `<p class="muted">Set your Team ID in the header first.</p>`;
+    return;
+  }
+  box.innerHTML = `<p class="muted">Scanning league ${leagueId}…</p>`;
+  try {
+    const data = await fetchJson(`leagues-classic/${leagueId}/standings/?page_standings=1`);
+    const results = (data.standings && data.standings.results) || [];
+    const rivals = results.filter(r => r.entry !== myId).slice(0, 8);
+    if (!rivals.length) {
+      box.innerHTML = `<p class="muted">No rivals found (check league ID).</p>`;
+      return;
+    }
+    const myIds = new Set(squad.map(p => p.id));
+    const rows = [];
+    for (const r of rivals) {
+      let their = [];
+      try {
+        const picks = await fetchJson(`entry/${r.entry}/event/${currentGw}/picks/`);
+        their = (picks.picks || []).map(x => x.element);
+      } catch (_) {
+        try {
+          const picks = await fetchJson(`entry/${r.entry}/event/${Math.max(1, currentGw - 1)}/picks/`);
+          their = (picks.picks || []).map(x => x.element);
+        } catch (__) {}
+      }
+      if (!their.length) {
+        rows.push({ r, note: "Picks not public yet" });
+        continue;
+      }
+      const theirSet = new Set(their);
+      const theyHaveIDont = their.filter(id => !myIds.has(id))
+        .map(id => players.find(p => p.id === id))
+        .filter(Boolean)
+        .sort((a, b) => xpOf(b) - xpOf(a))
+        .slice(0, 4);
+      const iHaveTheyDont = [...myIds].filter(id => !theirSet.has(id))
+        .map(id => players.find(p => p.id === id))
+        .filter(Boolean)
+        .sort((a, b) => xpOf(b) - xpOf(a))
+        .slice(0, 4);
+      rows.push({ r, theyHaveIDont, iHaveTheyDont });
+    }
+    box.innerHTML = `<table class="live-table">
+      <thead><tr><th>Rival</th><th>Rank</th><th>They have · you don’t</th><th>You have · they don’t</th></tr></thead>
+      <tbody>
+        ${rows.map(row => {
+          if (row.note) return `<tr><td>${row.r.entry_name}</td><td>${row.r.rank}</td><td colspan="2" class="muted">${row.note}</td></tr>`;
+          return `<tr>
+            <td><strong>${row.r.entry_name}</strong><div class="muted" style="font-size:0.75rem">${row.r.player_name || ""}</div></td>
+            <td>${row.r.rank}</td>
+            <td>${(row.theyHaveIDont || []).map(p => p.web_name).join(", ") || "—"}</td>
+            <td>${(row.iHaveTheyDont || []).map(p => p.web_name).join(", ") || "—"}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    <p class="muted" style="font-size:0.8rem;margin-top:8px">Pre-deadline picks of other managers are often hidden by FPL — scan works best once picks are published.</p>`;
+  } catch (e) {
+    box.innerHTML = `<p class="muted">League scan failed: ${e.message}</p>`;
+  }
+}
+
+function renderSettings() {
+  const setTxt = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+  const signed = !!(authSession && (authSession.plan === "owner" || authSession.plan === "pro" || authSession.plan === "ultra" ||
+    ((authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") && trialStillValid(authSession))));
+  setTxt("settingsAuthStatus", signed ? "Signed in" : "Not signed in");
+  setTxt("settingsPlan", activePlanLabel());
+  setTxt("settingsEmail", (authSession && authSession.email) || "—");
+  setTxt("settingsBoundTeam", (authSession && authSession.teamId) ? String(authSession.teamId) : "—");
+  const st = $("settingsTeamId");
+  if (st) st.value = currentTeamId() || localStorage.getItem("fpl_last_team_id") || "";
+  try {
+    const ui = JSON.parse(localStorage.getItem("fpl_ui_prefs_v1") || "{}");
+    if ($("settingsCompactPitch")) $("settingsCompactPitch").checked = !!ui.compactPitch;
+    if ($("settingsHideMetrics")) $("settingsHideMetrics").checked = !!ui.hideMetrics;
+    if ($("settingsHideGwBanner")) $("settingsHideGwBanner").checked = !!ui.hideGwBanner;
+    if ($("settingsDefaultHorizon")) $("settingsDefaultHorizon").value = String(ui.defaultHorizon || horizon || 1);
+    if ($("settingsTheme")) $("settingsTheme").value = ui.theme || "light";
+    if ($("settingsMatchdayEmail")) $("settingsMatchdayEmail").checked = !!ui.matchdayEmail;
+  } catch (_) {}
+}
+
+function applyUiPrefs() {
+  try {
+    const ui = JSON.parse(localStorage.getItem("fpl_ui_prefs_v1") || "{}");
+    document.body.classList.toggle("compact-pitch", !!ui.compactPitch);
+    document.body.classList.toggle("hide-top-metrics", !!ui.hideMetrics);
+    document.body.classList.toggle("hide-gw-banner", !!ui.hideGwBanner);
+    const theme = ui.theme || "light";
+    document.body.classList.remove("theme-dark");
+    if (theme === "dark") document.body.classList.add("theme-dark");
+    else if (theme === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      document.body.classList.add("theme-dark");
+    }
+    if (ui.defaultHorizon === 1 || ui.defaultHorizon === 3) {
+      horizon = ui.defaultHorizon;
+      document.querySelectorAll(".hz").forEach(b => {
+        b.classList.toggle("active", +b.dataset.hz === horizon);
+      });
+    }
+  } catch (_) {}
+}
+applyUiPrefs();
+
+function renderTerms() {
+  const box = $("termsContent");
+  if (!box) return;
+  box.innerHTML = `
+    <h1>Terms of Use</h1>
+    <p><em>Last updated: 11 August 2026</em></p>
+    <p>Welcome to <strong>FPL Assistant</strong> (“the App”), operated from Malawi. By accessing or using the App you agree to these Terms of Use.</p>
+
+    <h2>1. Nature of the service</h2>
+    <p>The App is an independent Fantasy Premier League decision-support tool. It is <strong>not affiliated with, endorsed by, or connected to</strong> the Premier League, the FA, or Fantasy Premier League. Official FPL remains the only place to enter teams, make transfers, and play chips.</p>
+
+    <h2>2. Data sources</h2>
+    <p>Player data, fixtures, prices, and live scores are derived from publicly available Fantasy Premier League API responses and related public information. We do not guarantee accuracy, completeness, or uninterrupted availability of any data or prediction.</p>
+
+    <h2>3. Predictions and advice</h2>
+    <p>Expected points, captain polls, transfer suggestions, AI teams, and chip guidance are <strong>estimates only</strong>. They are not financial advice and do not guarantee FPL points or ranking outcomes. You remain solely responsible for decisions on the official FPL site.</p>
+
+    <h2>4. Accounts, trials, and paid plans</h2>
+    <ul>
+      <li><strong>Starter</strong> features are free.</li>
+      <li><strong>Pro</strong> and <strong>Ultra</strong> may be started with a <strong>14-day free trial</strong>. During the trial, paid features are unlocked on this device/browser.</li>
+      <li>After the trial, continued access to Pro/Ultra requires payment (PayPal or approved local methods) and activation of your email + Team ID.</li>
+      <li>Paid Pro/Ultra access is bound to the Team ID registered at activation.</li>
+      <li>Owner access is reserved for the operator of the App.</li>
+    </ul>
+
+    <h2>5. Payments</h2>
+    <p>Card and PayPal payments are processed by third parties (e.g. PayPal). Mobile-money payments use merchant till instructions you provide. We do not store full card numbers. Refunds are handled case-by-case for failed activation after confirmed payment.</p>
+
+    <h2>6. Acceptable use</h2>
+    <p>You must not misuse the App, attempt to break security, scrape aggressively, resell access without permission, or use the App for unlawful purposes. Votes and community features must not be manipulated with automated bots.</p>
+
+    <h2>7. Intellectual property</h2>
+    <p>App design, copy, and original code are owned by the operator. Club kits and marks belong to their respective owners and are shown for identification only.</p>
+
+    <h2>8. Limitation of liability</h2>
+    <p>To the fullest extent permitted by law, the operator is not liable for lost FPL points, ranking changes, payment provider outages, or damages arising from reliance on App content. The App is provided “as is”.</p>
+
+    <h2>9. Privacy</h2>
+    <p>We may store email, Team ID, plan, and trial status locally in your browser and, where configured, on hosting infrastructure for activation and Matchday emails. Do not submit passwords for your official FPL account.</p>
+
+    <h2>10. Changes</h2>
+    <p>We may update these Terms and the App features at any time. Continued use after changes constitutes acceptance.</p>
+
+    <h2>11. Contact</h2>
+    <p>Questions about these Terms or paid access: contact the operator via the channels published on the App (e.g. X/WhatsApp associated with the project).</p>
+  `;
+}
+
+async function renderMatchday() {
+  if (!players.length) {
+    try {
+      if (!bootstrap) { await loadBootstrap(); await loadFixtures(); buildPlayers(); }
+    } catch (e) {
+      setStatus("Error loading matchday: " + e.message);
+      return;
+    }
+  }
+  renderCaptainPoll();
+  renderChipPoll();
+  renderFixtureBoard();
+  renderMetricsBoard();
+  renderPriceBoard();
+  await renderLiveBoard();
+  if ($("rivalLeagueId") && $("rivalLeagueId").value) await renderRivalRadar();
+}
+
+async function renderLiveRank() {
+  const teamId = parseInt(($("rankTeamId") && $("rankTeamId").value) || $("teamIdInput").value, 10) || DEFAULT_TEAM_ID;
+  if ($("rankTeamId")) $("rankTeamId").value = teamId;
+  const sumBox = $("rankSummary");
+  const histBox = $("rankHistory");
+  const leaguesBox = $("rankLeagues");
+  if (!sumBox) return;
+  sumBox.innerHTML = `<p class="muted">Loading rank data…</p>`;
+  if (histBox) histBox.innerHTML = "";
+  if (leaguesBox) leaguesBox.innerHTML = "";
+
+  try {
+    const entry = await loadEntrySummary(teamId);
+    const history = await loadEntryHistory(teamId);
+
+    const overallPts = entry.summary_overall_points;
+    const overallRank = entry.summary_overall_rank;
+    const gwPts = entry.summary_event_points;
+    const gwRank = entry.summary_event_rank;
+    const name = entry.name || "Your team";
+    const currentEvent = entry.current_event;
+    const seasonStarted = overallPts != null || (history && history.current && history.current.length);
+
+    if (!seasonStarted) {
+      sumBox.innerHTML = `
+        <div class="rank-empty" style="grid-column:1/-1">
+          <strong>${name}</strong> · Team ID ${teamId}<br>
+          Gameweek 1 has not been scored yet.<br>
+          Overall rank, GW points and history will appear here once the first matches are complete.
+        </div>`;
+      if (histBox) histBox.innerHTML = `<div class="rank-empty">No gameweek history yet.</div>`;
+    } else {
+      sumBox.innerHTML = `
+        <div class="rank-metric"><span class="rm-label">Team</span><span class="rm-val" style="font-size:1rem">${name}</span></div>
+        <div class="rank-metric"><span class="rm-label">Overall rank</span><span class="rm-val">${formatRank(overallRank)}</span></div>
+        <div class="rank-metric"><span class="rm-label">Overall points</span><span class="rm-val">${overallPts ?? "–"}</span></div>
+        <div class="rank-metric"><span class="rm-label">GW ${currentEvent || "–"} pts</span><span class="rm-val">${gwPts ?? "–"}</span>
+          <div class="rm-sub">GW rank ${formatRank(gwRank)}</div></div>
+      `;
+
+      if (histBox && history && history.current && history.current.length) {
+        const rows = [...history.current].reverse().slice(0, 15).map(h => {
+          const delta = h.rank_sort ? "" : "";
+          return `<tr>
+            <td>GW ${h.event}</td>
+            <td>${h.points}</td>
+            <td>${h.total_points}</td>
+            <td>${formatRank(h.rank)}</td>
+            <td>${formatRank(h.overall_rank)}</td>
+            <td>${h.event_transfers || 0}${h.event_transfers_cost ? ` (−${h.event_transfers_cost})` : ""}</td>
+            <td>£${((h.value || 0) / 10).toFixed(1)}m</td>
+          </tr>`;
+        }).join("");
+        histBox.innerHTML = `
+          <table>
+            <thead><tr>
+              <th>GW</th><th>Pts</th><th>Total</th><th>GW rank</th><th>Overall</th><th>Transfers</th><th>Value</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      } else if (histBox) {
+        histBox.innerHTML = `<div class="rank-empty">No scored gameweeks yet.</div>`;
+      }
+    }
+
+    // Classic leagues
+    if (leaguesBox) {
+      const classic = (entry.leagues && entry.leagues.classic) || [];
+      if (!classic.length) {
+        leaguesBox.innerHTML = `<div class="rank-empty">No classic leagues found.</div>`;
+      } else {
+        const rows = classic.map(l => `
+          <tr>
+            <td>${l.name}</td>
+            <td>${formatRank(l.entry_rank)}</td>
+            <td>${formatRank(l.entry_last_rank)}</td>
+            <td>${l.entry_rank && l.entry_last_rank
+              ? (l.entry_rank < l.entry_last_rank
+                  ? `<span class="rank-delta-up">↑ ${l.entry_last_rank - l.entry_rank}</span>`
+                  : l.entry_rank > l.entry_last_rank
+                    ? `<span class="rank-delta-down">↓ ${l.entry_rank - l.entry_last_rank}</span>`
+                    : "–")
+              : "–"}</td>
+            <td>${l.rank_count ? formatRank(l.rank_count) : "–"}</td>
+          </tr>`).join("");
+        leaguesBox.innerHTML = `
+          <table>
+            <thead><tr>
+              <th>League</th><th>Rank</th><th>Last</th><th>Δ</th><th>Size</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      }
+    }
+  } catch (e) {
+    sumBox.innerHTML = `<p class="muted">Could not load rank: ${e.message}. Rank data is only available after GW1 is live.</p>`;
+  }
+}
+
+
+// Nav
+document.querySelectorAll(".nav-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    btn.classList.add("active");
+    $("view-" + btn.dataset.view).classList.add("active");
+    if (btn.dataset.view === "transfers") renderTransfersUI();
+    if (btn.dataset.view === "teams") { /* wait for button */ }
+    if (btn.dataset.view === "matchday") renderMatchday();
+    if (btn.dataset.view === "terms") renderTerms();
+    if (btn.dataset.view === "settings") renderSettings();
+    if (btn.dataset.view === "rank") renderLiveRank();
+    if (btn.dataset.view === "chips") renderChips();
+  });
+});
+
+on("refreshBtn", "click", () => init(true));
+document.addEventListener("click", (e) => {
+  const menu = $("playerMenu");
+  if (menu && !menu.classList.contains("hidden") && !menu.contains(e.target) && !e.target.closest(".pcard")) {
+    hidePlayerMenu();
+  }
+});
+const pMenu = $("playerMenu");
+if (pMenu) {
+  pMenu.querySelectorAll("button[data-act]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handlePlayerAction(btn.dataset.act);
+    });
+  });
+}
+on("playerInfoClose", "click", () => {
+  const m = $("playerInfoModal");
+  if (m) m.classList.add("hidden");
+});
+
+on("settingsSignInBtn", "click", () => {
+  document.querySelector('[data-view="settings"]')?.classList; // noop
+  $("authBtn") && $("authBtn").click();
+});
+on("settingsSignOutBtn", "click", () => {
+  logout();
+  updatePlanUI();
+  renderSettings();
+  setStatus("Signed out");
+});
+on("settingsSaveTeamBtn", "click", () => {
+  const v = parseInt($("settingsTeamId") && $("settingsTeamId").value, 10);
+  if (!v) { setStatus("Enter a valid Team ID"); return; }
+  if ($("teamIdInput")) $("teamIdInput").value = v;
+  rememberTeamId(v);
+  init(true);
+  setStatus("Team ID saved: " + v);
+});
+on("settingsSaveUiBtn", "click", () => {
+  let prev = {};
+  try { prev = JSON.parse(localStorage.getItem("fpl_ui_prefs_v1") || "{}"); } catch (_) {}
+  const ui = {
+    ...prev,
+    compactPitch: !!( $("settingsCompactPitch") && $("settingsCompactPitch").checked),
+    hideMetrics: !!( $("settingsHideMetrics") && $("settingsHideMetrics").checked),
+    hideGwBanner: !!( $("settingsHideGwBanner") && $("settingsHideGwBanner").checked),
+    defaultHorizon: parseInt($("settingsDefaultHorizon") && $("settingsDefaultHorizon").value, 10) || 1,
+    theme: ($("settingsTheme") && $("settingsTheme").value) || "light",
+  };
+  try { localStorage.setItem("fpl_ui_prefs_v1", JSON.stringify(ui)); } catch (_) {}
+  applyUiPrefs();
+  renderPitch();
+  setStatus("Display settings saved");
+});
+on("settingsStartTrialBtn", "click", () => {
+  startTrial("pro");
+  renderSettings();
+  updatePlanUI();
+});
+on("settingsClearSquadBtn", "click", () => {
+  const id = currentTeamId() || localStorage.getItem("fpl_last_team_id") || "anon";
+  try {
+    localStorage.removeItem(squadStorageKey(id));
+    localStorage.removeItem(squadStorageKey("anon"));
+  } catch (_) {}
+  squad = []; startingIds = []; benchIds = []; captainId = null; viceCaptainId = null;
+  bank = BUDGET; squadLockedValue = false;
+  renderPitch(); renderPlayerList();
+  setStatus("Saved squad cleared on this device");
+});
+on("settingsSaveNotifyBtn", "click", async () => {
+  let prev = {};
+  try { prev = JSON.parse(localStorage.getItem("fpl_ui_prefs_v1") || "{}"); } catch (_) {}
+  const want = !!( $("settingsMatchdayEmail") && $("settingsMatchdayEmail").checked);
+  prev.matchdayEmail = want;
+  try { localStorage.setItem("fpl_ui_prefs_v1", JSON.stringify(prev)); } catch (_) {}
+  const email = authSession && authSession.email;
+  const tid = currentTeamId();
+  if (email && typeof setMatchdaySubscription === "function") {
+    const sub = await setMatchdaySubscription(email, tid, want);
+    if (sub && sub.ok) setStatus(want ? "Matchday emails enabled" : "Matchday emails disabled");
+    else setStatus("Saved locally" + (sub && sub.error ? " · server: " + sub.error : ""));
+  } else {
+    setStatus(want ? "Preference saved — sign in with email to receive digests" : "Matchday emails preference saved");
+  }
+});
+on("settingsClearLocalBtn", "click", () => {
+  if (!confirm("Clear all FPL Assistant data on this device?")) return;
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("fpl_")) keys.push(k);
+    }
+    keys.forEach(k => localStorage.removeItem(k));
+  } catch (_) {}
+  authSession = null;
+  squad = []; startingIds = []; benchIds = []; captainId = null;
+  updatePlanUI();
+  applyUiPrefs();
+  renderSettings();
+  setStatus("Local data cleared");
+});
+on("settingsOpenTermsBtn", "click", () => {
+  document.querySelector('[data-view="terms"]')?.click();
+});
+on("settingsInstallBtn", "click", openInstallGuide);
+on("footerTermsLink", "click", (e) => {
+  e.preventDefault();
+  document.querySelector('[data-view="terms"]')?.click();
+});
+on("authBtn", "click", () => {
+  if (authSession && (authSession.plan === "owner" || authSession.plan === "pro" || authSession.plan === "ultra" || authSession.plan === "trial_pro" || authSession.plan === "trial_ultra")) {
+    logout();
+    const btn = $("authBtn");
+    if (btn) btn.textContent = "Sign in";
+    updatePlanUI();
+    return;
+  }
+  const modal = $("loginModal");
+  if (modal) modal.classList.remove("hidden");
+  if ($("loginTeamId")) $("loginTeamId").value = currentTeamId() || "";
+});
+on("startTrialPro", "click", () => startTrial("pro"));
+on("startTrialUltra", "click", () => startTrial("ultra"));
+
+on("loginSubmitBtn", "click", async () => {
+  const tid = $("loginTeamId") && $("loginTeamId").value;
+  const email = $("loginEmail") && $("loginEmail").value;
+  const res = attemptLogin(tid, "", email);
+  const msg = $("loginMsg");
+  if (msg) { msg.textContent = res.msg; msg.style.color = res.ok ? "#16a34a" : "#dc2626"; }
+  if (res.ok) {
+    const wantMail = $("loginMatchdayEmail") && $("loginMatchdayEmail").checked;
+    if (email) {
+      const sub = await setMatchdaySubscription(email, tid, wantMail);
+      if (wantMail && sub && sub.ok) setStatus("Signed in · Matchday emails on");
+      else if (wantMail && sub && sub.error) setStatus("Signed in · email opt-in failed (deploy functions + Blobs)");
+    }
+    const modal = $("loginModal");
+    if (modal) modal.classList.add("hidden");
+    await init(true);
+  }
+});
+on("loginCancelBtn", "click", () => {
+  const modal = $("loginModal");
+  if (modal) modal.classList.add("hidden");
+});
+// Reload squad when Team ID changes + Enter / blur
+const tidInput = $("teamIdInput");
+if (tidInput) {
+  tidInput.addEventListener("change", () => {
+    rememberTeamId();
+    init(true);
+  });
+  tidInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      rememberTeamId();
+      init(true);
+    }
+  });
+  tidInput.addEventListener("blur", () => rememberTeamId());
+}
+
+on("refreshRankBtn", "click", () => renderLiveRank());
+on("refreshLiveBtn", "click", () => renderLiveBoard());
+on("rivalScanBtn", "click", () => renderRivalRadar());
+on("optimiseBtn", "click", () => {
+  const r = optimiseLineup();
+  if (r && r.error) setStatus(r.error);
+  else {
+    enforceValidXI();
+    saveSquadLocal();
+    renderPitch();
+    renderPlayerList();
+    setStatus("Lineup optimised (1 GK in XI) and saved");
+  }
+});
+on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null; renderPitch(); renderPlayerList(); });
+on("teamFilter", "change", () => renderPlayerList());
+function setEditMode(on) {
+  if (!on) {
+    // Finishing edit — require full legal squad
+    if (squad.length !== 15) {
+      setStatus("Complete your squad first: " + squad.length + "/15 players selected");
+      const st = $("editStatusInline");
+      if (st) {
+        st.textContent = "Need 15 players before Done (" + squad.length + "/15)";
+        st.style.color = "#dc2626";
+      }
+      return false;
+    }
+    const gk = squad.filter(p => p.position === "GKP").length;
+    const def = squad.filter(p => p.position === "DEF").length;
+    const mid = squad.filter(p => p.position === "MID").length;
+    const fwd = squad.filter(p => p.position === "FWD").length;
+    if (gk !== 2 || def !== 5 || mid !== 5 || fwd !== 3) {
+      setStatus("Invalid squad: need 2 GKP, 5 DEF, 5 MID, 3 FWD (now " + gk + "/" + def + "/" + mid + "/" + fwd + ")");
+      const st = $("editStatusInline");
+      if (st) {
+        st.textContent = "Invalid positions — need 2/5/5/3";
+        st.style.color = "#dc2626";
+      }
+      return false;
+    }
+    if (!currentTeamId()) {
+      setStatus("Enter your Team ID in the header so this squad is saved for you");
+      const st = $("editStatusInline");
+      if (st) {
+        st.textContent = "Enter Team ID above, then Done again";
+        st.style.color = "#dc2626";
+      }
+      return false;
+    }
+    enforceValidXI();
+    const saved = saveSquadLocal();
+    if (!saved) {
+      setStatus("Could not save squad (browser storage full or blocked)");
+      return false;
+    }
+    setStatus("Squad saved for Team ID " + currentTeamId() + " (" + squad.length + " players)");
+  }
+  editMode = on;
+  document.body.classList.toggle("editing", on);
+  const banner = $("editBanner");
+  if (banner) banner.classList.toggle("hidden", !on);
+  const st = $("editStatusInline");
+  if (st) {
+    st.style.color = "";
+    st.textContent = on ? ("Squad " + squad.length + "/15 · Bank " + money(bank)) : "";
+  }
+  renderPitch();
+  renderPlayerList();
+  return true;
+}
+on("editBtn", "click", () => setEditMode(true));
+const doneBtn = $("doneEditBtn");
+if (doneBtn) doneBtn.addEventListener("click", () => setEditMode(false));
+on("runTransfersBtn", "click", renderTransfersUI);
+on("trMode", "change", () => { syncTransferModeUI(); renderTransfersUI(); });
+on("trHorizon", "change", () => renderTransfersUI());
+on("runCustomTransfersBtn", "click", renderCustomTransfersUI);
+document.querySelectorAll(".tr-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tr-tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    const which = tab.dataset.trTab;
+    const rec = $("trPaneRecommended");
+    const cus = $("trPaneCustom");
+    if (rec) rec.classList.toggle("hidden", which !== "recommended");
+    if (cus) cus.classList.toggle("hidden", which !== "custom");
+    if (which === "custom") populateClubFilter();
+  });
+});
+on("genTeamsBtn", "click", renderAITeams);
+
+document.querySelectorAll(".hz").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".hz").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    horizon = +btn.dataset.hz;
+    renderPitch(); renderPlayerList();
+  });
+});
+document.querySelectorAll(".pos-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".pos-tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    renderPlayerList();
+  });
+});
+["sortBy", "priceMin", "priceMax", "searchInput", "affordableOnly"].forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener("input", () => {
+    const a = parseFloat($("priceMin").value), b = parseFloat($("priceMax").value);
+    $("priceRangeLabel").textContent = `£${a.toFixed(1)} – £${b.toFixed(1)}m`;
+    renderPlayerList();
+  });
+});
+
+function isIos() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+function isInStandalone() {
+  return window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true;
+}
+
+function installGuideHtml() {
+  if (isIos()) {
+    return `
+      <p><strong>iPhone / iPad (Safari)</strong></p>
+      <ol class="install-steps">
+        <li>Open <strong>https://myfpl.netlify.app</strong> in <strong>Safari</strong>.</li>
+        <li>Tap the <strong>Share</strong> button (square with an arrow) at the bottom.</li>
+        <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+        <li>Tap <strong>Add</strong>. Launch from the new icon anytime.</li>
+      </ol>
+      <p class="muted" style="font-size:0.85rem">Chrome on iPhone cannot fully install PWAs — use Safari.</p>`;
+  }
+  return `
+    <p><strong>Android (Chrome)</strong></p>
+    <ol class="install-steps">
+      <li>Open the site in Chrome.</li>
+      <li>Tap menu <strong>⋮</strong> → <strong>Install app</strong> / <strong>Add to Home screen</strong>.</li>
+      <li>Or tap <strong>Install App</strong> when the browser prompt appears.</li>
+    </ol>`;
+}
+
+function openInstallGuide() {
+  const body = $("installGuideBody");
+  const modal = $("installModal");
+  if (body) body.innerHTML = installGuideHtml();
+  if (modal) modal.classList.remove("hidden");
+}
+
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = $("installBtn");
+  if (btn) btn.hidden = false;
+});
+
+function wireInstallBtn() {
+  const btn = $("installBtn");
+  if (!btn) return;
+  // Always show on iOS (no beforeinstallprompt); hide if already installed
+  if (isInStandalone()) {
+    btn.hidden = true;
+    return;
+  }
+  if (isIos()) btn.hidden = false;
+  btn.addEventListener("click", async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      try { await deferredPrompt.userChoice; } catch (_) {}
+      deferredPrompt = null;
+      return;
+    }
+    openInstallGuide();
+  });
+}
+wireInstallBtn();
+on("installModalClose", "click", () => {
+  const m = $("installModal");
+  if (m) m.classList.add("hidden");
+});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+window.addEventListener("error", (ev) => {
+  try { setStatus("JS error: " + (ev.message || ev.error)); } catch(_) {}
+});
+init();

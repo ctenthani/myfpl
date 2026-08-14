@@ -1181,3 +1181,39 @@ body {
 body.compact-pitch .pcard { width: 56px; }
 body.compact-pitch .pcard .shirt-img { width: 32px; height: 42px; }
 body.hide-top-metrics .topbar-metrics { display: none !important; }
+
+.settings-page .settings-section {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.settings-page .settings-section:first-of-type { border-top: none; padding-top: 0; }
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin-top: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+.settings-label { display: block; font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.settings-field { display: block; margin: 8px 0; font-size: 0.85rem; color: var(--muted); }
+.settings-field input, .settings-field select {
+  display: block; width: 100%; max-width: 280px; margin-top: 4px;
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.95rem; color: var(--text);
+}
+.settings-check { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0; font-size: 0.9rem; }
+body.theme-dark {
+  --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --muted: #94a3b8; --border: #334155;
+  background: var(--bg); color: var(--text);
+}
+body.theme-dark .topbar, body.theme-dark .main-nav, body.theme-dark .card, body.theme-dark .status-line {
+  background: #1e293b; border-color: #334155; color: #e2e8f0;
+}
+body.theme-dark .gw-banner { background: #020617; }
+body.hide-gw-banner .gw-banner { display: none !important; }
+@media (max-width: 600px) {
+  .settings-grid { grid-template-columns: 1fr; }
+}

@@ -1,8 +1,5 @@
 {
-  "name": "bt42-race-2026",
-  "private": true,
-  "description": "BT42.195 km Race 2026 site + OC sync functions",
-  "dependencies": {
-    "@netlify/blobs": "^8.1.0"
-  }
+  "name": "fpl-assistant",
+  "version": "1.0.0",
+  "private": true
 }
