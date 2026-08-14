@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Malawi National Council of Sports">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1B4F72"/>
+      <stop offset="100%" stop-color="#154360"/>
+    </linearGradient>
+  </defs>
+  <circle cx="100" cy="100" r="96" fill="url(#g)" stroke="#D4AC0D" stroke-width="6"/>
+  <circle cx="100" cy="100" r="82" fill="none" stroke="#F7F9F9" stroke-width="2" opacity="0.5"/>
+  <!-- Rising sun -->
+  <circle cx="100" cy="78" r="22" fill="#F4D03F"/>
+  <g stroke="#F4D03F" stroke-width="3" stroke-linecap="round">
+    <line x1="100" y1="42" x2="100" y2="52"/>
+    <line x1="100" y1="104" x2="100" y2="114"/>
+    <line x1="64" y1="78" x2="74" y2="78"/>
+    <line x1="126" y1="78" x2="136" y2="78"/>
+    <line x1="74" y1="52" x2="80" y2="58"/>
+    <line x1="126" y1="52" x2="120" y2="58"/>
+    <line x1="74" y1="104" x2="80" y2="98"/>
+    <line x1="126" y1="104" x2="120" y2="98"/>
+  </g>
+  <!-- Track arc -->
+  <path d="M40 130 Q100 170 160 130" fill="none" stroke="#ECF0F1" stroke-width="5" stroke-linecap="round"/>
+  <path d="M50 125 Q100 155 150 125" fill="none" stroke="#D4AC0D" stroke-width="2" stroke-linecap="round"/>
+  <text x="100" y="155" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">MNCS</text>
+  <text x="100" y="172" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#F7F9F9" letter-spacing="0.5">MALAWI NATIONAL COUNCIL OF SPORTS</text>
+</svg>
