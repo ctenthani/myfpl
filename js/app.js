@@ -8,6 +8,12 @@ const BUDGET = 100.0; // Starting budget only (£100.0m). Team *value* can rise 
 // PRICING (USD) + PAYPAL LINKS
 // Annual = monthly × 12 × 0.80  (20% discount)
 // ============================================================
+/** All Pro/Ultra features free until end of 30 Nov 2026 (CAT). */
+const FREE_UNTIL = new Date("2026-11-30T23:59:59+02:00");
+function isFreePeriod() {
+  return Date.now() <= FREE_UNTIL.getTime();
+}
+
 const PRICING = {
   pro:   { monthly: 2.49, yearly: +(2.49 * 12 * 0.8).toFixed(2) },   // $2.49 / $23.90
   ultra: { monthly: 4.99, yearly: +(4.99 * 12 * 0.8).toFixed(2) },   // $4.99 / $47.90
@@ -213,17 +219,19 @@ function trialStillValid(sess) {
 }
 
 function isPro() {
+  // Launch promo: everything unlocked until 30 Nov 2026
+  if (isFreePeriod()) return true;
   if (!authSession) return false;
   if (authSession.plan === "owner") return true;
   if (authSession.plan !== "pro" && authSession.plan !== "ultra" && authSession.plan !== "trial_pro" && authSession.plan !== "trial_ultra") return false;
   if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") {
     if (!trialStillValid(authSession)) return false;
   }
-  // trials are not team-bound so user can explore; paid stays team-bound
   if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") return true;
   return Number(authSession.teamId) === Number(currentTeamId());
 }
 function isUltra() {
+  if (isFreePeriod()) return true;
   if (!authSession) return false;
   if (authSession.plan === "owner") return true;
   if (authSession.plan === "trial_ultra" && trialStillValid(authSession)) return true;
@@ -231,6 +239,10 @@ function isUltra() {
   return Number(authSession.teamId) === Number(currentTeamId());
 }
 function activePlanLabel() {
+  if (isFreePeriod()) {
+    const days = Math.max(0, Math.ceil((FREE_UNTIL.getTime() - Date.now()) / 86400000));
+    return "Free access · until 30 Nov · " + days + "d left";
+  }
   if (!authSession) return "Starter";
   if (authSession.plan === "owner") return "Owner";
   if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") {
@@ -238,7 +250,11 @@ function activePlanLabel() {
     const days = Math.max(0, Math.ceil((Number(authSession.trialEnds) - Date.now()) / 86400000));
     return (authSession.plan === "trial_ultra" ? "Ultra trial" : "Pro trial") + " · " + days + "d left";
   }
-  if (isPro()) return authSession.plan === "ultra" ? "Ultra" : "Pro";
+  if (authSession && (authSession.plan === "pro" || authSession.plan === "ultra")) {
+    if (Number(authSession.teamId) === Number(currentTeamId()) || authSession.plan === "owner") {
+      return authSession.plan === "ultra" ? "Ultra" : "Pro";
+    }
+  }
   return "Starter";
 }
 
@@ -1517,6 +1533,10 @@ function showUpgradePrompt(feature) {
   const boxId = feature === "transfers" ? "transferResults" : "aiTeamsResults";
   const box = $(boxId);
   if (!box) return;
+  if (isFreePeriod()) {
+    box.innerHTML = `<div class="upgrade-card"><p><strong>Free access is on until 30 November 2026.</strong> All Pro/Ultra tools are unlocked — refresh if a tab still looks locked.</p></div>`;
+    return;
+  }
   box.innerHTML = `
     <div class="upgrade-card">
       <h3>🔒 Pro feature</h3>
