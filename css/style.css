@@ -1217,3 +1217,29 @@ body.hide-gw-banner .gw-banner { display: none !important; }
 @media (max-width: 600px) {
   .settings-grid { grid-template-columns: 1fr; }
 }
+
+.tr-hub { max-width: 920px; }
+.tr-hub-head { margin-bottom: 12px; }
+.tr-ft-banner {
+  display: flex; justify-content: space-between; align-items: center;
+  background: #e0f2fe; border-radius: 12px; padding: 12px 16px; margin-bottom: 14px;
+  color: #0c4a6e;
+}
+.tr-hub-cols {
+  display: grid; grid-template-columns: 1fr 100px 1fr; gap: 8px;
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: #64748b; margin-bottom: 8px; padding: 0 4px;
+}
+.tr-hub-row {
+  display: grid; grid-template-columns: 1fr 100px 1fr; gap: 8px; align-items: center;
+  padding: 12px 10px; border: 1px solid #e2e8f0; border-radius: 12px;
+  margin-bottom: 8px; background: #fff;
+}
+.tr-bundle.top .tr-hub-row:first-of-type { border-color: #7dd3fc; background: #f0f9ff; }
+.tr-hub-gain { text-align: center; font-weight: 700; font-size: 0.95rem; }
+.tr-hub-player.sell { text-align: left; }
+.tr-hub-player.buy { text-align: left; }
+@media (max-width: 640px) {
+  .tr-hub-cols, .tr-hub-row { grid-template-columns: 1fr 72px 1fr; }
+  .tr-hub-gain { font-size: 0.8rem; }
+}
