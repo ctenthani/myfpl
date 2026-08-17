@@ -1175,7 +1175,6 @@ function applyTransferSuggestion(sug) {
   saveSquadLocal();
   renderPitch();
   renderPlayerList();
-  updateTopMetrics && updateTopMetrics();
   setStatus("Transfers applied — viewing updated squad on Pick");
   // Return to Pick tab so user sees the changed squad
   const pickBtn = document.querySelector('.nav-btn[data-view="pick"]');
