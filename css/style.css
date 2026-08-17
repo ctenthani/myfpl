@@ -1243,3 +1243,40 @@ body.hide-gw-banner .gw-banner { display: none !important; }
   .tr-hub-cols, .tr-hub-row { grid-template-columns: 1fr 72px 1fr; }
   .tr-hub-gain { font-size: 0.8rem; }
 }
+
+.fix-chips {
+  display: flex; flex-wrap: wrap; gap: 2px; justify-content: center;
+  margin-top: 3px; max-width: 72px;
+}
+.fix-chip {
+  display: flex; flex-direction: column; align-items: center;
+  font-size: 0.58rem; line-height: 1.1; padding: 2px 3px;
+  border-radius: 4px; background: #f1f5f9; color: #0f172a; font-weight: 600;
+}
+.fix-chip small { font-weight: 500; opacity: 0.85; font-size: 0.52rem; }
+.fix-chip.fdr-1 { background: #dcfce7; }
+.fix-chip.fdr-2 { background: #bbf7d0; }
+.fix-chip.fdr-3 { background: #fef9c3; }
+.fix-chip.fdr-4 { background: #fed7aa; }
+.fix-chip.fdr-5 { background: #fecaca; }
+.fix-chip-mini {
+  display: inline-block; font-size: 0.65rem; padding: 1px 4px;
+  border-radius: 3px; margin-right: 2px; background: #f1f5f9;
+}
+.fix-chip-mini.fdr-1, .fix-chip-mini.fdr-2 { background: #dcfce7; }
+.fix-chip-mini.fdr-4, .fix-chip-mini.fdr-5 { background: #fecaca; }
+.rec-banner {
+  background: #e0f2fe; color: #0c4a6e; border-radius: 8px;
+  padding: 8px 10px; font-size: 0.82rem; margin-bottom: 8px;
+}
+.rec-label {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
+  color: #64748b; margin: 10px 0 4px; font-weight: 600;
+}
+.in-team-tag {
+  font-size: 0.65rem; color: #0369a1; font-weight: 600;
+}
+.pcard { min-height: auto; }
+.pcard .ppts { margin-bottom: 0; }
+body.compact-pitch .fix-chips { max-width: 56px; }
+body.compact-pitch .fix-chip { font-size: 0.5rem; padding: 1px 2px; }

@@ -363,6 +363,8 @@ let captainId = null;
 let viceCaptainId = null;
 let menuPlayerId = null;
 let editMode = false;
+let replaceSlot = null;
+
 let bank = 0;
 let entryBank = 0;
 let chipModalKey = null;
@@ -760,7 +762,10 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
       const tin = Math.min(1.2, (p.transfers_in_event || p.transfers_in || 0) / 250000);
       const ppg = p.points_per_game || 0;
       const startsBoost = Math.min(0.8, (p.starts || 0) / 20);
-      s = 0.45 * s + 0.30 * ep + 0.12 * Math.min(own / 20, 2.5) + 0.08 * tin + 0.05 * ppg + 0.05 * startsBoost;
+      const form = parseFloat(p.form) || 0;
+      // Preseason form / last-season PPG + starts used for GW1 drafts
+      s = 0.40 * s + 0.28 * ep + 0.12 * Math.min(own / 20, 2.5) + 0.08 * tin
+        + 0.06 * ppg + 0.04 * startsBoost + 0.04 * Math.min(form, 8);
     }
     if (mode === "freehit") {
       s = (p.xp || s) * 1.12 + (p.form || 0) * 0.15 + (parseFloat(p.ep_next) || 0) * 0.1;
@@ -1209,6 +1214,7 @@ function playerCard(p, isCaptain = false, isVice = false, showPos = false) {
   const posLab = showPos
     ? `<div class="ppos ${(p.position || "").toLowerCase()}">${p.position === "GKP" ? "GK" : p.position}</div>`
     : "";
+  const fx = (typeof fixtureChipsHtml === "function") ? fixtureChipsHtml(p, horizon >= 3 ? 3 : 1) : "";
   return `
     <div class="${cls.join(" ")}" data-id="${p.id}" title="${p.news || p.web_name}">
       ${shirtHtml}
@@ -1216,6 +1222,7 @@ function playerCard(p, isCaptain = false, isVice = false, showPos = false) {
       <div class="pname">${p.web_name}</div>
       <div class="pprice">${money(p.price)}</div>
       <div class="ppts"><span>${pts}</span></div>
+      ${fx}
     </div>`;
 }
 function posEmoji(pos) { return { GKP: "🧤", DEF: "🛡️", MID: "⚙️", FWD: "⚽" }[pos] || "•"; }
@@ -1261,6 +1268,25 @@ function openPlayerMenu(playerId, evt) {
   const y = Math.min(window.innerHeight - 280, Math.max(8, (evt.clientY || 80)));
   menu.style.left = x + "px";
   menu.style.top = y + "px";
+}
+
+function fixtureChipsHtml(p, n) {
+  n = n || (horizon >= 3 ? 3 : 1);
+  const fxt = nextFixturesFor(p.team_id, n);
+  if (!fxt.length) {
+    return `<div class="fix-chips"><span class="fix-chip blank">TBC</span></div>`;
+  }
+  const base = expectedPoints(p, 1);
+  const nextMul = fixtureFactor(p.team_id, currentGw) || 1;
+  return `<div class="fix-chips">` + fxt.map(f => {
+    const home = f.team_h === p.team_id;
+    const oppId = home ? f.team_a : f.team_h;
+    const opp = (teamsMap[oppId] && (teamsMap[oppId].short_name || teamsMap[oppId].name)) || "?";
+    const diff = home ? (f.team_h_difficulty || 3) : (f.team_a_difficulty || 3);
+    const mul = fixtureFactor(p.team_id, f.event || currentGw);
+    const pts = (base / (nextMul || 1)) * mul;
+    return `<span class="fix-chip fdr-${diff}" title="GW${f.event} ${opp} (${home ? "H" : "A"})">${pts.toFixed(1)}<small>${opp} (${home ? "H" : "A"})</small></span>`;
+  }).join("") + `</div>`;
 }
 
 function nextFixturesFor(teamId, n = 5) {
@@ -1480,35 +1506,75 @@ function populateTeamFilter() {
 
 function renderPlayerList() {
   populateTeamFilter();
-  const pos = document.querySelector(".pos-tab.active")?.dataset.pos || "ALL";
-  const sort = $("sortBy").value;
-  const pMin = parseFloat($("priceMin").value);
-  const pMax = parseFloat($("priceMax").value);
-  const q = ($("searchInput").value || "").toLowerCase();
-  const affordable = $("affordableOnly").checked;
+  let pos = document.querySelector(".pos-tab.active")?.dataset.pos || "ALL";
+  const sort = ($("sortBy") && $("sortBy").value) || "xp";
+  const pMin = parseFloat($("priceMin") && $("priceMin").value) || 4;
+  const pMax = parseFloat($("priceMax") && $("priceMax").value) || 15.5;
+  const q = (($("searchInput") && $("searchInput").value) || "").toLowerCase();
+  const affordable = $("affordableOnly") && $("affordableOnly").checked;
   const clubFilter = ($("teamFilter") && $("teamFilter").value) || "";
   const inSquad = new Set(squad.map(p => p.id));
+
+  // Replacement mode: force position + recommend top upgrades
+  if (replaceSlot && replaceSlot.position) {
+    pos = replaceSlot.position;
+    document.querySelectorAll(".pos-tab").forEach(b => {
+      b.classList.toggle("active", b.dataset.pos === pos);
+    });
+  }
+
   let list = players.filter(p => {
     if (pos !== "ALL" && p.position !== pos) return false;
     if (clubFilter && String(p.team_id) !== String(clubFilter)) return false;
     if (p.price < pMin || p.price > pMax) return false;
-    if (q && !p.web_name.toLowerCase().includes(q) && !p.team.toLowerCase().includes(q)) return false;
+    if (q && !p.web_name.toLowerCase().includes(q) && !(p.team || "").toLowerCase().includes(q)) return false;
     if (affordable && p.price > bank + 0.1) return false;
     return true;
   });
+
   list.sort((a, b) => {
     if (sort === "xp") return xpOf(b) - xpOf(a);
     if (sort === "price") return b.price - a.price;
     if (sort === "own") return b.selected_by_percent - a.selected_by_percent;
     return a.web_name.localeCompare(b.web_name);
   });
-  $("playerList").innerHTML = list.slice(0, 80).map(p => `
-    <div class="prow ${inSquad.has(p.id) ? "in-squad" : ""}" data-id="${p.id}">
+
+  function rowHtml(p, badge) {
+    const fxt = nextFixturesFor(p.team_id, horizon >= 3 ? 3 : 1);
+    const fxBits = fxt.map(f => {
+      const home = f.team_h === p.team_id;
+      const oppId = home ? f.team_a : f.team_h;
+      const opp = (teamsMap[oppId] && (teamsMap[oppId].short_name || teamsMap[oppId].name)) || "?";
+      const diff = home ? (f.team_h_difficulty || 3) : (f.team_a_difficulty || 3);
+      return `<span class="fix-chip-mini fdr-${diff}">${opp}(${home ? "H" : "A"})</span>`;
+    }).join(" ");
+    return `<div class="prow ${inSquad.has(p.id) ? "in-squad" : ""}" data-id="${p.id}">
       <span class="dot"></span>
-      <div><div class="pname-row">${p.web_name}</div><div class="pmeta">${p.team} · ${p.position}</div></div>
+      <div>
+        <div class="pname-row">${p.web_name}${badge || ""}${inSquad.has(p.id) ? ' <span class="in-team-tag">In team</span>' : ""}</div>
+        <div class="pmeta">${p.team} · ${p.position === "GKP" ? "GK" : p.position} ${fxBits}</div>
+      </div>
       <div class="pprice">${money(p.price)}</div>
       <div class="pxp">${xpOf(p).toFixed(1)}</div>
-    </div>`).join("");
+    </div>`;
+  }
+
+  let html = "";
+  if (replaceSlot && replaceSlot.position) {
+    const rec = list
+      .filter(p => !inSquad.has(p.id) && p.position === replaceSlot.position && p.price <= bank + 0.05)
+      .slice(0, 5);
+    html += `<div class="rec-banner">Pick a replacement (${replaceSlot.position === "GKP" ? "GK" : replaceSlot.position}) for <strong>${replaceSlot.outName}</strong> · Bank ${money(bank)}</div>`;
+    if (rec.length) {
+      html += `<div class="rec-label">Recommended</div>`;
+      html += rec.map(p => rowHtml(p, "")).join("");
+      html += `<div class="rec-label">All ${replaceSlot.position === "GKP" ? "GK" : replaceSlot.position}</div>`;
+    }
+  }
+
+  html += list.slice(0, 80).map(p => rowHtml(p, "")).join("");
+  $("playerList").innerHTML = html || `<p class="muted">No players match filters.</p>`;
+
   if (editMode) {
     document.querySelectorAll(".prow").forEach(el => {
       el.addEventListener("click", () => addPlayer(+el.dataset.id));
@@ -1518,29 +1584,57 @@ function renderPlayerList() {
 
 function removePlayer(id) {
   if (!editMode) return;
+  const out = squad.find(p => p.id === id);
   squad = squad.filter(p => p.id !== id);
   startingIds = startingIds.filter(x => x !== id);
   benchIds = benchIds.filter(x => x !== id);
   if (captainId === id) captainId = startingIds[0] || null;
-  bank = BUDGET - squad.reduce((s, p) => s + p.price, 0);
+  if (viceCaptainId === id) viceCaptainId = null;
+  bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
   while (startingIds.length < 11 && benchIds.length) startingIds.push(benchIds.shift());
+  if (out) {
+    replaceSlot = {
+      position: out.position,
+      maxPrice: bank + 20, // list ranked recommendations; affordability still enforced on add
+      freed: out.price || 0,
+      outName: out.web_name,
+    };
+    document.querySelectorAll(".pos-tab").forEach(b => {
+      b.classList.toggle("active", b.dataset.pos === out.position || (out.position === "GKP" && b.dataset.pos === "GKP"));
+    });
+  }
   saveSquadLocal();
-  renderPitch(); renderPlayerList();
-  $("editStatusInline").textContent = `Squad: ${squad.length}/15 · Bank ${money(bank)}`;
+  renderPitch();
+  renderPlayerList();
+  const st = $("editStatusInline");
+  if (st) st.textContent = out
+    ? (`Pick replacement · ${out.web_name} out · Bank ${money(bank)}`)
+    : (`Squad: ${squad.length}/15 · Bank ${money(bank)}`);
 }
+
 function addPlayer(id) {
   if (!editMode) return;
   if (squad.find(p => p.id === id) || squad.length >= 15) return;
   const p = players.find(x => x.id === id);
   if (!p) return;
   if (squad.filter(x => x.position === p.position).length >= SQUAD_LIMITS[p.position]) {
-    $("editStatusInline").textContent = `Max ${SQUAD_LIMITS[p.position]} ${p.position}`; return;
+    const st = $("editStatusInline");
+    if (st) st.textContent = `Max ${SQUAD_LIMITS[p.position]} ${p.position}`;
+    return;
   }
-  if (p.price > bank + 0.05) { $("editStatusInline").textContent = "Not enough budget"; return; }
-  if (squad.filter(x => x.team_id === p.team_id).length >= 3) { $("editStatusInline").textContent = "Max 3 per club"; return; }
+  if (p.price > bank + 0.05) {
+    const st = $("editStatusInline");
+    if (st) st.textContent = "Not enough budget";
+    return;
+  }
+  if (squad.filter(x => x.team_id === p.team_id).length >= 3) {
+    const st = $("editStatusInline");
+    if (st) st.textContent = "Max 3 per club";
+    return;
+  }
   squad.push(p);
-  const gkInXi = startingIds.filter(id => {
-    const x = squad.find(s => s.id === id);
+  const gkInXi = startingIds.filter(sid => {
+    const x = squad.find(s => s.id === sid);
     return x && x.position === "GKP";
   }).length;
   if (p.position === "GKP") {
@@ -1552,10 +1646,14 @@ function addPlayer(id) {
     benchIds.push(p.id);
   }
   bank -= p.price;
+  replaceSlot = null;
   enforceValidXI();
+  assignCaptainAndVice(startingIds);
   saveSquadLocal();
-  renderPitch(); renderPlayerList();
-  $("editStatusInline").textContent = `Added ${p.web_name}. ${squad.length}/15 · ${money(bank)}`;
+  renderPitch();
+  renderPlayerList();
+  const st = $("editStatusInline");
+  if (st) st.textContent = `Added ${p.web_name}. ${squad.length}/15 · ${money(bank)}`;
 }
 
 function showUpgradePrompt(feature) {
@@ -2919,6 +3017,7 @@ function setEditMode(on) {
     setStatus("Squad saved for Team ID " + currentTeamId() + " (" + squad.length + " players) · C/VC set");
   }
   editMode = on;
+  if (!on) replaceSlot = null;
   document.body.classList.toggle("editing", on);
   const banner = $("editBanner");
   if (banner) banner.classList.toggle("hidden", !on);
