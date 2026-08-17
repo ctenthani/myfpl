@@ -440,6 +440,16 @@ function buildPlayers() {
       bonus: p.bonus || 0,
       transfers_in_event: p.transfers_in_event || 0,
       transfers_out_event: p.transfers_out_event || 0,
+      starts: p.starts || 0,
+      points_per_game: parseFloat(p.points_per_game) || 0,
+      bps: p.bps || 0,
+      ict_index: parseFloat(p.ict_index) || 0,
+      value_season: parseFloat(p.value_season) || 0,
+      value_form: parseFloat(p.value_form) || 0,
+      ep_this: parseFloat(p.ep_this) || 0,
+      // preseason / early season: market + FPL projection signals
+      transfers_in: p.transfers_in || 0,
+      transfers_out: p.transfers_out || 0,
       xp: 0, xp3: 0,
     };
     return pl;
@@ -451,9 +461,9 @@ function buildPlayers() {
 }
 
 /**
- * Predicted points model (Hub-style components, public data only).
+ * Predicted points model ( components, public data only).
  * Uses official ep_next + xG/xA rates + minutes likelihood + position scoring.
- * Hub is higher because they blend Opta + bookie CS odds + proprietary minutes.
+ * is higher because they blend Opta + bookie CS odds + proprietary minutes.
  * We scale toward realistic GW totals using the components below.
  */
 function expectedPoints(p, hz = 1) {
@@ -487,9 +497,12 @@ function expectedPoints(p, hz = 1) {
   else if (ep >= 2.5) startProb += 0.05;
   else if (ep > 0 && ep < 2.0) startProb -= 0.12;
 
-  // Unknown / unused attackers
-  if (realMins < 90 && own < 5 && price < 7) startProb *= 0.45;
-  if (realMins < 90 && own < 2 && price <= 5.5) startProb *= 0.55;
+  // Unknown / unused attackers — but trust ownership + FPL ep in preseason
+  if (realMins < 90 && own < 5 && price < 7 && ep < 3) startProb *= 0.45;
+  if (realMins < 90 && own < 2 && price <= 5.5 && ep < 2.5) startProb *= 0.55;
+  // Previous season minutes may be 0 on bootstrap; starts / ppg still carry signal
+  if (realMins < 90 && (p.starts || 0) >= 15) startProb = Math.max(startProb, 0.55 + Math.min(0.25, own / 40));
+  if (realMins < 90 && (p.points_per_game || 0) >= 4) startProb = Math.max(startProb, 0.5);
 
   startProb = Math.max(0.05, Math.min(0.95, startProb));
 
@@ -656,6 +669,17 @@ function enforceValidXI() {
   if (viceCaptainId === captainId) viceCaptainId = null;
 }
 
+function assignCaptainAndVice(fromIds) {
+  const ids = (fromIds && fromIds.length ? fromIds : startingIds).filter(Boolean);
+  const ranked = ids
+    .map(id => players.find(p => p.id === id) || squad.find(p => p.id === id))
+    .filter(Boolean)
+    .sort((a, b) => xpOf(b) - xpOf(a));
+  captainId = ranked[0]?.id || null;
+  viceCaptainId = ranked[1]?.id || null;
+  if (viceCaptainId === captainId) viceCaptainId = ranked[2]?.id || null;
+}
+
 function optimiseLineup() {
   if (!squad || squad.length < 11) {
     return { error: "Need at least 11 players in your squad first. Load a Team ID or use Edit team." };
@@ -708,7 +732,7 @@ function optimiseLineup() {
   });
   startingIds = bestXI.map(p => p.id);
   benchIds = bench.map(p => p.id);
-  captainId = bestXI.slice().sort((a, b) => xpOf(b) - xpOf(a))[0]?.id || null;
+  assignCaptainAndVice(bestXI.map(p => p.id));
   squad = [...bestXI, ...bench];
   enforceValidXI();
   bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
@@ -728,12 +752,20 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
 
   const scoreOf = (p) => {
     let s = xpOf(p);
+    // Preseason / early GW: blend FPL projection, ownership (nailedness proxy),
+    // transfer market momentum, and last-season-style fields still on the bootstrap.
+    if (currentGw <= 2 || (p.minutes || 0) < 90) {
+      const ep = parseFloat(p.ep_next) || 0;
+      const own = p.selected_by_percent || 0;
+      const tin = Math.min(1.2, (p.transfers_in_event || p.transfers_in || 0) / 250000);
+      const ppg = p.points_per_game || 0;
+      const startsBoost = Math.min(0.8, (p.starts || 0) / 20);
+      s = 0.45 * s + 0.30 * ep + 0.12 * Math.min(own / 20, 2.5) + 0.08 * tin + 0.05 * ppg + 0.05 * startsBoost;
+    }
     if (mode === "freehit") {
-      // single-GW: lean harder on next fixture + form
-      s = (p.xp || s) * 1.15 + (p.form || 0) * 0.2;
+      s = (p.xp || s) * 1.12 + (p.form || 0) * 0.15 + (parseFloat(p.ep_next) || 0) * 0.1;
     } else if (mode === "wildcard") {
-      // multi-week structure: xp3 + ownership stability for premiums
-      s = (p.xp3 || s) + (p.price >= 7 ? 0.3 : 0) - (p.selected_by_percent > 40 ? 0.1 : 0);
+      s = (p.xp3 || s) + (p.price >= 7 ? 0.25 : 0) + Math.min(0.4, (p.selected_by_percent || 0) / 80);
     }
     return s;
   };
@@ -893,7 +925,9 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
     squadOut = [...xiOrdered, ...benchOut].slice(0, 15);
     realSpent = squadOut.reduce((s, p) => s + p.price, 0);
   }
-  const cap = xiOrdered.slice().sort((a, b) => scoreOf(b) - scoreOf(a))[0]?.id || null;
+  const rankedCap = xiOrdered.slice().sort((a, b) => scoreOf(b) - scoreOf(a));
+  const cap = rankedCap[0]?.id || null;
+  const vice = rankedCap[1]?.id || null;
 
   horizon = savedH;
   return {
@@ -904,6 +938,7 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
     startingIds: xiOrdered.map(p => p.id),
     benchIds: benchOut.map(p => p.id),
     captainId: cap,
+    viceCaptainId: vice,
     counts: {
       GKP: squadOut.filter(p => p.position === "GKP").length,
       DEF: squadOut.filter(p => p.position === "DEF").length,
@@ -916,8 +951,11 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
 
 // ---------- AI Transfers ----------
 function getTransferFilters() {
+  const rawN = ($("cfNumTransfers") && $("cfNumTransfers").value) || "1";
+  const unlimitedCustom = rawN === "unlimited";
   return {
-    numTransfers: parseInt(($("cfNumTransfers") && $("cfNumTransfers").value) || "1", 10) || 1,
+    unlimitedCustom,
+    numTransfers: unlimitedCustom ? 3 : (parseInt(rawN, 10) || 1),
     position: ($("cfPosition") && $("cfPosition").value) || "",
     teamId: parseInt(($("cfTeam") && $("cfTeam").value) || "", 10) || 0,
     maxEO: parseFloat(($("cfMaxEO") && $("cfMaxEO").value) || "100") || 100,
@@ -965,7 +1003,7 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
   if (!squad.length) {
     return { error: "No squad loaded. Enter Team ID and Refresh, or Edit a full 15." };
   }
-  const unlimited = isUnlimitedTransferMode();
+  let unlimited = isUnlimitedTransferMode() || !!(filters && filters.unlimitedCustom);
   if (unlimited) {
     freeTransfers = Math.max(freeTransfers, 15);
     maxHits = 0;
@@ -1105,29 +1143,48 @@ function applyTransferSuggestion(sug) {
       startingIds = startingIds.map(id => id === m.out.id ? m.inn.id : id);
       benchIds = benchIds.map(id => id === m.out.id ? m.inn.id : id);
       if (captainId === m.out.id) captainId = m.inn.id;
+      if (viceCaptainId === m.out.id) viceCaptainId = m.inn.id;
     }
   }
-  // Rebuild XI preference by XP
+  // Rebuild XI preference by XP (legal-ish formation)
   const all = [...squad];
   const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
   all.forEach(p => byPos[p.position].push(p));
   Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => xpOf(b) - xpOf(a)));
   const xi = [];
   if (byPos.GKP[0]) xi.push(byPos.GKP[0]);
-  xi.push(...byPos.DEF.slice(0, 4));
+  xi.push(...byPos.DEF.slice(0, 3));
   xi.push(...byPos.MID.slice(0, 4));
-  xi.push(...byPos.FWD.slice(0, 2));
+  xi.push(...byPos.FWD.slice(0, 3));
   while (xi.length < 11) {
-    const rest = all.filter(p => !xi.includes(p)).sort((a, b) => xpOf(b) - xpOf(a));
+    const rest = all.filter(p => !xi.includes(p) && p.position !== "GKP").sort((a, b) => xpOf(b) - xpOf(a));
     if (!rest.length) break;
-    xi.push(rest[0]);
+    xi.push(rest.shift());
+  }
+  // ensure at least 3 DEF
+  while (xi.filter(p => p.position === "DEF").length < 3) {
+    const d = byPos.DEF.find(p => !xi.includes(p));
+    if (!d) break;
+    const drop = xi.filter(p => p.position !== "GKP" && p.position !== "DEF").sort((a, b) => xpOf(a) - xpOf(b))[0];
+    if (!drop) break;
+    xi[xi.indexOf(drop)] = d;
   }
   startingIds = xi.slice(0, 11).map(p => p.id);
   benchIds = all.filter(p => !startingIds.includes(p.id)).map(p => p.id);
-  captainId = xi.slice().sort((a, b) => xpOf(b) - xpOf(a))[0]?.id;
+  assignCaptainAndVice(startingIds);
+  saveSquadLocal();
   renderPitch();
   renderPlayerList();
-  setStatus("Transfer applied locally – copy to official FPL site before deadline");
+  updateTopMetrics && updateTopMetrics();
+  setStatus("Transfers applied — viewing updated squad on Pick");
+  // Return to Pick tab so user sees the changed squad
+  const pickBtn = document.querySelector('.nav-btn[data-view="pick"]');
+  if (pickBtn) pickBtn.click();
+  else {
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    const pick = document.getElementById("view-pick");
+    if (pick) pick.classList.add("active");
+  }
 }
 
 // ---------- Render ----------
@@ -1675,9 +1732,9 @@ function renderCustomTransfersUI() {
     return;
   }
   populateClubFilter();
-  const ft = parseInt($("ftInputCustom").value, 10) || 1;
-  const hits = parseInt($("hitsInputCustom").value, 10) || 0;
   const filters = getTransferFilters();
+  const ft = filters.unlimitedCustom ? 15 : (parseInt($("ftInputCustom") && $("ftInputCustom").value, 10) || 1);
+  const hits = filters.unlimitedCustom ? 0 : (parseInt($("hitsInputCustom") && $("hitsInputCustom").value, 10) || 0);
   showTransferResults(findTransfers(ft, hits, filters));
 }
 
@@ -1743,7 +1800,11 @@ function renderAITeams() {
       const t = window.__aiTeams[+btn.dataset.idx].data;
       squad = t.squad; startingIds = t.startingIds; benchIds = t.benchIds;
       captainId = t.captainId; bank = t.bank;
+      viceCaptainId = t.viceCaptainId || null;
+      if (!viceCaptainId || !captainId) assignCaptainAndVice(startingIds);
+      else if (viceCaptainId === captainId) assignCaptainAndVice(startingIds);
       squadLockedValue = false; entryBank = null; // AI draft starts under £100.0m
+      saveSquadLocal();
       renderPitch(); renderPlayerList();
       document.querySelector('[data-view="pick"]').click();
       setStatus("AI team applied — review on Pick tab (" + (squad.length) + " players)");
@@ -1953,7 +2014,10 @@ async function tryLoadUserTeam(teamId) {
       startingIds = ordered.filter(p => p.position <= 11).map(p => p.element);
       benchIds = ordered.filter(p => p.position > 11).map(p => p.element);
       const cap = ordered.find(p => p.is_captain);
+      const vice = ordered.find(p => p.is_vice_captain);
       captainId = cap ? cap.element : startingIds[0];
+      viceCaptainId = vice ? vice.element : null;
+      if (!viceCaptainId || viceCaptainId === captainId) assignCaptainAndVice(startingIds);
       squadLockedValue = true;
       if (entryBank != null) bank = entryBank;
       else {
@@ -2803,13 +2867,14 @@ on("optimiseBtn", "click", () => {
   if (r && r.error) setStatus(r.error);
   else {
     enforceValidXI();
+    assignCaptainAndVice(startingIds);
     saveSquadLocal();
     renderPitch();
     renderPlayerList();
-    setStatus("Lineup optimised (1 GK in XI) and saved");
+    setStatus("Lineup optimised · C/VC set by predicted points · saved");
   }
 });
-on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null; renderPitch(); renderPlayerList(); });
+on("resetBtn", "click", () => { squad = []; startingIds = []; benchIds = []; captainId = null; viceCaptainId = null; bank = BUDGET; squadLockedValue = false; entryBank = null; renderPitch(); renderPlayerList(); });
 on("teamFilter", "change", () => renderPlayerList());
 function setEditMode(on) {
   if (!on) {
@@ -2846,12 +2911,13 @@ function setEditMode(on) {
       return false;
     }
     enforceValidXI();
+    assignCaptainAndVice(startingIds);
     const saved = saveSquadLocal();
     if (!saved) {
       setStatus("Could not save squad (browser storage full or blocked)");
       return false;
     }
-    setStatus("Squad saved for Team ID " + currentTeamId() + " (" + squad.length + " players)");
+    setStatus("Squad saved for Team ID " + currentTeamId() + " (" + squad.length + " players) · C/VC set");
   }
   editMode = on;
   document.body.classList.toggle("editing", on);
