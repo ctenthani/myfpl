@@ -301,25 +301,33 @@
     <div class="page-wrap">
       <div class="card">
         <h2>Live Rank</h2>
-        <p class="muted">Overall rank, gameweek points and mini-league standing from the official FPL API. Available once Gameweek 1 is live.</p>
-        <div class="controls-row" style="margin-bottom:12px">
+        <p class="muted">Live mini-league table with expandable teams (player points). Data from the official FPL API.</p>
+        <div class="controls-row" style="margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <label>Team ID <input type="number" id="rankTeamId" value="" placeholder="Team ID" /></label>
-          <button id="refreshRankBtn" class="btn btn-blue">Refresh rank</button>
+          <label>Select league
+            <select id="rankLeagueSelect" style="min-width:180px">
+              <option value="">My team</option>
+            </select>
+          </label>
+          <label>Order by
+            <select id="rankOrderBy">
+              <option value="score">Score</option>
+              <option value="total">Total</option>
+              <option value="rank">Rank</option>
+            </select>
+          </label>
+          <button id="refreshRankBtn" class="btn btn-pink">Update</button>
         </div>
-        <div id="rankSummary" class="rank-summary">
-          <p class="muted">Loading…</p>
+        <div id="rankSummary" class="rank-summary"></div>
+        <div id="rankLeagueMeta" class="muted" style="font-size:0.85rem;margin:8px 0"></div>
+        <div id="rankLeagueTable" class="rank-league-table">
+          <p class="muted">Enter Team ID and Update to load mini-leagues.</p>
         </div>
       </div>
       <div class="card" style="margin-top:16px">
         <h2>Gameweek history</h2>
         <div id="rankHistory" class="rank-history">
           <p class="muted">History appears after the first scored gameweek.</p>
-        </div>
-      </div>
-      <div class="card" style="margin-top:16px">
-        <h2>Classic leagues</h2>
-        <div id="rankLeagues" class="rank-leagues">
-          <p class="muted">Your classic leagues will show here.</p>
         </div>
       </div>
     </div>

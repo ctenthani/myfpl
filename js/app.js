@@ -355,6 +355,30 @@ let fixtures = [];
 let teamsMap = {};
 let posMap = {};
 let currentGw = 1;
+
+/** Gameweek used for advice, fixtures, transfers: always the NEXT to play (is_next), not the last finished. */
+function planningGw() {
+  if (bootstrap && bootstrap.events) {
+    const nx = bootstrap.events.find(e => e.is_next);
+    if (nx) return nx.id;
+    const cu = bootstrap.events.find(e => e.is_current && !e.finished);
+    if (cu) return cu.id;
+    // First event whose deadline is still in the future
+    const now = Date.now();
+    const upcoming = bootstrap.events
+      .filter(e => e.deadline_time && new Date(e.deadline_time).getTime() > now - 2 * 3600 * 1000)
+      .sort((a, b) => a.id - b.id);
+    if (upcoming.length) return upcoming[0].id;
+  }
+  return currentGw || 1;
+}
+
+function syncPlanningGw() {
+  const gw = planningGw();
+  currentGw = gw;
+  return gw;
+}
+
 let horizon = 1;
 let squad = [];
 let startingIds = [];
@@ -456,8 +480,7 @@ function buildPlayers() {
     };
     return pl;
   });
-  const ev = bootstrap.events.find(e => e.is_next || e.is_current);
-  currentGw = ev ? ev.id : 1;
+  syncPlanningGw();
   recomputeAllXP();
   updateGwBanner();
 }
@@ -609,14 +632,16 @@ function formatDeadline(iso) {
 
 function updateGwBanner() {
   if (!bootstrap) return;
+  const gw = planningGw();
+  currentGw = gw;
   const ev =
+    bootstrap.events.find(e => e.id === gw) ||
     bootstrap.events.find(e => e.is_next) ||
-    bootstrap.events.find(e => e.is_current) ||
-    bootstrap.events.find(e => e.id === currentGw);
-  const name = ev ? (ev.name || ("Gameweek " + ev.id)) : ("Gameweek " + currentGw);
+    bootstrap.events.find(e => e.is_current);
+  const name = ev ? (ev.name || ("Gameweek " + gw)) : ("Gameweek " + gw);
   const dl = ev ? formatDeadline(ev.deadline_time) : "–";
   const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
-  set("mGw", ev ? String(ev.id) : String(currentGw));
+  set("mGw", String(gw));
   set("gwLabel", "Gameweek");
   set("mDeadline", dl);
   set("gwBannerTitle", name);
@@ -992,8 +1017,12 @@ function passOutFilters(p, f) {
 function isUnlimitedTransferMode() {
   const modeEl = $("trMode");
   if (modeEl && modeEl.value === "unlimited") return true;
-  // Auto: GW1 before first deadline behaves like unlimited squad building
-  if (currentGw <= 1) return true;
+  // Auto unlimited only before the first deadline of the season
+  const gw = planningGw();
+  if (gw <= 1 && bootstrap && bootstrap.events) {
+    const e1 = bootstrap.events.find(e => e.id === 1);
+    if (e1 && e1.deadline_time && Date.now() < new Date(e1.deadline_time).getTime()) return true;
+  }
   return false;
 }
 
@@ -1276,14 +1305,15 @@ function fixtureChipsHtml(p, n) {
   if (!fxt.length) {
     return `<div class="fix-chips"><span class="fix-chip blank">TBC</span></div>`;
   }
+  const gw0 = planningGw();
   const base = expectedPoints(p, 1);
-  const nextMul = fixtureFactor(p.team_id, currentGw) || 1;
+  const nextMul = fixtureFactor(p.team_id, gw0) || 1;
   return `<div class="fix-chips">` + fxt.map(f => {
     const home = f.team_h === p.team_id;
     const oppId = home ? f.team_a : f.team_h;
     const opp = (teamsMap[oppId] && (teamsMap[oppId].short_name || teamsMap[oppId].name)) || "?";
     const diff = home ? (f.team_h_difficulty || 3) : (f.team_a_difficulty || 3);
-    const mul = fixtureFactor(p.team_id, f.event || currentGw);
+    const mul = fixtureFactor(p.team_id, f.event || gw0);
     const pts = (base / (nextMul || 1)) * mul;
     return `<span class="fix-chip fdr-${diff}" title="GW${f.event} ${opp} (${home ? "H" : "A"})">${pts.toFixed(1)}<small>${opp} (${home ? "H" : "A"})</small></span>`;
   }).join("") + `</div>`;
@@ -1291,8 +1321,21 @@ function fixtureChipsHtml(p, n) {
 
 function nextFixturesFor(teamId, n = 5) {
   if (!fixtures.length) return [];
+  const gw0 = planningGw();
+  const now = Date.now();
   return fixtures
-    .filter(f => !f.finished && (f.team_h === teamId || f.team_a === teamId) && (f.event || 0) >= currentGw)
+    .filter(f => {
+      if (!(f.team_h === teamId || f.team_a === teamId)) return false;
+      if (f.finished || f.finished_provisional) return false;
+      const ev = f.event || 0;
+      if (ev < gw0) return false;
+      // Drop kickoffs more than 3h in the past even if not marked finished
+      if (f.kickoff_time) {
+        const ko = new Date(f.kickoff_time).getTime();
+        if (Number.isFinite(ko) && ko < now - 3 * 3600 * 1000 && ev < gw0 + 1 && f.started) return false;
+      }
+      return true;
+    })
     .sort((a, b) => (a.event || 0) - (b.event || 0) || (a.kickoff_time || "").localeCompare(b.kickoff_time || ""))
     .slice(0, n);
 }
@@ -2079,22 +2122,29 @@ async function tryLoadUserTeam(teamId) {
       playerName = [entry.player_first_name, entry.player_last_name].filter(Boolean).join(" ");
       if (entry.last_deadline_bank != null) entryBank = entry.last_deadline_bank / 10;
       if (entry.last_deadline_value != null) teamValueOverride = entry.last_deadline_value / 10;
-      // Prefer entry.current_event / started_event when present
-      if (entry.current_event) currentGw = entry.current_event;
-      else if (entry.started_event) currentGw = entry.started_event;
+      // Do NOT overwrite planning GW with entry.current_event (often the last *finished* GW)
     }
   } catch (e) {
     return { source: "error", teamName: null, error: "Team ID not found on FPL" };
   }
 
-  // Build list of events to try (next, current, 1..5, history)
+  syncPlanningGw();
+
+  // Prefer latest picks: next event (if published), then current, then recent finished
   const tryEvents = [];
   if (bootstrap && bootstrap.events) {
     const nx = bootstrap.events.find(e => e.is_next);
     const cu = bootstrap.events.find(e => e.is_current);
     if (nx) tryEvents.push(nx.id);
     if (cu) tryEvents.push(cu.id);
+    // Recent finished events for squad shape (after deadline picks may only exist on current)
+    bootstrap.events
+      .filter(e => e.finished || e.is_previous)
+      .sort((a, b) => b.id - a.id)
+      .slice(0, 3)
+      .forEach(e => tryEvents.push(e.id));
   }
+  for (let e = planningGw(); e >= 1 && e >= planningGw() - 3; e--) tryEvents.push(e);
   for (let e = 1; e <= 8; e++) tryEvents.push(e);
   const seenEv = new Set();
 
@@ -2182,7 +2232,17 @@ async function init(force = false) {
     let loaded = await tryLoadUserTeam(teamId);
     const tname = (loaded && loaded.teamName) ? loaded.teamName : ("Team " + teamId);
     if (loaded && loaded.source === "api") {
-      setStatus(`GW ${loaded.event || currentGw} · ${tname}: official picks (${squad.length} players)`);
+      const plan = planningGw();
+      const picksGw = loaded.event || plan;
+      setStatus(
+        picksGw === plan
+          ? `GW ${plan} · ${tname}: official picks (${squad.length} players)`
+          : `Planning GW ${plan} · ${tname}: squad from GW ${picksGw} picks (${squad.length} players)`
+      );
+      syncPlanningGw();
+      recomputeAllXP();
+      updateGwBanner();
+      renderPitch();
     } else if (loaded && loaded.source === "local") {
       setStatus(`${tname}: saved squad restored (${squad.length} players)`);
     } else if (loaded && loaded.source === "error") {
@@ -2674,105 +2734,321 @@ async function renderMatchday() {
   if ($("rivalLeagueId") && $("rivalLeagueId").value) await renderRivalRadar();
 }
 
+let _rankLiveMap = null; // element id -> live stats
+let _rankEntryCache = null;
+let _rankLeaguesCache = []; // { id, name }
+let _rankExpanded = null; // entry id expanded
+
+async function getLivePointsMap(gw) {
+  try {
+    const live = await fetchJson(`event/${gw}/live/`);
+    const map = {};
+    (live.elements || []).forEach(el => {
+      map[el.id] = el.stats || {};
+    });
+    return map;
+  } catch (_) {
+    return {};
+  }
+}
+
+function livePlayerPts(elementId, multiplier, liveMap) {
+  const st = liveMap[elementId] || {};
+  const base = st.total_points != null ? Number(st.total_points) : 0;
+  const m = multiplier != null ? Number(multiplier) : 1;
+  return base * (m || 1);
+}
+
+function mlShirt(p) {
+  if (!p) return "";
+  const code = p.team_code || 0;
+  if (!code) return "";
+  if (p.position === "GKP") {
+    return `https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${code}_1-66.webp`;
+  }
+  return `https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${code}-66.webp`;
+}
+
+function renderLivePitchFromPicks(picks, liveMap, entryName) {
+  if (!picks || !picks.picks) return `<p class="muted" style="color:#cbd5e1">Picks not available for this GW yet.</p>`;
+  const ordered = [...picks.picks].sort((a, b) => a.position - b.position);
+  const byPos = { GKP: [], DEF: [], MID: [], FWD: [] };
+  const bench = [];
+  let xiPts = 0;
+  let totalPts = 0;
+
+  ordered.forEach(pk => {
+    const pl = players.find(x => x.id === pk.element);
+    const pts = livePlayerPts(pk.element, pk.multiplier, liveMap);
+    const st = liveMap[pk.element] || {};
+    const mins = st.minutes || 0;
+    const card = {
+      pl, pts, mins, isC: !!pk.is_captain, isV: !!pk.is_vice_captain,
+      mult: pk.multiplier, pos: pk.position,
+    };
+    if (pk.position <= 11) {
+      const pos = pl ? pl.position : "MID";
+      if (byPos[pos]) byPos[pos].push(card);
+      else byPos.MID.push(card);
+      if (pk.multiplier > 0) xiPts += pts;
+    } else {
+      bench.push(card);
+    }
+    if (pk.multiplier > 0) totalPts += pts;
+  });
+
+  // Prefer entry history points if present
+  const histPts = picks.entry_history && picks.entry_history.points;
+  const scoreShow = histPts != null ? histPts : Math.round(xiPts);
+
+  function cardHtml(c) {
+    if (!c.pl) return `<div class="ml-pcard"><div class="nm">?</div><div class="pts">${c.pts}</div></div>`;
+    const sh = mlShirt(c.pl);
+    const badge = c.isC ? `<span class="badge">C</span>` : (c.isV ? `<span class="badge vc">V</span>` : "");
+    const dim = c.mult === 0 ? "opacity:0.55" : "";
+    return `<div class="ml-pcard" style="${dim}">
+      ${badge}
+      ${sh ? `<img src="${sh}" alt="" loading="lazy" onerror="this.style.display='none'" />` : ""}
+      <div class="nm">${c.pl.web_name}</div>
+      <div class="pts">${c.pts}</div>
+    </div>`;
+  }
+
+  let rows = "";
+  for (const pos of ["GKP", "DEF", "MID", "FWD"]) {
+    if (!byPos[pos].length) continue;
+    rows += `<div class="ml-pitch-row">${byPos[pos].map(cardHtml).join("")}</div>`;
+  }
+  const benchHtml = bench.length
+    ? `<div class="ml-bench-row">${bench.map(cardHtml).join("")}</div>`
+    : "";
+
+  return `<div class="ml-pitch-wrap">
+    <div class="ml-header-pts"><span>Score <strong>${scoreShow}</strong></span><span>${entryName || ""}</span></div>
+    <div class="ml-pitch">${rows}${benchHtml}</div>
+  </div>`;
+}
+
+async function loadManagerPicks(entryId, gw) {
+  try {
+    return await fetchJson(`entry/${entryId}/event/${gw}/picks/`);
+  } catch (_) {
+    try {
+      return await fetchJson(`entry/${entryId}/event/${Math.max(1, gw - 1)}/picks/`);
+    } catch (e2) {
+      return null;
+    }
+  }
+}
+
 async function renderLiveRank() {
-  const teamId = parseInt(($("rankTeamId") && $("rankTeamId").value) || $("teamIdInput").value, 10) || DEFAULT_TEAM_ID;
-  if ($("rankTeamId")) $("rankTeamId").value = teamId;
+  const teamId = parseInt(($("rankTeamId") && $("rankTeamId").value) || ($("teamIdInput") && $("teamIdInput").value), 10);
+  if ($("rankTeamId") && teamId) $("rankTeamId").value = teamId;
   const sumBox = $("rankSummary");
   const histBox = $("rankHistory");
-  const leaguesBox = $("rankLeagues");
-  if (!sumBox) return;
-  sumBox.innerHTML = `<p class="muted">Loading rank data…</p>`;
-  if (histBox) histBox.innerHTML = "";
-  if (leaguesBox) leaguesBox.innerHTML = "";
+  const tableBox = $("rankLeagueTable");
+  const metaBox = $("rankLeagueMeta");
+  if (!sumBox || !tableBox) return;
 
+  if (!teamId) {
+    sumBox.innerHTML = `<p class="muted">Enter your Team ID and press Update.</p>`;
+    return;
+  }
+
+  sumBox.innerHTML = `<p class="muted">Loading…</p>`;
+  tableBox.innerHTML = `<p class="muted">Loading mini-league…</p>`;
+  if (histBox) histBox.innerHTML = "";
+  if (metaBox) metaBox.textContent = "";
+
+  const gw = planningGw();
   try {
     const entry = await loadEntrySummary(teamId);
+    _rankEntryCache = entry;
     const history = await loadEntryHistory(teamId);
+    _rankLiveMap = await getLivePointsMap(gw);
+
+    // Populate league dropdown
+    const sel = $("rankLeagueSelect");
+    const classic = (entry.leagues && entry.leagues.classic) ? entry.leagues.classic : [];
+    _rankLeaguesCache = classic.map(l => ({ id: l.id, name: l.name, entry_rank: l.entry_rank }));
+    if (sel) {
+      const prev = sel.value;
+      sel.innerHTML = `<option value="my">My team</option>` +
+        classic.map(l => `<option value="${l.id}">${l.name}</option>`).join("");
+      if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+      else if (classic.length) sel.value = String(classic[0].id);
+    }
 
     const overallPts = entry.summary_overall_points;
     const overallRank = entry.summary_overall_rank;
     const gwPts = entry.summary_event_points;
     const gwRank = entry.summary_event_rank;
     const name = entry.name || "Your team";
-    const currentEvent = entry.current_event;
-    const seasonStarted = overallPts != null || (history && history.current && history.current.length);
+    const currentEvent = entry.current_event || gw;
 
-    if (!seasonStarted) {
-      sumBox.innerHTML = `
-        <div class="rank-empty" style="grid-column:1/-1">
-          <strong>${name}</strong> · Team ID ${teamId}<br>
-          Gameweek 1 has not been scored yet.<br>
-          Overall rank, GW points and history will appear here once the first matches are complete.
-        </div>`;
-      if (histBox) histBox.innerHTML = `<div class="rank-empty">No gameweek history yet.</div>`;
-    } else {
-      sumBox.innerHTML = `
-        <div class="rank-metric"><span class="rm-label">Team</span><span class="rm-val" style="font-size:1rem">${name}</span></div>
-        <div class="rank-metric"><span class="rm-label">Overall rank</span><span class="rm-val">${formatRank(overallRank)}</span></div>
-        <div class="rank-metric"><span class="rm-label">Overall points</span><span class="rm-val">${overallPts ?? "–"}</span></div>
-        <div class="rank-metric"><span class="rm-label">GW ${currentEvent || "–"} pts</span><span class="rm-val">${gwPts ?? "–"}</span>
-          <div class="rm-sub">GW rank ${formatRank(gwRank)}</div></div>
-      `;
+    sumBox.innerHTML = `
+      <div class="rank-metric"><span class="rm-label">Team</span><span class="rm-val" style="font-size:1rem">${name}</span></div>
+      <div class="rank-metric"><span class="rm-label">Overall rank</span><span class="rm-val">${formatRank(overallRank)}</span></div>
+      <div class="rank-metric"><span class="rm-label">Overall points</span><span class="rm-val">${overallPts ?? "–"}</span></div>
+      <div class="rank-metric"><span class="rm-label">GW ${currentEvent} pts</span><span class="rm-val">${gwPts ?? "–"}</span>
+        <div class="rm-sub">GW rank ${formatRank(gwRank)}</div></div>
+    `;
 
-      if (histBox && history && history.current && history.current.length) {
-        const rows = [...history.current].reverse().slice(0, 15).map(h => {
-          const delta = h.rank_sort ? "" : "";
-          return `<tr>
-            <td>GW ${h.event}</td>
-            <td>${h.points}</td>
-            <td>${h.total_points}</td>
-            <td>${formatRank(h.rank)}</td>
-            <td>${formatRank(h.overall_rank)}</td>
-            <td>${h.event_transfers || 0}${h.event_transfers_cost ? ` (−${h.event_transfers_cost})` : ""}</td>
-            <td>£${((h.value || 0) / 10).toFixed(1)}m</td>
-          </tr>`;
-        }).join("");
-        histBox.innerHTML = `
-          <table>
-            <thead><tr>
-              <th>GW</th><th>Pts</th><th>Total</th><th>GW rank</th><th>Overall</th><th>Transfers</th><th>Value</th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-          </table>`;
-      } else if (histBox) {
-        histBox.innerHTML = `<div class="rank-empty">No scored gameweeks yet.</div>`;
-      }
+    if (histBox && history && history.current && history.current.length) {
+      const rows = [...history.current].reverse().slice(0, 15).map(h => `<tr>
+        <td>GW ${h.event}</td>
+        <td>${h.points}</td>
+        <td>${h.total_points}</td>
+        <td>${formatRank(h.rank)}</td>
+        <td>${formatRank(h.overall_rank)}</td>
+      </tr>`).join("");
+      histBox.innerHTML = `<table><thead><tr><th>GW</th><th>Pts</th><th>Total</th><th>GW rank</th><th>OR</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
 
-    // Classic leagues
-    if (leaguesBox) {
-      const classic = (entry.leagues && entry.leagues.classic) || [];
-      if (!classic.length) {
-        leaguesBox.innerHTML = `<div class="rank-empty">No classic leagues found.</div>`;
-      } else {
-        const rows = classic.map(l => `
-          <tr>
-            <td>${l.name}</td>
-            <td>${formatRank(l.entry_rank)}</td>
-            <td>${formatRank(l.entry_last_rank)}</td>
-            <td>${l.entry_rank && l.entry_last_rank
-              ? (l.entry_rank < l.entry_last_rank
-                  ? `<span class="rank-delta-up">↑ ${l.entry_last_rank - l.entry_rank}</span>`
-                  : l.entry_rank > l.entry_last_rank
-                    ? `<span class="rank-delta-down">↓ ${l.entry_rank - l.entry_last_rank}</span>`
-                    : "–")
-              : "–"}</td>
-            <td>${l.rank_count ? formatRank(l.rank_count) : "–"}</td>
-          </tr>`).join("");
-        leaguesBox.innerHTML = `
-          <table>
-            <thead><tr>
-              <th>League</th><th>Rank</th><th>Last</th><th>Δ</th><th>Size</th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-          </table>`;
-      }
-    }
+    await renderRankLeagueTable(teamId, entry);
   } catch (e) {
-    sumBox.innerHTML = `<p class="muted">Could not load rank: ${e.message}. Rank data is only available after GW1 is live.</p>`;
+    sumBox.innerHTML = `<p class="muted">Could not load rank: ${e.message || e}</p>`;
+    tableBox.innerHTML = "";
   }
 }
 
+async function renderRankLeagueTable(myTeamId, entry) {
+  const tableBox = $("rankLeagueTable");
+  const metaBox = $("rankLeagueMeta");
+  const sel = $("rankLeagueSelect");
+  if (!tableBox) return;
+
+  const choice = sel ? sel.value : "my";
+  const gw = planningGw();
+  const liveMap = _rankLiveMap || await getLivePointsMap(gw);
+  _rankLiveMap = liveMap;
+  const orderBy = ($("rankOrderBy") && $("rankOrderBy").value) || "score";
+
+  // ---- My team only ----
+  if (!choice || choice === "my") {
+    if (metaBox) metaBox.textContent = `My team · GW ${gw}`;
+    tableBox.innerHTML = `<p class="muted">Loading your live pitch…</p>`;
+    const picks = await loadManagerPicks(myTeamId, gw);
+    const pitch = renderLivePitchFromPicks(picks, liveMap, entry && entry.name);
+    tableBox.innerHTML = `<div class="ml-expand" style="display:block">${pitch}</div>
+      <p class="muted" style="margin-top:8px;font-size:0.8rem">Choose a classic league above to see the full table with expandable teams.</p>`;
+    return;
+  }
+
+  const leagueId = parseInt(choice, 10);
+  if (!leagueId) return;
+
+  tableBox.innerHTML = `<p class="muted">Loading league standings…</p>`;
+  let standings;
+  try {
+    const data = await fetchJson(`leagues-classic/${leagueId}/standings/?page_standings=1`);
+    standings = (data.standings && data.standings.results) ? data.standings.results : [];
+    const leagueName = (data.league && data.league.name) || ("League " + leagueId);
+    if (metaBox) metaBox.textContent = `${leagueName} · GW ${gw} · ${standings.length} managers (page 1) · tap a row to expand`;
+  } catch (e) {
+    tableBox.innerHTML = `<p class="muted">Could not load league: ${e.message || e}</p>`;
+    return;
+  }
+
+  // Enrich with live GW score from picks (limited concurrency)
+  const rows = standings.slice(0, 50);
+  const enriched = [];
+  for (const r of rows) {
+    let liveScore = r.event_total;
+    let capName = "";
+    let chips = { wc: false, tc: false, bb: false, fh: false };
+    let picks = null;
+    try {
+      picks = await loadManagerPicks(r.entry, gw);
+      if (picks) {
+        if (picks.entry_history && picks.entry_history.points != null) {
+          liveScore = picks.entry_history.points;
+        } else {
+          liveScore = (picks.picks || []).reduce((s, pk) => s + livePlayerPts(pk.element, pk.multiplier, liveMap), 0);
+        }
+        const cap = (picks.picks || []).find(pk => pk.is_captain);
+        if (cap) {
+          const pl = players.find(x => x.id === cap.element);
+          capName = pl ? pl.web_name : "";
+        }
+        const active = picks.active_chip;
+        if (active === "wildcard") chips.wc = true;
+        if (active === "3xc") chips.tc = true;
+        if (active === "bboost") chips.bb = true;
+        if (active === "freehit") chips.fh = true;
+      }
+    } catch (_) {}
+    enriched.push({
+      ...r,
+      liveScore: liveScore != null ? liveScore : r.event_total,
+      totalPts: r.total,
+      capName,
+      chips,
+      picks,
+    });
+  }
+
+  enriched.sort((a, b) => {
+    if (orderBy === "total") return (b.totalPts || 0) - (a.totalPts || 0);
+    if (orderBy === "rank") return (a.rank || 0) - (b.rank || 0);
+    return (b.liveScore || 0) - (a.liveScore || 0);
+  });
+
+  let html = `<table class="ml-table"><thead><tr>
+    <th>Rank</th><th>Team &amp; Manager</th><th style="text-align:right">Score</th><th style="text-align:right">Total</th>
+  </tr></thead><tbody>`;
+
+  enriched.forEach((r, idx) => {
+    const rank = r.rank || (idx + 1);
+    const delta = (r.last_rank != null && r.rank != null) ? (r.last_rank - r.rank) : null;
+    const deltaHtml = delta == null ? "" :
+      (delta > 0 ? `<div class="ml-delta up">↑ ${delta}</div>` :
+       delta < 0 ? `<div class="ml-delta">↓ ${Math.abs(delta)}</div>` : "");
+    const chipHtml = ["wc", "tc", "bb", "fh"].map(k => {
+      const labels = { wc: "WC", tc: "TC", bb: "BB", fh: "FH" };
+      return `<span class="ml-chip ${r.chips[k] ? "on" : ""}">${labels[k]}</span>`;
+    }).join("");
+    const isMe = Number(r.entry) === Number(myTeamId);
+    html += `<tr class="ml-row" data-entry="${r.entry}" data-idx="${idx}">
+      <td><strong>${rank}</strong></td>
+      <td>
+        <div class="ml-team-name">${isMe ? "★ " : ""}${r.entry_name || "Team"}</div>
+        <div class="ml-manager"><span class="ml-live">LIVE</span>${r.player_name || ""}</div>
+        <div>${chipHtml}</div>
+        ${r.capName ? `<div class="ml-cap">© ${r.capName}</div>` : ""}
+      </td>
+      <td class="ml-score">${r.liveScore ?? "–"}${deltaHtml}</td>
+      <td class="ml-total">${r.totalPts ?? "–"}</td>
+    </tr>
+    <tr class="ml-detail hidden" id="ml-detail-${r.entry}"><td colspan="4"></td></tr>`;
+  });
+  html += `</tbody></table>`;
+  tableBox.innerHTML = html;
+
+  tableBox.querySelectorAll(".ml-row").forEach(row => {
+    row.addEventListener("click", async () => {
+      const entryId = row.dataset.entry;
+      const detail = document.getElementById("ml-detail-" + entryId);
+      if (!detail) return;
+      const open = !detail.classList.contains("hidden");
+      // close others
+      tableBox.querySelectorAll(".ml-detail").forEach(d => {
+        d.classList.add("hidden");
+        d.querySelector("td").innerHTML = "";
+      });
+      tableBox.querySelectorAll(".ml-row").forEach(r => r.classList.remove("expanded"));
+      if (open) return;
+      row.classList.add("expanded");
+      detail.classList.remove("hidden");
+      detail.querySelector("td").innerHTML = `<p class="muted">Loading pitch…</p>`;
+      const idx = +row.dataset.idx;
+      let picks = enriched[idx] && enriched[idx].picks;
+      if (!picks) picks = await loadManagerPicks(entryId, gw);
+      const teamName = enriched[idx] ? enriched[idx].entry_name : "";
+      detail.querySelector("td").innerHTML = `<div class="ml-expand">${renderLivePitchFromPicks(picks, liveMap, teamName)}</div>`;
+    });
+  });
+}
 
 // Nav
 document.querySelectorAll(".nav-btn").forEach(btn => {
@@ -2957,6 +3233,18 @@ if (tidInput) {
 }
 
 on("refreshRankBtn", "click", () => renderLiveRank());
+on("rankLeagueSelect", "change", async () => {
+  if (_rankEntryCache) await renderRankLeagueTable(
+    parseInt(($("rankTeamId") && $("rankTeamId").value) || ($("teamIdInput") && $("teamIdInput").value), 10),
+    _rankEntryCache
+  );
+});
+on("rankOrderBy", "change", async () => {
+  if (_rankEntryCache) await renderRankLeagueTable(
+    parseInt(($("rankTeamId") && $("rankTeamId").value) || ($("teamIdInput") && $("teamIdInput").value), 10),
+    _rankEntryCache
+  );
+});
 on("refreshLiveBtn", "click", () => renderLiveBoard());
 on("rivalScanBtn", "click", () => renderRivalRadar());
 on("optimiseBtn", "click", () => {
@@ -3056,6 +3344,8 @@ document.querySelectorAll(".hz").forEach(btn => {
     document.querySelectorAll(".hz").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     horizon = +btn.dataset.hz;
+    syncPlanningGw();
+    recomputeAllXP();
     renderPitch(); renderPlayerList();
   });
 });
