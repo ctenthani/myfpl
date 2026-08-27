@@ -389,6 +389,8 @@ function isOwnerSession() {
 }
 
 function updatePlanUI() {
+  try { if (typeof paintChipNowBanner === "function") paintChipNowBanner(); } catch (_) {}
+
   const ownNav = $("ownerNavBtn");
   if (ownNav) ownNav.classList.toggle("hidden", !isOwnerSession());
   const hideTrial = isPaidMember() || isOwnerSession() || isFreePeriod();
@@ -422,19 +424,9 @@ function updatePlanUI() {
   if (proY) proY.href = PAYPAL_PRO_YEARLY;
   if (ultraY) ultraY.href = PAYPAL_ULTRA_YEARLY;
 
-  const man = $("manualPayDetails");
-  if (man) {
-    const nbm = MERCHANT_TILLS.nbm
-      ? `<br>National Bank merchant ref: <strong>${MERCHANT_TILLS.nbm}</strong>`
-      : "";
-    man.innerHTML = `
-      <strong>Airtel Money</strong> — dial <code>*247#</code> → Pay to Till <strong>${MERCHANT_TILLS.airtel}</strong><br>
-      <strong>TNM Mpamba</strong> — dial <code>*444#</code> → Pay to Till <strong>${MERCHANT_TILLS.tnm}</strong>${nbm}<br>
-      <span class="muted" style="font-size:0.85rem">
-        After paying, send the SMS confirmation (or screenshot) on WhatsApp / X (@ctenthani).
-        Include your email, Team ID, and plan (Pro/Ultra). We activate email + Team ID for Sign in.
-      </span>`;
-  }
+  const man = document.getElementById("manualPayDetails");
+  if (man) man.innerHTML = "";
+
 }
 
 
@@ -1954,10 +1946,6 @@ function showUpgradePrompt(feature) {
         </div>
       </div>
 
-      <div class="manual-pay" style="margin-top:14px;padding:12px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0">
-        <strong>Mobile money (Malawi)</strong>
-        <p style="margin:8px 0 0;font-size:0.85rem">Airtel *247# Till <strong>${MERCHANT_TILLS.airtel}</strong> · TNM *444# Till <strong>${MERCHANT_TILLS.tnm}</strong></p>
-      </div>
 
       <div style="margin-top:12px">
         <button type="button" class="btn btn-ghost" id="demoUnlockBtn">Demo unlock (this device only)</button>
@@ -2206,25 +2194,46 @@ function renderChips() {
   grid.querySelectorAll(".chip-item").forEach(el => {
     el.addEventListener("click", () => openChipModal(el.dataset.chip));
   });
-  $("chipAdviceShort").innerHTML = chipStandingAdviceHtml();
-  const applyBtn = $("chipApplySuggestBtn");
-  if (applyBtn) applyBtn.addEventListener("click", () => {
-    const ctx = huntStandingContext();
-    const spec = detectSpecialGws();
-    const next = spec.nextGw;
-    const dgw = spec.doubles.find(g => g >= next);
-    const bgw = spec.blanks.find(g => g >= next);
-    const plan = getChipPlan();
-    plan.wc = ctx.posture === "chasing" ? next : (dgw || next + 4);
-    plan.fh = bgw || (ctx.posture === "chasing" ? next : next + 2);
-    plan.bb = dgw || next;
-    plan.tc = dgw || next;
-    saveChipPlan(plan);
-    renderChips();
-    setStatus("Chip planner updated from league standing");
-  });
+  if ($("chipAdviceShort")) $("chipAdviceShort").innerHTML = chipSuggestionBannerHtml();
+  paintChipNowBanner();
 }
 
+
+function suggestedChipsThisGw() {
+  const ctx = typeof huntStandingContext === "function" ? huntStandingContext() : { posture: "unknown" };
+  const spec = typeof detectSpecialGws === "function" ? detectSpecialGws() : { doubles: [], blanks: [], nextGw: planningGw() };
+  const next = spec.nextGw;
+  const dgw = (spec.doubles || []).find(g => g >= next);
+  const bgw = (spec.blanks || []).find(g => g >= next);
+  const out = [];
+  if (bgw && bgw === next) out.push({ key: "fh", name: "Free Hit" });
+  if (dgw && dgw === next) {
+    out.push({ key: "bb", name: "Bench Boost" });
+    out.push({ key: "tc", name: "Triple Captain" });
+  }
+  if (ctx.posture === "chasing" && !out.length) out.push({ key: "wc", name: "Wildcard" });
+  return { gw: next, chips: out };
+}
+function chipSuggestionBannerHtml() {
+  const s = suggestedChipsThisGw();
+  if (!s.chips.length) return "<p class=\"muted\">No chip suggested for GW " + s.gw + ".</p>";
+  return "<div class=\"chip-now\">This gameweek (GW " + s.gw + "): consider " + s.chips.map(c => "<strong>" + c.name + "</strong>").join(" or ") + ".</div>";
+}
+function paintChipNowBanner() {
+  let el = document.getElementById("chipNowBanner");
+  if (!el) {
+    const bar = document.getElementById("statusBar");
+    if (!bar) return;
+    el = document.createElement("div");
+    el.id = "chipNowBanner";
+    el.className = "chip-now-banner hidden";
+    bar.insertAdjacentElement("afterend", el);
+  }
+  const s = suggestedChipsThisGw();
+  if (!s.chips.length) { el.classList.add("hidden"); el.textContent = ""; return; }
+  el.classList.remove("hidden");
+  el.textContent = "GW " + s.gw + " · consider " + s.chips.map(c => c.name).join(" or ");
+}
 function huntStandingContext() {
   const hunt = normalizeHunt(_leagueHunt && _leagueHunt.sample ? _leagueHunt : loadLeagueHunt(currentTeamId()), currentTeamId());
   const leagues = hunt.leagues || [];

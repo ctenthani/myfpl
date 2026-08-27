@@ -1368,3 +1368,4 @@ body.no-anim * { transition: none !important; animation: none !important; }
 body.pitch-simple .shirt-img { display: none !important; }
 body.pitch-simple .shirt-fallback, body.pitch-simple .shirt { display: flex !important; }
 body.hide-promo .upgrade-card { display: none !important; }
+.chip-now-banner
