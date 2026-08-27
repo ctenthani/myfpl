@@ -502,6 +502,9 @@
           <label class="settings-field" id="ownerMemCustomWrap" style="display:none">Custom days
             <input type="number" id="ownerMemCustomDays" min="1" max="1095" value="30" />
           </label>
+          <label class="settings-field">Target league ID (optional)
+            <input type="number" id="ownerMemLeague" placeholder="Mini-league to hunt" />
+          </label>
           <label class="settings-field">Note (optional)
             <input type="text" id="ownerMemNote" placeholder="PayPal / Mpamba ref" />
           </label>
@@ -512,6 +515,25 @@
         </div>
         <p id="ownerMemMsg" class="muted" style="margin-top:8px;font-size:0.85rem"></p>
         <div id="ownerMemList" style="margin-top:16px"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>League hunter</h2>
+        <p class="muted">Enter a classic league ID. Transfers and AI Teams for the loaded Team ID will be biased to <strong>beat that mini-league</strong> (differentials if behind, safer template if leading).</p>
+        <div class="settings-grid">
+          <label class="settings-field">Target league ID
+            <input type="number" id="ownerHuntLeague" placeholder="e.g. 123456" />
+          </label>
+          <label class="settings-field">Apply to Team ID
+            <input type="number" id="ownerHuntTeam" placeholder="Uses header Team ID if blank" />
+          </label>
+        </div>
+        <div class="controls-row" style="margin-top:10px">
+          <button type="button" id="ownerHuntScanBtn" class="btn btn-blue">Scan league &amp; set target</button>
+          <button type="button" id="ownerHuntClearBtn" class="btn btn-ghost">Clear target</button>
+        </div>
+        <p id="ownerHuntMsg" class="muted" style="margin-top:8px;font-size:0.85rem"></p>
+        <div id="ownerHuntStats"></div>
       </div>
     </div>
   </div>

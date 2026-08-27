@@ -179,6 +179,11 @@ function currentTeamId() {
 }
 
 function rememberTeamId(id) {
+  try {
+    const savedHunt = loadLeagueHunt(id || currentTeamId());
+    if (savedHunt && savedHunt.leagueId) _leagueHunt = savedHunt;
+  } catch (_) {}
+
   id = id || currentTeamId();
   try {
     if (id) localStorage.setItem("fpl_last_team_id", String(id));
@@ -1068,11 +1073,36 @@ function isUnlimitedTransferMode() {
   return false;
 }
 
+
+let _leagueHunt = { leagueId: 0, teamId: 0, ownMap: {}, sample: 0, myRank: null, fieldAvg: 0 };
+
+function leagueHuntKey(teamId) {
+  return "fpl_hunt_" + (teamId || currentTeamId() || "anon");
+}
+function loadLeagueHunt(teamId) {
+  try { return JSON.parse(localStorage.getItem(leagueHuntKey(teamId)) || "null"); } catch (_) { return null; }
+}
+function saveLeagueHunt(teamId, data) {
+  try { localStorage.setItem(leagueHuntKey(teamId), JSON.stringify(data)); } catch (_) {}
+  _leagueHunt = data || _leagueHunt;
+}
+
+function huntBoost(p) {
+  const h = _leagueHunt;
+  if (!h || !h.sample || !p) return 0;
+  const owned = (h.ownMap[p.id] || 0) / h.sample;
+  const behind = h.myRank != null && h.myRank > Math.max(3, Math.ceil(h.sample * 0.35));
+  const leading = h.myRank != null && h.myRank <= 3;
+  if (behind) return (0.55 - owned) * 1.4;
+  if (leading) return (owned - 0.35) * 0.5;
+  return (0.4 - owned) * 0.6;
+}
+
 function transferXp(p) {
   const hz = parseInt(($("trHorizon") && $("trHorizon").value) || "3", 10) || 3;
-  if (hz <= 1) return expectedPoints(p, 1);
-  if (hz >= 6) return expectedPoints(p, 3) * 2; // rough 6-GW scale from 3-GW model
-  return expectedPoints(p, 3);
+  let xp = hz <= 1 ? expectedPoints(p, 1) : (hz >= 6 ? expectedPoints(p, 3) * 2 : expectedPoints(p, 3));
+  xp += huntBoost(p);
+  return xp;
 }
 
 function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
@@ -2709,12 +2739,76 @@ function formatUntil(ts) {
   return left < 0 ? ("expired " + when) : (when + " · " + left + "d left");
 }
 
+async function scanLeagueHunt(leagueId, teamId) {
+  leagueId = parseInt(leagueId, 10);
+  teamId = parseInt(teamId, 10) || currentTeamId();
+  if (!leagueId) throw new Error("Enter a classic league ID");
+  if (!teamId) throw new Error("Enter / load a Team ID first");
+  const gw = planningGw();
+  const data = await fetchJson(`leagues-classic/${leagueId}/standings/?page_standings=1`);
+  const rows = (data.standings && data.standings.results) || [];
+  if (!rows.length) throw new Error("League not found or empty");
+  const limit = Math.min(rows.length, 40);
+  const ownMap = {};
+  let scanned = 0;
+  let myRank = null;
+  for (const r of rows.slice(0, limit)) {
+    if (Number(r.entry) === Number(teamId)) myRank = r.rank;
+    try {
+      const picks = await fetchJson(`entry/${r.entry}/event/${gw}/picks/`);
+      (picks.picks || []).forEach(pk => {
+        ownMap[pk.element] = (ownMap[pk.element] || 0) + 1;
+      });
+      scanned++;
+    } catch (_) {}
+  }
+  const payload = {
+    leagueId,
+    leagueName: (data.league && data.league.name) || ("League " + leagueId),
+    teamId,
+    ownMap,
+    sample: scanned,
+    myRank,
+    fieldAvg: 0,
+    scannedAt: new Date().toISOString(),
+  };
+  saveLeagueHunt(teamId, payload);
+  return payload;
+}
+
+function renderHuntStats(h) {
+  const box = $("ownerHuntStats");
+  if (!box || !h) { if (box) box.innerHTML = ""; return; }
+  const top = Object.entries(h.ownMap || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([id, n]) => {
+      const p = players.find(x => x.id === +id);
+      const pct = h.sample ? Math.round(100 * n / h.sample) : 0;
+      return `<li>${p ? p.web_name : id} · ${pct}% of scanned managers</li>`;
+    }).join("");
+  box.innerHTML = `<div class="muted" style="font-size:0.85rem">
+    <strong>${h.leagueName || h.leagueId}</strong> · scanned ${h.sample} teams
+    ${h.myRank ? " · your rank " + h.myRank : " · your team not in page 1"}
+    <p style="margin:8px 0 4px">Most owned in this league</p>
+    <ul>${top || "<li>No picks yet</li>"}</ul>
+    <p>AI Transfers boosts differentials if you are mid/low, and stays closer to the template if you are top 3.</p>
+  </div>`;
+}
+
 async function renderOwnerPage() {
   const box = $("ownerMemList");
   const msg = $("ownerMemMsg");
   if (!(authSession && authSession.plan === "owner")) {
     if (box) box.innerHTML = `<p class="muted">Sign in with the owner email to manage paid members.</p>`;
     return;
+  }
+  const existingHunt = loadLeagueHunt(currentTeamId());
+  if (existingHunt) {
+    _leagueHunt = existingHunt;
+    if ($("ownerHuntLeague")) $("ownerHuntLeague").value = existingHunt.leagueId || "";
+    if ($("ownerHuntTeam")) $("ownerHuntTeam").value = existingHunt.teamId || currentTeamId() || "";
+    renderHuntStats(existingHunt);
   }
   if (box) box.innerHTML = `<p class="muted">Loading members…</p>`;
   let members = loadLocalMembers();
@@ -2737,10 +2831,11 @@ async function renderOwnerPage() {
     return;
   }
   box.innerHTML = `<table class="ml-table"><thead><tr>
-    <th>Email</th><th>Team ID</th><th>Plan</th><th>Paid until</th><th></th>
+    <th>Email</th><th>Team ID</th><th>League</th><th>Plan</th><th>Paid until</th><th></th>
   </tr></thead><tbody>` + members.map((m) => `<tr>
     <td>${m.email || "—"}</td>
     <td>${m.teamId || "—"}</td>
+    <td>${m.targetLeagueId || "—"}</td>
     <td>${(m.plan || "").toUpperCase()}</td>
     <td>${formatUntil(m.until)}</td>
     <td style="white-space:nowrap">
@@ -2786,6 +2881,7 @@ async function ownerAddMember() {
   const plan = ($("ownerMemPlan") && $("ownerMemPlan").value) || "pro";
   const days = ownerDaysSelected();
   const note = ($("ownerMemNote") && $("ownerMemNote").value) || "";
+  const targetLeagueId = parseInt($("ownerMemLeague") && $("ownerMemLeague").value, 10) || 0;
   const msg = $("ownerMemMsg");
   if (!email && !teamId) {
     if (msg) msg.textContent = "Enter an email or a Team ID (or both).";
@@ -2799,7 +2895,11 @@ async function ownerAddMember() {
     until: Date.now() + days * 86400000,
     addedAt: new Date().toISOString(),
     note,
+    targetLeagueId: targetLeagueId || null,
   };
+  if (targetLeagueId && teamId) {
+    saveLeagueHunt(teamId, { leagueId: targetLeagueId, teamId, ownMap: {}, sample: 0, myRank: null, fieldAvg: 0 });
+  }
   const local = loadLocalMembers().filter(m =>
     !((email && m.email === email) || (teamId && Number(m.teamId) === teamId))
   );
@@ -2816,6 +2916,7 @@ async function ownerAddMember() {
         plan,
         days,
         note,
+        targetLeagueId,
         ownerEmail: OWNER_EMAIL,
       }),
     });
@@ -3463,6 +3564,24 @@ on("settingsOpenTermsBtn", "click", () => {
 on("settingsInstallBtn", "click", openInstallGuide);
 on("ownerMemAddBtn", "click", ownerAddMember);
 on("ownerMemRefreshBtn", "click", renderOwnerPage);
+on("ownerHuntScanBtn", "click", async () => {
+  const msg = $("ownerHuntMsg");
+  try {
+    if (msg) msg.textContent = "Scanning league picks…";
+    const h = await scanLeagueHunt($("ownerHuntLeague") && $("ownerHuntLeague").value, $("ownerHuntTeam") && $("ownerHuntTeam").value);
+    if (msg) msg.textContent = "Target set: " + (h.leagueName || h.leagueId);
+    renderHuntStats(h);
+  } catch (e) {
+    if (msg) msg.textContent = String(e.message || e);
+  }
+});
+on("ownerHuntClearBtn", "click", () => {
+  const tid = parseInt($("ownerHuntTeam") && $("ownerHuntTeam").value, 10) || currentTeamId();
+  saveLeagueHunt(tid, { leagueId: 0, teamId: tid, ownMap: {}, sample: 0, myRank: null });
+  _leagueHunt = { leagueId: 0, teamId: 0, ownMap: {}, sample: 0, myRank: null, fieldAvg: 0 };
+  if ($("ownerHuntStats")) $("ownerHuntStats").innerHTML = "";
+  if ($("ownerHuntMsg")) $("ownerHuntMsg").textContent = "League target cleared.";
+});
 on("ownerMemDays", "change", () => {
   const wrap = $("ownerMemCustomWrap");
   if (wrap) wrap.style.display = (($("ownerMemDays") && $("ownerMemDays").value) === "custom") ? "block" : "none";
