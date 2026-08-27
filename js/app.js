@@ -1846,13 +1846,14 @@ function removePlayer(id) {
   benchIds = benchIds.filter(x => x !== id);
   if (captainId === id) captainId = startingIds[0] || null;
   if (viceCaptainId === id) viceCaptainId = null;
-  bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
+  const freed = out && out.price != null ? Number(out.price) : 0;
+  bank = Math.round((Number(bank) + freed) * 10) / 10;
   while (startingIds.length < 11 && benchIds.length) startingIds.push(benchIds.shift());
   if (out) {
     replaceSlot = {
       position: out.position,
       maxPrice: bank + 20, // list ranked recommendations; affordability still enforced on add
-      freed: out.price || 0,
+      freed: freed,
       outName: out.web_name,
     };
     document.querySelectorAll(".pos-tab").forEach(b => {
