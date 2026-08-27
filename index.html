@@ -519,9 +519,9 @@
 
       <div class="card" style="margin-top:16px">
         <h2>League hunter</h2>
-        <p class="muted">Enter a classic league ID. Transfers and AI Teams for the loaded Team ID will be biased to <strong>beat that mini-league</strong> (differentials if behind, safer template if leading).</p>
+        <p class="muted">Add every classic league this Team ID should try to win. Ownership is merged so transfers hunt <strong>those tables</strong>.</p>
         <div class="settings-grid">
-          <label class="settings-field">Target league ID
+          <label class="settings-field">Add league ID
             <input type="number" id="ownerHuntLeague" placeholder="e.g. 123456" />
           </label>
           <label class="settings-field">Apply to Team ID
@@ -529,10 +529,12 @@
           </label>
         </div>
         <div class="controls-row" style="margin-top:10px">
-          <button type="button" id="ownerHuntScanBtn" class="btn btn-blue">Scan league &amp; set target</button>
-          <button type="button" id="ownerHuntClearBtn" class="btn btn-ghost">Clear target</button>
+          <button type="button" id="ownerHuntScanBtn" class="btn btn-blue">Add &amp; scan league</button>
+          <button type="button" id="ownerHuntRescanBtn" class="btn btn-outline">Rescan all</button>
+          <button type="button" id="ownerHuntClearBtn" class="btn btn-ghost">Clear all</button>
         </div>
         <p id="ownerHuntMsg" class="muted" style="margin-top:8px;font-size:0.85rem"></p>
+        <div id="ownerHuntList"></div>
         <div id="ownerHuntStats"></div>
       </div>
     </div>

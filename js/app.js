@@ -1116,7 +1116,7 @@ function isUnlimitedTransferMode() {
 }
 
 
-let _leagueHunt = { leagueId: 0, teamId: 0, ownMap: {}, sample: 0, myRank: null, fieldAvg: 0 };
+let _leagueHunt = { teamId: 0, leagues: [], ownMap: {}, sample: 0, myRank: null };
 
 function leagueHuntKey(teamId) {
   return "fpl_hunt_" + (teamId || currentTeamId() || "anon");
@@ -1125,8 +1125,40 @@ function loadLeagueHunt(teamId) {
   try { return JSON.parse(localStorage.getItem(leagueHuntKey(teamId)) || "null"); } catch (_) { return null; }
 }
 function saveLeagueHunt(teamId, data) {
+  data = normalizeHunt(data, teamId);
   try { localStorage.setItem(leagueHuntKey(teamId), JSON.stringify(data)); } catch (_) {}
-  _leagueHunt = data || _leagueHunt;
+  _leagueHunt = data;
+  persistOwnerHuntDefault(teamId, data);
+}
+function normalizeHunt(data, teamId) {
+  data = data || {};
+  const leagues = Array.isArray(data.leagues) ? data.leagues.slice() : [];
+  if (data.leagueId && !leagues.some(l => Number(l.id) === Number(data.leagueId))) {
+    leagues.push({
+      id: data.leagueId,
+      name: data.leagueName || ("League " + data.leagueId),
+      myRank: data.myRank,
+      sample: data.sample || 0,
+      ownMap: data.ownMap || {},
+    });
+  }
+  const ownMap = {};
+  let sample = 0;
+  leagues.forEach(l => {
+    sample += l.sample || 0;
+    Object.entries(l.ownMap || {}).forEach(([id, n]) => {
+      ownMap[id] = (ownMap[id] || 0) + Number(n);
+    });
+  });
+  const ranks = leagues.map(l => l.myRank).filter(r => r != null);
+  return {
+    teamId: teamId || data.teamId || 0,
+    leagues,
+    ownMap,
+    sample,
+    myRank: ranks.length ? Math.max(...ranks) : null,
+    leagueId: leagues[0] && leagues[0].id,
+  };
 }
 
 function huntBoost(p) {
@@ -1138,6 +1170,81 @@ function huntBoost(p) {
   if (behind) return (0.55 - owned) * 1.4;
   if (leading) return (owned - 0.35) * 0.5;
   return (0.4 - owned) * 0.6;
+}
+
+
+function transferLogKey(teamId) {
+  return "fpl_trlog_" + (teamId || "anon");
+}
+function loadTransferLog(teamId) {
+  try { return JSON.parse(localStorage.getItem(transferLogKey(teamId)) || "[]"); } catch (_) { return []; }
+}
+function saveTransferLog(teamId, rows) {
+  try { localStorage.setItem(transferLogKey(teamId), JSON.stringify((rows || []).slice(0, 200))); } catch (_) {}
+}
+function formatMovesLine(moves) {
+  return (moves || []).map(m => {
+    const outN = m.out && (m.out.web_name || m.out.name) || "?";
+    const inN = m.inn && (m.inn.web_name || m.inn.name) || "?";
+    return outN + " → " + inN;
+  }).join("; ");
+}
+function logTransferEvent(kind, sug, extra) {
+  const teamId = currentTeamId();
+  if (!teamId) return;
+  const hunt = normalizeHunt(loadLeagueHunt(teamId), teamId);
+  const leagues = (hunt.leagues || []).map(l => (l.name || "League") + " (" + l.id + ")").join(", ");
+  const row = {
+    at: new Date().toISOString(),
+    gw: planningGw(),
+    teamId,
+    kind, // suggested | applied | skipped
+    moves: formatMovesLine(sug && sug.moves),
+    gain: sug && sug.gain,
+    hits: sug && sug.hits,
+    leagues,
+    extra: extra || "",
+  };
+  const list = loadTransferLog(teamId);
+  list.unshift(row);
+  saveTransferLog(teamId, list);
+}
+function transferLogText(teamId) {
+  const rows = loadTransferLog(teamId);
+  const hunt = normalizeHunt(loadLeagueHunt(teamId), teamId);
+  const leagues = (hunt.leagues || []).map(l => (l.name || "League") + " [ID " + l.id + "]").join(", ") || "none";
+  const lines = [
+    "FPL Assistant · transfer verification log",
+    "Team ID: " + teamId,
+    "Hunt leagues: " + leagues,
+    "Exported: " + new Date().toISOString(),
+    "",
+    "datetime\tgw\tstatus\tmoves\tgain\thits",
+  ];
+  rows.forEach(r => {
+    lines.push([r.at, "GW" + r.gw, r.kind, r.moves || "", r.gain != null ? r.gain.toFixed(1) : "", r.hits || 0].join("\t"));
+  });
+  if (rows.length === 0) lines.push("(no AI transfer events recorded yet)");
+  return lines.join("\n");
+}
+function downloadText(filename, text) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+}
+function persistOwnerHuntDefault(teamId, hunt) {
+  try {
+    localStorage.setItem("fpl_owner_hunt_v1", JSON.stringify({
+      teamId,
+      hunt: normalizeHunt(hunt, teamId),
+    }));
+  } catch (_) {}
+}
+function restoreOwnerHuntDefault() {
+  try { return JSON.parse(localStorage.getItem("fpl_owner_hunt_v1") || "null"); } catch (_) { return null; }
 }
 
 function transferXp(p) {
@@ -1893,6 +2000,7 @@ function showTransferResults(res) {
     box.innerHTML = `<p class="muted">No upgrades found under budget (bank ${money(res.bank)}). Try unlimited mode, a longer horizon, or Custom transfers.</p>`;
     return;
   }
+  if (res.suggestions[0]) logTransferEvent("suggested", res.suggestions[0]);
 
   const ftLabel = res.unlimited
     ? `<div class="tr-ft-banner"><div><strong>Free transfers</strong><div class="muted" style="font-size:0.8rem">Unlimited this gameweek</div></div><div style="font-size:1.4rem">∞</div></div>`
@@ -1948,7 +2056,9 @@ function showTransferResults(res) {
 
   box.querySelectorAll(".apply-tr").forEach(btn => {
     btn.addEventListener("click", () => {
-      applyTransferSuggestion(res.suggestions[+btn.dataset.idx]);
+      const sug = res.suggestions[+btn.dataset.idx];
+      logTransferEvent("applied", sug, "accepted in app");
+      applyTransferSuggestion(sug);
       saveSquadLocal();
       setStatus("Applied best transfer package locally — mirror on official FPL");
     });
@@ -2773,6 +2883,24 @@ function ownerDaysSelected() {
   return parseInt(v, 10) || 365;
 }
 
+function memberLeagueLabel(m) {
+  const hunt = m.teamId ? loadLeagueHunt(m.teamId) : null;
+  const leagues = (hunt && hunt.leagues) || [];
+  const extra = m.targetLeagueId && !leagues.some(l => Number(l.id) === Number(m.targetLeagueId))
+    ? [{ id: m.targetLeagueId, name: m.targetLeagueName || ("League " + m.targetLeagueId) }]
+    : [];
+  const all = leagues.concat(extra);
+  if (!all.length) return "—";
+  return all.map(l => `${l.name || "League"} <span class="muted">(${l.id})</span>`).join("<br>");
+}
+function transferLogSummary(teamId) {
+  const rows = loadTransferLog(teamId);
+  if (!rows.length) return `<span class="muted">No log</span>`;
+  const applied = rows.filter(r => r.kind === "applied").length;
+  const suggested = rows.filter(r => r.kind === "suggested").length;
+  const last = rows[0];
+  return `${suggested} suggested · ${applied} applied<br><span class="muted">${last.kind} GW${last.gw}: ${last.moves || ""}</span>`;
+}
 function formatUntil(ts) {
   if (!ts) return "—";
   const d = new Date(Number(ts));
@@ -2815,11 +2943,45 @@ async function scanLeagueHunt(leagueId, teamId) {
     fieldAvg: 0,
     scannedAt: new Date().toISOString(),
   };
-  saveLeagueHunt(teamId, payload);
-  return payload;
+  const prev = normalizeHunt(loadLeagueHunt(teamId), teamId);
+  const leagues = prev.leagues.filter(l => Number(l.id) !== Number(leagueId));
+  leagues.push({
+    id: leagueId,
+    name: payload.leagueName,
+    myRank: payload.myRank,
+    sample: payload.sample,
+    ownMap: payload.ownMap,
+  });
+  const merged = normalizeHunt({ teamId, leagues }, teamId);
+  saveLeagueHunt(teamId, merged);
+  return merged;
 }
 
 function renderHuntStats(h) {
+  const listBox = $("ownerHuntList");
+  if (listBox) {
+    const leagues = (h && h.leagues) || [];
+    if (!leagues.length) listBox.innerHTML = `<p class="muted">No preferred leagues yet.</p>`;
+    else {
+      listBox.innerHTML = `<table class="ml-table"><thead><tr><th>League</th><th>ID</th><th>Your rank</th><th>Scanned</th><th></th></tr></thead><tbody>` +
+        leagues.map(l => `<tr>
+          <td>${l.name || "League"}</td>
+          <td>${l.id}</td>
+          <td>${l.myRank || "—"}</td>
+          <td>${l.sample || 0}</td>
+          <td><button type="button" class="btn btn-ghost hunt-del" data-id="${l.id}">Remove</button></td>
+        </tr>`).join("") + `</tbody></table>`;
+      listBox.querySelectorAll(".hunt-del").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const tid = parseInt($("ownerHuntTeam") && $("ownerHuntTeam").value, 10) || currentTeamId();
+          const cur = normalizeHunt(loadLeagueHunt(tid), tid);
+          cur.leagues = cur.leagues.filter(l => String(l.id) !== String(btn.dataset.id));
+          saveLeagueHunt(tid, cur);
+          renderHuntStats(_leagueHunt);
+        });
+      });
+    }
+  }
   const box = $("ownerHuntStats");
   if (!box || !h) { if (box) box.innerHTML = ""; return; }
   const top = Object.entries(h.ownMap || {})
@@ -2831,7 +2993,7 @@ function renderHuntStats(h) {
       return `<li>${p ? p.web_name : id} · ${pct}% of scanned managers</li>`;
     }).join("");
   box.innerHTML = `<div class="muted" style="font-size:0.85rem">
-    <strong>${h.leagueName || h.leagueId}</strong> · scanned ${h.sample} teams
+    <strong>${(h.leagues && h.leagues.length) || 0} leagues</strong> · scanned ${h.sample} manager-rows
     ${h.myRank ? " · your rank " + h.myRank : " · your team not in page 1"}
     <p style="margin:8px 0 4px">Most owned in this league</p>
     <ul>${top || "<li>No picks yet</li>"}</ul>
@@ -2846,12 +3008,18 @@ async function renderOwnerPage() {
     if (box) box.innerHTML = `<p class="muted">Sign in with the owner email to manage paid members.</p>`;
     return;
   }
-  const existingHunt = loadLeagueHunt(currentTeamId());
+  let existingHunt = loadLeagueHunt(currentTeamId());
+  const stored = restoreOwnerHuntDefault();
+  if ((!existingHunt || !(existingHunt.leagues || []).length) && stored && stored.hunt) {
+    existingHunt = stored.hunt;
+    if (stored.teamId && $("ownerHuntTeam")) $("ownerHuntTeam").value = stored.teamId;
+  }
   if (existingHunt) {
-    _leagueHunt = existingHunt;
-    if ($("ownerHuntLeague")) $("ownerHuntLeague").value = existingHunt.leagueId || "";
-    if ($("ownerHuntTeam")) $("ownerHuntTeam").value = existingHunt.teamId || currentTeamId() || "";
-    renderHuntStats(existingHunt);
+    _leagueHunt = normalizeHunt(existingHunt, existingHunt.teamId || currentTeamId());
+    if ($("ownerHuntTeam") && !($("ownerHuntTeam").value)) {
+      $("ownerHuntTeam").value = existingHunt.teamId || currentTeamId() || (stored && stored.teamId) || "";
+    }
+    renderHuntStats(_leagueHunt);
   }
   if (box) box.innerHTML = `<p class="muted">Loading members…</p>`;
   let members = loadLocalMembers();
@@ -2881,15 +3049,18 @@ async function renderOwnerPage() {
     box.innerHTML = `<p class="muted">No paid members yet.</p>`;
     return;
   }
-  box.innerHTML = `<table class="ml-table"><thead><tr>
-    <th>Email</th><th>Team ID</th><th>League</th><th>Plan</th><th>Paid until</th><th></th>
+  const allBtn = `<p style="margin:0 0 8px"><button type="button" class="btn btn-outline" id="ownerDownloadAllLogs">Download all transfer logs</button></p>`;
+  box.innerHTML = allBtn + `<table class="ml-table"><thead><tr>
+    <th>Email</th><th>Team ID</th><th>Hunt leagues</th><th>Plan</th><th>Paid until</th><th>AI transfers</th><th></th>
   </tr></thead><tbody>` + members.map((m) => `<tr>
     <td>${m.email || "—"}</td>
     <td>${m.teamId || "—"}</td>
-    <td>${m.targetLeagueId || "—"}</td>
+    <td>${memberLeagueLabel(m)}</td>
     <td>${(m.plan || "").toUpperCase()}</td>
     <td>${formatUntil(m.until)}</td>
+    <td>${transferLogSummary(m.teamId)}</td>
     <td style="white-space:nowrap">
+      <button type="button" class="btn btn-outline owner-mem-log" data-team="${m.teamId || ""}">Download log</button>
       <button type="button" class="btn btn-outline owner-mem-link" data-email="${m.email || ""}" data-team="${m.teamId || ""}" data-plan="${m.plan || "pro"}" data-until="${m.until || ""}">Copy login link</button>
       <button type="button" class="btn btn-ghost owner-mem-del" data-email="${m.email || ""}" data-team="${m.teamId || ""}">Remove</button>
     </td>
@@ -2897,6 +3068,18 @@ async function renderOwnerPage() {
   <p class="muted" style="margin-top:10px;font-size:0.82rem">If the server has no Blobs store, members are kept on this device. Send them the <strong>login link</strong> so they can activate on their phone.</p>`;
   box.querySelectorAll(".owner-mem-del").forEach(btn => {
     btn.addEventListener("click", () => ownerRemoveMember(btn.dataset.email, btn.dataset.team));
+  });
+  const allLogs = $("ownerDownloadAllLogs");
+  if (allLogs) allLogs.addEventListener("click", () => {
+    const parts = members.map(m => transferLogText(m.teamId)).join("\n\n=====\n\n");
+    downloadText("fpl-transfers-all-members.txt", parts);
+  });
+  box.querySelectorAll(".owner-mem-log").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tid = btn.dataset.team;
+      if (!tid) return;
+      downloadText("fpl-transfers-team-" + tid + ".txt", transferLogText(tid));
+    });
   });
   box.querySelectorAll(".owner-mem-link").forEach(btn => {
     btn.addEventListener("click", async () => {
@@ -2949,7 +3132,11 @@ async function ownerAddMember() {
     targetLeagueId: targetLeagueId || null,
   };
   if (targetLeagueId && teamId) {
-    saveLeagueHunt(teamId, { leagueId: targetLeagueId, teamId, ownMap: {}, sample: 0, myRank: null, fieldAvg: 0 });
+    const prev = normalizeHunt(loadLeagueHunt(teamId), teamId);
+    if (!prev.leagues.some(l => Number(l.id) === targetLeagueId)) {
+      prev.leagues.push({ id: targetLeagueId, name: "League " + targetLeagueId, ownMap: {}, sample: 0 });
+    }
+    saveLeagueHunt(teamId, prev);
   }
   const local = loadLocalMembers().filter(m =>
     !((email && m.email === email) || (teamId && Number(m.teamId) === teamId))
@@ -3627,7 +3814,7 @@ on("ownerHuntScanBtn", "click", async () => {
   try {
     if (msg) msg.textContent = "Scanning league picks…";
     const h = await scanLeagueHunt($("ownerHuntLeague") && $("ownerHuntLeague").value, $("ownerHuntTeam") && $("ownerHuntTeam").value);
-    if (msg) msg.textContent = "Target set: " + (h.leagueName || h.leagueId);
+    if (msg) msg.textContent = "Preferred leagues: " + ((h.leagues && h.leagues.length) || 1);
     renderHuntStats(h);
   } catch (e) {
     if (msg) msg.textContent = String(e.message || e);
@@ -3635,10 +3822,22 @@ on("ownerHuntScanBtn", "click", async () => {
 });
 on("ownerHuntClearBtn", "click", () => {
   const tid = parseInt($("ownerHuntTeam") && $("ownerHuntTeam").value, 10) || currentTeamId();
-  saveLeagueHunt(tid, { leagueId: 0, teamId: tid, ownMap: {}, sample: 0, myRank: null });
-  _leagueHunt = { leagueId: 0, teamId: 0, ownMap: {}, sample: 0, myRank: null, fieldAvg: 0 };
+  saveLeagueHunt(tid, { teamId: tid, leagues: [], ownMap: {}, sample: 0, myRank: null });
   if ($("ownerHuntStats")) $("ownerHuntStats").innerHTML = "";
-  if ($("ownerHuntMsg")) $("ownerHuntMsg").textContent = "League target cleared.";
+  if ($("ownerHuntList")) $("ownerHuntList").innerHTML = "";
+  if ($("ownerHuntMsg")) $("ownerHuntMsg").textContent = "All preferred leagues cleared.";
+});
+on("ownerHuntRescanBtn", "click", async () => {
+  const msg = $("ownerHuntMsg");
+  const tid = parseInt($("ownerHuntTeam") && $("ownerHuntTeam").value, 10) || currentTeamId();
+  const cur = normalizeHunt(loadLeagueHunt(tid), tid);
+  if (!cur.leagues.length) { if (msg) msg.textContent = "Add a league first."; return; }
+  if (msg) msg.textContent = "Rescanning " + cur.leagues.length + " leagues…";
+  for (const l of cur.leagues.slice()) {
+    try { await scanLeagueHunt(l.id, tid); } catch (e) { console.warn(e); }
+  }
+  renderHuntStats(_leagueHunt);
+  if (msg) msg.textContent = "Rescan complete · " + ((_leagueHunt.leagues && _leagueHunt.leagues.length) || 0) + " leagues.";
 });
 on("ownerMemDays", "change", () => {
   const wrap = $("ownerMemCustomWrap");
