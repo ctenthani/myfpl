@@ -69,6 +69,7 @@
     <button class="nav-btn" data-view="chips">Chips</button>
     <button class="nav-btn" data-view="terms">Terms</button>
     <button class="nav-btn" data-view="settings">Settings</button>
+    <button class="nav-btn hidden" data-view="owner" id="ownerNavBtn">Owner</button>
   </nav>
 
   <div class="status-line" id="statusBar">Loading FPL data…</div>
@@ -471,7 +472,51 @@
     </div>
   </div>
 
-      <div id="view-settings" class="view">
+        <div id="view-owner" class="view">
+    <div class="page-wrap">
+      <div class="card">
+        <h2>Owner · paid members</h2>
+        <p class="muted">Add someone after payment. They sign in with the same email and/or Team ID. Access expires after the duration you set.</p>
+        <div class="settings-grid" style="margin-top:12px">
+          <label class="settings-field">Email (optional if Team ID set)
+            <input type="email" id="ownerMemEmail" placeholder="customer@email.com" />
+          </label>
+          <label class="settings-field">Team ID (optional if email set)
+            <input type="number" id="ownerMemTeam" placeholder="1932256" />
+          </label>
+          <label class="settings-field">Plan
+            <select id="ownerMemPlan">
+              <option value="pro">Pro</option>
+              <option value="ultra">Ultra</option>
+            </select>
+          </label>
+          <label class="settings-field">Duration paid
+            <select id="ownerMemDays">
+              <option value="30">1 month (30 days)</option>
+              <option value="90">3 months (90 days)</option>
+              <option value="180">6 months (180 days)</option>
+              <option value="365" selected>1 year (365 days)</option>
+              <option value="custom">Custom days…</option>
+            </select>
+          </label>
+          <label class="settings-field" id="ownerMemCustomWrap" style="display:none">Custom days
+            <input type="number" id="ownerMemCustomDays" min="1" max="1095" value="30" />
+          </label>
+          <label class="settings-field">Note (optional)
+            <input type="text" id="ownerMemNote" placeholder="PayPal / Mpamba ref" />
+          </label>
+        </div>
+        <div class="controls-row" style="margin-top:12px">
+          <button type="button" id="ownerMemAddBtn" class="btn btn-blue">Add paid member</button>
+          <button type="button" id="ownerMemRefreshBtn" class="btn btn-outline">Refresh list</button>
+        </div>
+        <p id="ownerMemMsg" class="muted" style="margin-top:8px;font-size:0.85rem"></p>
+        <div id="ownerMemList" style="margin-top:16px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-settings" class="view">
     <div class="page-wrap settings-page">
       <div class="card">
         <h2>Settings</h2>

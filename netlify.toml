@@ -24,6 +24,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/members"
+  to = "/.netlify/functions/members"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/matchday-digest"
   to = "/.netlify/functions/matchday-digest"
   status = 200

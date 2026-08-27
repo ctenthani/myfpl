@@ -223,6 +223,7 @@ function isPro() {
   if (isFreePeriod()) return true;
   if (!authSession) return false;
   if (authSession.plan === "owner") return true;
+  if (authSession.paidUntil && Number(authSession.paidUntil) < Date.now()) return false;
   if (authSession.plan !== "pro" && authSession.plan !== "ultra" && authSession.plan !== "trial_pro" && authSession.plan !== "trial_ultra") return false;
   if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") {
     if (!trialStillValid(authSession)) return false;
@@ -274,30 +275,71 @@ function startTrial(level) {
 
 function setPlan() { /* legacy no-op – use login */ }
 
-function attemptLogin(teamId, code, email) {
-  // code arg kept for backward compat but ignored — login is email + teamId
+function localPaidHit(email, teamId) {
+  const list = loadLocalMembers();
+  const now = Date.now();
+  return list.find(u => {
+    if (Number(u.until || 0) && Number(u.until) < now) return false;
+    const em = String(u.email || "").toLowerCase();
+    const tid = Number(u.teamId) || 0;
+    if (email && em && em === email) return true;
+    if (teamId && tid && tid === Number(teamId)) return true;
+    return false;
+  });
+}
+
+async function lookupPaidMember(email, teamId) {
+  const hit = PAID_USERS.find(u =>
+    (email && String(u.email || "").toLowerCase() === email) ||
+    (teamId && Number(u.teamId) === Number(teamId))
+  );
+  if (hit && (hit.plan === "pro" || hit.plan === "ultra")) return { ...hit, until: hit.until || 0 };
+  const local = localPaidHit(email, teamId);
+  if (local) return local;
+  try {
+    const q = new URLSearchParams();
+    if (email) q.set("email", email);
+    if (teamId) q.set("teamId", String(teamId));
+    const r = await fetch("/api/members?" + q.toString());
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (d && d.found && d.active) return d;
+  } catch (_) {}
+  return null;
+}
+
+async function attemptLogin(teamId, code, email) {
   teamId = parseInt(teamId, 10);
   email = String(email || "").trim().toLowerCase();
+  if (!email && !teamId) return { ok: false, msg: "Enter email or Team ID" };
+  if (email === OWNER_EMAIL.toLowerCase()) {
+    saveAuthSession({ teamId: teamId || null, plan: "owner", email });
+    if (teamId && $("teamIdInput")) $("teamIdInput").value = teamId;
+    return { ok: true, msg: "Signed in as Owner (full access on any team)" };
+  }
   if (!email) return { ok: false, msg: "Enter your email" };
   if (!teamId) return { ok: false, msg: "Enter a valid Team ID" };
 
-  // Owner
-  if (email === OWNER_EMAIL.toLowerCase()) {
-    saveAuthSession({ teamId: null, plan: "owner", email });
-    if ($("teamIdInput")) $("teamIdInput").value = teamId;
-    return { ok: true, msg: "Signed in as Owner (full access on any team)" };
-  }
-
-  // Paid allowlist
-  const hit = PAID_USERS.find(u =>
-    String(u.email || "").toLowerCase() === email && Number(u.teamId) === teamId
-  );
+  const hit = await lookupPaidMember(email, teamId);
   if (hit && (hit.plan === "pro" || hit.plan === "ultra")) {
-    saveAuthSession({ teamId, plan: hit.plan, email });
+    saveAuthSession({
+      teamId,
+      plan: hit.plan,
+      email,
+      paidUntil: hit.until || null,
+    });
     if ($("teamIdInput")) $("teamIdInput").value = teamId;
-    return { ok: true, msg: `Signed in · ${hit.plan.toUpperCase()} · team ${teamId}` };
+    const left = hit.until ? Math.max(0, Math.ceil((Number(hit.until) - Date.now()) / 86400000)) : null;
+    return { ok: true, msg: `Signed in · ${hit.plan.toUpperCase()}` + (left != null ? ` · ${left}d left` : ` · team ${teamId}`) };
   }
-  return { ok: false, msg: "No Pro/Ultra found for that email + Team ID. Pay first, then we activate your account." };
+  return { ok: false, msg: "No Pro/Ultra found for that email + Team ID. Pay first, then the owner activates your account." };
+}
+
+function loadLocalMembers() {
+  try { return JSON.parse(localStorage.getItem("fpl_owner_members_v1") || "[]"); } catch (_) { return []; }
+}
+function saveLocalMembers(list) {
+  try { localStorage.setItem("fpl_owner_members_v1", JSON.stringify(list)); } catch (_) {}
 }
 
 function logout() {
@@ -310,6 +352,8 @@ function loadPlan() {
 }
 
 function updatePlanUI() {
+  const ownNav = $("ownerNavBtn");
+  if (ownNav) ownNav.classList.toggle("hidden", !(authSession && authSession.plan === "owner"));
   const badge = $("planBadge");
   if (badge) {
     const label = activePlanLabel();
@@ -2624,6 +2668,141 @@ async function renderRivalRadar() {
   }
 }
 
+function ownerHeaders() {
+  return {
+    "Content-Type": "application/json",
+    "x-owner-email": OWNER_EMAIL,
+  };
+}
+
+function ownerDaysSelected() {
+  const v = ($("ownerMemDays") && $("ownerMemDays").value) || "365";
+  if (v === "custom") return Math.max(1, parseInt($("ownerMemCustomDays") && $("ownerMemCustomDays").value, 10) || 30);
+  return parseInt(v, 10) || 365;
+}
+
+function formatUntil(ts) {
+  if (!ts) return "—";
+  const d = new Date(Number(ts));
+  if (!Number.isFinite(d.getTime())) return "—";
+  const left = Math.ceil((d.getTime() - Date.now()) / 86400000);
+  const when = d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return left < 0 ? ("expired " + when) : (when + " · " + left + "d left");
+}
+
+async function renderOwnerPage() {
+  const box = $("ownerMemList");
+  const msg = $("ownerMemMsg");
+  if (!(authSession && authSession.plan === "owner")) {
+    if (box) box.innerHTML = `<p class="muted">Sign in with the owner email to manage paid members.</p>`;
+    return;
+  }
+  if (box) box.innerHTML = `<p class="muted">Loading members…</p>`;
+  let members = loadLocalMembers();
+  try {
+    const r = await fetch("/api/members?list=1", { headers: ownerHeaders() });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.members) {
+        members = d.members;
+        saveLocalMembers(members);
+      }
+    } else if (msg) {
+      msg.textContent = "Server list unavailable — showing members saved on this device.";
+    }
+  } catch (_) {
+    if (msg && !msg.textContent) msg.textContent = "Using device list (API offline).";
+  }
+  if (!box) return;
+  if (!members.length) {
+    box.innerHTML = `<p class="muted">No paid members yet.</p>`;
+    return;
+  }
+  box.innerHTML = `<table class="ml-table"><thead><tr>
+    <th>Email</th><th>Team ID</th><th>Plan</th><th>Paid until</th><th></th>
+  </tr></thead><tbody>` + members.map((m, i) => `<tr>
+    <td>${m.email || "—"}</td>
+    <td>${m.teamId || "—"}</td>
+    <td>${(m.plan || "").toUpperCase()}</td>
+    <td>${formatUntil(m.until)}</td>
+    <td><button type="button" class="btn btn-ghost owner-mem-del" data-email="${m.email || ""}" data-team="${m.teamId || ""}">Remove</button></td>
+  </tr>`).join("") + `</tbody></table>`;
+  box.querySelectorAll(".owner-mem-del").forEach(btn => {
+    btn.addEventListener("click", () => ownerRemoveMember(btn.dataset.email, btn.dataset.team));
+  });
+}
+
+async function ownerAddMember() {
+  if (!(authSession && authSession.plan === "owner")) {
+    setStatus("Sign in as owner first");
+    return;
+  }
+  const email = (($("ownerMemEmail") && $("ownerMemEmail").value) || "").trim().toLowerCase();
+  const teamId = parseInt($("ownerMemTeam") && $("ownerMemTeam").value, 10) || 0;
+  const plan = ($("ownerMemPlan") && $("ownerMemPlan").value) || "pro";
+  const days = ownerDaysSelected();
+  const note = ($("ownerMemNote") && $("ownerMemNote").value) || "";
+  const msg = $("ownerMemMsg");
+  if (!email && !teamId) {
+    if (msg) msg.textContent = "Enter an email or a Team ID (or both).";
+    return;
+  }
+  const row = {
+    email: email || null,
+    teamId: teamId || null,
+    plan,
+    days,
+    until: Date.now() + days * 86400000,
+    addedAt: new Date().toISOString(),
+    note,
+  };
+  const local = loadLocalMembers().filter(m =>
+    !((email && m.email === email) || (teamId && Number(m.teamId) === teamId))
+  );
+  local.unshift(row);
+  saveLocalMembers(local);
+
+  try {
+    const r = await fetch("/api/members", {
+      method: "POST",
+      headers: ownerHeaders(),
+      body: JSON.stringify({
+        action: "add",
+        email,
+        teamId,
+        plan,
+        days,
+        note,
+        ownerEmail: OWNER_EMAIL,
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (msg) {
+      msg.textContent = r.ok
+        ? `Added ${plan.toUpperCase()} for ${email || "Team " + teamId} · ${days} days (until ${new Date(row.until).toLocaleDateString()})`
+        : ("Saved on this device. Server: " + (d.error || r.status));
+    }
+  } catch (e) {
+    if (msg) msg.textContent = "Saved on this device only (server offline).";
+  }
+  renderOwnerPage();
+}
+
+async function ownerRemoveMember(email, teamId) {
+  const list = loadLocalMembers().filter(m =>
+    !(String(m.email || "") === String(email || "") && String(m.teamId || "") === String(teamId || ""))
+  );
+  saveLocalMembers(list);
+  try {
+    await fetch("/api/members", {
+      method: "POST",
+      headers: ownerHeaders(),
+      body: JSON.stringify({ action: "remove", email, teamId, ownerEmail: OWNER_EMAIL }),
+    });
+  } catch (_) {}
+  renderOwnerPage();
+}
+
 function renderSettings() {
   const setTxt = (id, v) => { const el = $(id); if (el) el.textContent = v; };
   const signed = !!(authSession && (authSession.plan === "owner" || authSession.plan === "pro" || authSession.plan === "ultra" ||
@@ -3062,6 +3241,7 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     if (btn.dataset.view === "matchday") renderMatchday();
     if (btn.dataset.view === "terms") renderTerms();
     if (btn.dataset.view === "settings") renderSettings();
+    if (btn.dataset.view === "owner") renderOwnerPage();
     if (btn.dataset.view === "rank") renderLiveRank();
     if (btn.dataset.view === "chips") renderChips();
   });
@@ -3175,6 +3355,12 @@ on("settingsOpenTermsBtn", "click", () => {
   document.querySelector('[data-view="terms"]')?.click();
 });
 on("settingsInstallBtn", "click", openInstallGuide);
+on("ownerMemAddBtn", "click", ownerAddMember);
+on("ownerMemRefreshBtn", "click", renderOwnerPage);
+on("ownerMemDays", "change", () => {
+  const wrap = $("ownerMemCustomWrap");
+  if (wrap) wrap.style.display = (($("ownerMemDays") && $("ownerMemDays").value) === "custom") ? "block" : "none";
+});
 on("footerTermsLink", "click", (e) => {
   e.preventDefault();
   document.querySelector('[data-view="terms"]')?.click();
@@ -3197,7 +3383,7 @@ on("startTrialUltra", "click", () => startTrial("ultra"));
 on("loginSubmitBtn", "click", async () => {
   const tid = $("loginTeamId") && $("loginTeamId").value;
   const email = $("loginEmail") && $("loginEmail").value;
-  const res = attemptLogin(tid, "", email);
+  const res = await attemptLogin(tid, "", email);
   const msg = $("loginMsg");
   if (msg) { msg.textContent = res.msg; msg.style.color = res.ok ? "#16a34a" : "#dc2626"; }
   if (res.ok) {
