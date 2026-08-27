@@ -2869,6 +2869,10 @@ function renderSettings() {
   } catch (_) {}
 }
 
+function getUiPrefs() {
+  try { return JSON.parse(localStorage.getItem("fpl_ui_prefs_v1") || "{}"); } catch (_) { return {}; }
+}
+
 function applyUiPrefs() {
   try {
     const ui = JSON.parse(localStorage.getItem("fpl_ui_prefs_v1") || "{}");
@@ -3097,8 +3101,16 @@ async function renderLiveRank() {
     _rankLeaguesCache = classic.map(l => ({ id: l.id, name: l.name, entry_rank: l.entry_rank }));
     if (sel) {
       const prev = sel.value;
+      const extras = [];
+      const extraRaw = (getUiPrefs().extraLeagues || "");
+      extraRaw.split(",").map(s => s.trim()).filter(Boolean).forEach(id => {
+        if (![...classic, ...extras].some(l => String(l.id) === String(id))) {
+          extras.push({ id, name: "Custom " + id });
+        }
+      });
       sel.innerHTML = `<option value="my">My team</option>` +
-        classic.map(l => `<option value="${l.id}">${l.name}</option>`).join("");
+        classic.map(l => `<option value="${l.id}">${l.name}</option>`).join("") +
+        extras.map(l => `<option value="${l.id}">${l.name}</option>`).join("");
       if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
       else if (classic.length) sel.value = String(classic[0].id);
     }
@@ -3175,7 +3187,7 @@ async function renderRankLeagueTable(myTeamId, entry) {
   }
 
   // Enrich with live GW score from picks (limited concurrency)
-  const rows = standings.slice(0, 50);
+  const rows = standings.slice(0, getUiPrefs().leagueLimit || 50);
   const enriched = [];
   for (const r of rows) {
     let liveScore = r.event_total;
@@ -3228,7 +3240,8 @@ async function renderRankLeagueTable(myTeamId, entry) {
     const deltaHtml = delta == null ? "" :
       (delta > 0 ? `<div class="ml-delta up">↑ ${delta}</div>` :
        delta < 0 ? `<div class="ml-delta">↓ ${Math.abs(delta)}</div>` : "");
-    const chipHtml = ["wc", "tc", "bb", "fh"].map(k => {
+    const prefs = getUiPrefs();
+    const chipHtml = prefs.showChips === false ? "" : ["wc", "tc", "bb", "fh"].map(k => {
       const labels = { wc: "WC", tc: "TC", bb: "BB", fh: "FH" };
       return `<span class="ml-chip ${r.chips[k] ? "on" : ""}">${labels[k]}</span>`;
     }).join("");
@@ -3239,7 +3252,7 @@ async function renderRankLeagueTable(myTeamId, entry) {
         <div class="ml-team-name">${isMe ? "★ " : ""}${r.entry_name || "Team"}</div>
         <div class="ml-manager"><span class="ml-live">LIVE</span>${r.player_name || ""}</div>
         <div>${chipHtml}</div>
-        ${r.capName ? `<div class="ml-cap">© ${r.capName}</div>` : ""}
+        ${(prefs.showCaptains === false || !r.capName) ? "" : `<div class=\"ml-cap\">© ${r.capName}</div>`}
       </td>
       <td class="ml-score">${r.liveScore ?? "–"}${deltaHtml}</td>
       <td class="ml-total">${r.totalPts ?? "–"}</td>
@@ -3331,21 +3344,69 @@ on("settingsSaveTeamBtn", "click", () => {
   init(true);
   setStatus("Team ID saved: " + v);
 });
+on("settingsExportBtn", "click", async () => {
+  const payload = {
+    ui: getUiPrefs(),
+    teamId: currentTeamId(),
+    auth: authSession ? { email: authSession.email, plan: authSession.plan, teamId: authSession.teamId } : null,
+  };
+  const text = JSON.stringify(payload);
+  const box = $("settingsTransferBox");
+  if (box) box.value = text;
+  try { await navigator.clipboard.writeText(text); setStatus("Settings copied"); }
+  catch (_) { setStatus("Copy the JSON from the box"); }
+});
+on("settingsImportBtn", "click", () => {
+  const box = $("settingsTransferBox");
+  try {
+    const data = JSON.parse((box && box.value) || "");
+    if (data.ui) localStorage.setItem("fpl_ui_prefs_v1", JSON.stringify(data.ui));
+    if (data.teamId) {
+      if ($("teamIdInput")) $("teamIdInput").value = data.teamId;
+      rememberTeamId(data.teamId);
+    }
+    applyUiPrefs();
+    renderSettings();
+    setStatus("Settings imported");
+  } catch (_) { setStatus("Invalid settings JSON"); }
+});
+on("settingsResyncBtn", "click", () => { init(true); setStatus("Resyncing FPL data…"); });
+on("settingsOtherLogoutBtn", "click", () => { logout(); updatePlanUI(); renderSettings(); });
 on("settingsSaveUiBtn", "click", () => {
   let prev = {};
   try { prev = JSON.parse(localStorage.getItem("fpl_ui_prefs_v1") || "{}"); } catch (_) {}
+  const on = (id, def) => {
+    const el = $(id);
+    if (!el) return def;
+    return !!el.checked;
+  };
   const ui = {
     ...prev,
-    compactPitch: !!( $("settingsCompactPitch") && $("settingsCompactPitch").checked),
-    hideMetrics: !!( $("settingsHideMetrics") && $("settingsHideMetrics").checked),
-    hideGwBanner: !!( $("settingsHideGwBanner") && $("settingsHideGwBanner").checked),
+    compactPitch: on("settingsCompactPitch", false),
+    hideMetrics: on("settingsHideMetrics", false),
+    hideGwBanner: on("settingsHideGwBanner", false),
     defaultHorizon: parseInt($("settingsDefaultHorizon") && $("settingsDefaultHorizon").value, 10) || 1,
     theme: ($("settingsTheme") && $("settingsTheme").value) || "light",
+    hidePromo: on("settingsHidePromo", false),
+    liveAutoSubs: on("settingsLiveAutoSubs", true),
+    liveBonus: on("settingsLiveBonus", true),
+    showToPlay: on("settingsShowToPlay", true),
+    showCaptains: on("settingsShowCaptains", true),
+    capMultiplier: on("settingsCapMultiplier", true),
+    showChips: on("settingsShowChips", true),
+    showPtsDiff: on("settingsShowPtsDiff", true),
+    showEO: on("settingsShowEO", false),
+    highlightNonOwned: on("settingsHighlightNonOwned", false),
+    animations: on("settingsAnimations", true),
+    leagueLimit: parseInt($("settingsLeagueLimit") && $("settingsLeagueLimit").value, 10) || 50,
+    pitchType: ($("settingsPitchType") && $("settingsPitchType").value) || "shirts",
+    draftId: ($("settingsDraftId") && $("settingsDraftId").value) || "",
+    extraLeagues: ($("settingsExtraLeagues") && $("settingsExtraLeagues").value) || "",
   };
   try { localStorage.setItem("fpl_ui_prefs_v1", JSON.stringify(ui)); } catch (_) {}
   applyUiPrefs();
   renderPitch();
-  setStatus("Display settings saved");
+  setStatus("Settings saved on this device");
 });
 on("settingsStartTrialBtn", "click", () => {
   startTrial("pro");

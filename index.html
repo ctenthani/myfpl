@@ -558,26 +558,140 @@
           <button type="button" id="settingsSaveNotifyBtn" class="btn btn-blue" style="margin-top:8px">Save notification preference</button>
         </div>
 
-        <div class="settings-section">
-          <h3>Display &amp; UI</h3>
-          <label class="settings-check"><input type="checkbox" id="settingsCompactPitch" /> Compact pitch cards (better on small phones)</label>
-          <label class="settings-check"><input type="checkbox" id="settingsHideMetrics" /> Hide top metrics bar on small screens</label>
-          <label class="settings-check"><input type="checkbox" id="settingsHideGwBanner" /> Hide large Gameweek banner</label>
-          <label class="settings-field" style="margin-top:10px">Default predicted-points horizon
-            <select id="settingsDefaultHorizon">
-              <option value="1">Next GW only</option>
-              <option value="3">Next 3 GWs</option>
-            </select>
-          </label>
-          <label class="settings-field">Theme
-            <select id="settingsTheme">
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-              <option value="system">System</option>
-            </select>
-          </label>
-          <button type="button" id="settingsSaveUiBtn" class="btn btn-blue" style="margin-top:10px">Save display settings</button>
+        <div class="settings-menu" id="settingsMenu">
+
+          <details class="sm-item" open>
+            <summary>
+              <span class="sm-title">Remove adverts</span>
+              <span class="sm-sub">Go ad-free on Pro / Ultra</span>
+            </summary>
+            <div class="sm-body">
+              <p class="muted" style="font-size:0.85rem">Paid plans hide promotional cards. Free access is on until 30 Nov 2026.</p>
+              <label class="settings-check"><input type="checkbox" id="settingsHidePromo" /> Hide upgrade / promo cards</label>
+            </div>
+          </details>
+
+          <details class="sm-item">
+            <summary>
+              <span class="sm-title">Live options</span>
+              <span class="sm-sub">Live auto subs · live points</span>
+            </summary>
+            <div class="sm-body">
+              <label class="settings-check"><input type="checkbox" id="settingsLiveAutoSubs" checked /> Live auto-subs (bench on if starter has 0 mins)</label>
+              <label class="settings-check"><input type="checkbox" id="settingsLiveBonus" checked /> Include live / projected bonus in scores</label>
+              <label class="settings-check"><input type="checkbox" id="settingsShowToPlay" checked /> Show “still to play” on Live Rank</label>
+            </div>
+          </details>
+
+          <details class="sm-item">
+            <summary>
+              <span class="sm-title">Preferences</span>
+              <span class="sm-sub">Captains · chips · ownership · league size</span>
+            </summary>
+            <div class="sm-body">
+              <label class="settings-check"><input type="checkbox" id="settingsShowCaptains" checked /> Show captains on league table</label>
+              <label class="settings-check"><input type="checkbox" id="settingsCapMultiplier" checked /> Captain count multiplier (C = 2×, TC = 3×)</label>
+              <label class="settings-check"><input type="checkbox" id="settingsShowChips" checked /> Show chip badges (WC / TC / BB / FH)</label>
+              <label class="settings-check"><input type="checkbox" id="settingsShowPtsDiff" checked /> Show points difference vs you</label>
+              <label class="settings-check"><input type="checkbox" id="settingsShowEO" /> Show ownership impact values</label>
+              <label class="settings-check"><input type="checkbox" id="settingsHighlightNonOwned" /> Highlight players you don’t own on expanded pitches</label>
+              <label class="settings-field">Classic league size limit
+                <select id="settingsLeagueLimit">
+                  <option value="25">25 managers</option>
+                  <option value="50" selected>50 managers</option>
+                  <option value="100">100 managers</option>
+                </select>
+              </label>
+            </div>
+          </details>
+
+          <details class="sm-item">
+            <summary>
+              <span class="sm-title">Look and feel</span>
+              <span class="sm-sub">Animations · dark mode · pitch type</span>
+            </summary>
+            <div class="sm-body">
+              <label class="settings-check"><input type="checkbox" id="settingsCompactPitch" /> Compact pitch cards (better on phones)</label>
+              <label class="settings-check"><input type="checkbox" id="settingsHideMetrics" /> Hide top metrics bar on small screens</label>
+              <label class="settings-check"><input type="checkbox" id="settingsHideGwBanner" /> Hide large Gameweek banner</label>
+              <label class="settings-check"><input type="checkbox" id="settingsAnimations" checked /> Animations</label>
+              <label class="settings-field">Theme
+                <select id="settingsTheme">
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="system">System</option>
+                </select>
+              </label>
+              <label class="settings-field">Pitch type
+                <select id="settingsPitchType">
+                  <option value="shirts">Home shirts</option>
+                  <option value="simple">Simple dots</option>
+                </select>
+              </label>
+              <label class="settings-field">Default predicted-points horizon
+                <select id="settingsDefaultHorizon">
+                  <option value="1">Next GW only</option>
+                  <option value="3">Next 3 GWs</option>
+                </select>
+              </label>
+            </div>
+          </details>
+
+          <details class="sm-item">
+            <summary>
+              <span class="sm-title">Fantasy Draft</span>
+              <span class="sm-sub">Add / remove draft team ID</span>
+            </summary>
+            <div class="sm-body">
+              <label class="settings-field">Draft league ID
+                <input type="number" id="settingsDraftId" placeholder="Optional draft league ID" />
+              </label>
+              <p class="muted" style="font-size:0.8rem">Stored on this device for later draft tools.</p>
+            </div>
+          </details>
+
+          <details class="sm-item">
+            <summary>
+              <span class="sm-title">League management</span>
+              <span class="sm-sub">Followed leagues · custom IDs</span>
+            </summary>
+            <div class="sm-body">
+              <label class="settings-field">Extra classic league IDs (comma separated)
+                <input type="text" id="settingsExtraLeagues" placeholder="e.g. 123456, 789012" />
+              </label>
+              <p class="muted" style="font-size:0.8rem">These appear in the Live Rank league dropdown with your official leagues.</p>
+            </div>
+          </details>
+
+          <details class="sm-item">
+            <summary>
+              <span class="sm-title">Settings export</span>
+              <span class="sm-sub">Copy setup to another device</span>
+            </summary>
+            <div class="sm-body">
+              <div class="controls-row">
+                <button type="button" id="settingsExportBtn" class="btn btn-outline">Copy settings JSON</button>
+                <button type="button" id="settingsImportBtn" class="btn btn-blue">Paste &amp; import</button>
+              </div>
+              <textarea id="settingsTransferBox" rows="4" placeholder="Paste exported settings here, then Import" style="width:100%;margin-top:8px;border-radius:8px;border:1px solid var(--border);padding:8px;font-size:0.8rem"></textarea>
+            </div>
+          </details>
+
+          <details class="sm-item">
+            <summary>
+              <span class="sm-title">Other</span>
+              <span class="sm-sub">Feedback · resync · log out</span>
+            </summary>
+            <div class="sm-body">
+              <div class="controls-row">
+                <a class="btn btn-outline" href="https://x.com/ctenthani" target="_blank" rel="noopener">Send feedback</a>
+                <button type="button" id="settingsResyncBtn" class="btn btn-blue">Resync data</button>
+                <button type="button" id="settingsOtherLogoutBtn" class="btn btn-ghost">Log out</button>
+              </div>
+            </div>
+          </details>
         </div>
+        <button type="button" id="settingsSaveUiBtn" class="btn btn-blue" style="margin-top:14px">Save all settings</button>
 
         <div class="settings-section">
           <h3>Install app</h3>

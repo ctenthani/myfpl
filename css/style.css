@@ -1343,3 +1343,27 @@ body.compact-pitch .fix-chip { font-size: 0.5rem; padding: 1px 2px; }
   .ml-pcard { width: 56px; }
   .ml-pcard .nm { font-size: 0.58rem; }
 }
+
+.settings-menu { margin-top: 8px; border-radius: 14px; overflow: hidden; border: 1px solid #e2e8f0; }
+.sm-item { border-bottom: 1px solid #e2e8f0; background: #fff; }
+.sm-item:last-child { border-bottom: none; }
+.sm-item summary {
+  list-style: none; cursor: pointer; padding: 14px 16px;
+  display: flex; flex-direction: column; position: relative;
+}
+.sm-item summary::-webkit-details-marker { display: none; }
+.sm-item summary::after {
+  content: "›"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%) rotate(90deg);
+  color: #22c55e; font-size: 1.4rem; font-weight: 700;
+}
+.sm-item[open] summary::after { transform: translateY(-50%) rotate(-90deg); }
+.sm-title { font-weight: 700; color: #16a34a; font-size: 1rem; }
+.sm-sub { font-size: 0.78rem; color: #64748b; margin-top: 2px; }
+.sm-body { padding: 0 16px 14px; }
+body.theme-dark .settings-menu, body.theme-dark .sm-item { background: #0f172a; border-color: #1e293b; }
+body.theme-dark .sm-title { color: #4ade80; }
+body.theme-dark .sm-sub { color: #94a3b8; }
+body.no-anim * { transition: none !important; animation: none !important; }
+body.pitch-simple .shirt-img { display: none !important; }
+body.pitch-simple .shirt-fallback, body.pitch-simple .shirt { display: flex !important; }
+body.hide-promo .upgrade-card { display: none !important; }
