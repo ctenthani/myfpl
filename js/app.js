@@ -145,6 +145,13 @@ function loadAuthSession() {
     const raw = localStorage.getItem("fpl_auth_v1");
     if (raw) authSession = JSON.parse(raw);
   } catch (_) { authSession = null; }
+  if (authSession && authSession.plan === "owner") {
+    const em = String(authSession.email || "").toLowerCase();
+    if (em !== OWNER_EMAIL.toLowerCase()) {
+      authSession.plan = "starter";
+      try { localStorage.setItem("fpl_auth_v1", JSON.stringify(authSession)); } catch (_) {}
+    }
+  }
   // URL one-time login: ?login=TEAM&plan=pro&code=XXXX  or ?owner=CODE
   try {
     const params = new URLSearchParams(location.search);
@@ -305,7 +312,7 @@ async function lookupPaidMember(email, teamId) {
     const q = new URLSearchParams();
     if (email) q.set("email", email);
     if (teamId) q.set("teamId", String(teamId));
-    const r = await membersApi("?" + q.toString(), { method: "GET" });
+    const r = await membersApi("?" + q.toString(), { method: "GET", headers: { "Content-Type": "application/json" } });
     if (r.ok && r.json && r.json.found && r.json.active) return r.json;
   } catch (_) {}
   return null;
@@ -354,9 +361,14 @@ function loadPlan() {
   loadAuthSession();
 }
 
+function isOwnerSession() {
+  const em = String((authSession && authSession.email) || "").trim().toLowerCase();
+  return !!(authSession && authSession.plan === "owner" && em === OWNER_EMAIL.toLowerCase());
+}
+
 function updatePlanUI() {
   const ownNav = $("ownerNavBtn");
-  if (ownNav) ownNav.classList.toggle("hidden", !(authSession && authSession.plan === "owner"));
+  if (ownNav) ownNav.classList.toggle("hidden", !isOwnerSession());
   const badge = $("planBadge");
   if (badge) {
     const label = activePlanLabel();
@@ -2697,7 +2709,8 @@ async function renderRivalRadar() {
 }
 
 async function membersApi(pathQuery, opts) {
-  const headers = Object.assign({}, ownerHeaders(), (opts && opts.headers) || {});
+  const base = isOwnerSession() ? ownerHeaders() : { "Content-Type": "application/json" };
+  const headers = Object.assign({}, base, (opts && opts.headers) || {});
   const init = Object.assign({}, opts || {}, { headers });
   const urls = [
     "/.netlify/functions/members" + (pathQuery || ""),
@@ -2799,7 +2812,7 @@ function renderHuntStats(h) {
 async function renderOwnerPage() {
   const box = $("ownerMemList");
   const msg = $("ownerMemMsg");
-  if (!(authSession && authSession.plan === "owner")) {
+  if (!isOwnerSession()) {
     if (box) box.innerHTML = `<p class="muted">Sign in with the owner email to manage paid members.</p>`;
     return;
   }
@@ -2872,7 +2885,7 @@ function activationLink(email, teamId, plan, until) {
 }
 
 async function ownerAddMember() {
-  if (!(authSession && authSession.plan === "owner")) {
+  if (!isOwnerSession()) {
     setStatus("Sign in as owner first");
     return;
   }
@@ -3400,7 +3413,14 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     if (btn.dataset.view === "matchday") renderMatchday();
     if (btn.dataset.view === "terms") renderTerms();
     if (btn.dataset.view === "settings") renderSettings();
-    if (btn.dataset.view === "owner") renderOwnerPage();
+    if (btn.dataset.view === "owner") {
+      if (!isOwnerSession()) {
+        setStatus("Owner page is only for the site owner");
+        document.querySelector('.nav-btn[data-view="settings"]').click();
+        return;
+      }
+      renderOwnerPage();
+    }
     if (btn.dataset.view === "rank") renderLiveRank();
     if (btn.dataset.view === "chips") renderChips();
   });
