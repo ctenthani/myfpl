@@ -251,22 +251,36 @@ function isUltra() {
   if (authSession.plan !== "ultra") return false;
   return Number(authSession.teamId) === Number(currentTeamId());
 }
+function isPaidMember() {
+  if (!authSession) return false;
+  if (authSession.plan !== "pro" && authSession.plan !== "ultra") return false;
+  if (authSession.paidUntil && Number(authSession.paidUntil) < Date.now()) return false;
+  return true;
+}
+
 function activePlanLabel() {
+  if (isOwnerSession && isOwnerSession()) return "Owner";
+  if (authSession && authSession.plan === "owner") return "Owner";
+  if (isPaidMember()) {
+    const plan = authSession.plan === "ultra" ? "Ultra" : "Pro";
+    if (authSession.paidUntil) {
+      const days = Math.max(0, Math.ceil((Number(authSession.paidUntil) - Date.now()) / 86400000));
+      const until = new Date(Number(authSession.paidUntil)).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+      return plan + " paid · until " + until + " · " + days + "d left";
+    }
+    return plan + " paid";
+  }
+  if (authSession && (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") && trialStillValid(authSession)) {
+    const days = Math.max(0, Math.ceil((Number(authSession.trialEnds) - Date.now()) / 86400000));
+    return (authSession.plan === "trial_ultra" ? "Ultra trial" : "Pro trial") + " · " + days + "d left";
+  }
   if (isFreePeriod()) {
     const days = Math.max(0, Math.ceil((FREE_UNTIL.getTime() - Date.now()) / 86400000));
     return "Free access · until 30 Nov · " + days + "d left";
   }
   if (!authSession) return "Starter";
-  if (authSession.plan === "owner") return "Owner";
-  if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") {
-    if (!trialStillValid(authSession)) return "Starter";
-    const days = Math.max(0, Math.ceil((Number(authSession.trialEnds) - Date.now()) / 86400000));
-    return (authSession.plan === "trial_ultra" ? "Ultra trial" : "Pro trial") + " · " + days + "d left";
-  }
   if (authSession && (authSession.plan === "pro" || authSession.plan === "ultra")) {
-    if (Number(authSession.teamId) === Number(currentTeamId()) || authSession.plan === "owner") {
-      return authSession.plan === "ultra" ? "Ultra" : "Pro";
-    }
+    return authSession.plan === "ultra" ? "Ultra" : "Pro";
   }
   return "Starter";
 }
@@ -349,7 +363,15 @@ function loadLocalMembers() {
   try { return JSON.parse(localStorage.getItem("fpl_owner_members_v1") || "[]"); } catch (_) { return []; }
 }
 function saveLocalMembers(list) {
-  try { localStorage.setItem("fpl_owner_members_v1", JSON.stringify(list)); } catch (_) {}
+  const seen = new Set();
+  const uniq = [];
+  (list || []).forEach(m => {
+    const k = String(m.email || "").toLowerCase() + "|" + String(m.teamId || "");
+    if (seen.has(k)) return;
+    seen.add(k);
+    uniq.push(m);
+  });
+  try { localStorage.setItem("fpl_owner_members_v1", JSON.stringify(uniq)); } catch (_) {}
 }
 
 function logout() {
@@ -369,6 +391,14 @@ function isOwnerSession() {
 function updatePlanUI() {
   const ownNav = $("ownerNavBtn");
   if (ownNav) ownNav.classList.toggle("hidden", !isOwnerSession());
+  const hideTrial = isPaidMember() || isOwnerSession() || isFreePeriod();
+  ["settingsStartTrialBtn", "startTrialPro", "startTrialUltra"].forEach(id => {
+    const el = $(id);
+    if (el) el.classList.toggle("hidden", hideTrial);
+  });
+  document.querySelectorAll(".trial-note").forEach(el => {
+    el.classList.toggle("hidden", isPaidMember() || isOwnerSession());
+  });
   const badge = $("planBadge");
   if (badge) {
     const label = activePlanLabel();
@@ -2839,6 +2869,14 @@ async function renderOwnerPage() {
     if (msg && !msg.textContent) msg.textContent = "Using device list (API offline).";
   }
   if (!box) return;
+  const seen = new Set();
+  members = (members || []).filter(m => {
+    const k = String(m.email || "").toLowerCase() + "|" + String(m.teamId || "");
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  saveLocalMembers(members);
   if (!members.length) {
     box.innerHTML = `<p class="muted">No paid members yet.</p>`;
     return;
