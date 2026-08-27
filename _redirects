@@ -1,2 +1,8 @@
 /api/fpl  /.netlify/functions/fpl  200
 /*    /index.html   200
+
+/api/fpl /.netlify/functions/fpl 200
+/api/votes /.netlify/functions/votes 200
+/api/subscribe /.netlify/functions/subscribe 200
+/api/members /.netlify/functions/members 200
+/api/matchday-digest /.netlify/functions/matchday-digest 200

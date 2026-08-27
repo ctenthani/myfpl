@@ -300,10 +300,8 @@ async function lookupPaidMember(email, teamId) {
     const q = new URLSearchParams();
     if (email) q.set("email", email);
     if (teamId) q.set("teamId", String(teamId));
-    const r = await fetch("/api/members?" + q.toString());
-    if (!r.ok) return null;
-    const d = await r.json();
-    if (d && d.found && d.active) return d;
+    const r = await membersApi("?" + q.toString(), { method: "GET" });
+    if (r.ok && r.json && r.json.found && r.json.active) return r.json;
   } catch (_) {}
   return null;
 }
@@ -2668,6 +2666,27 @@ async function renderRivalRadar() {
   }
 }
 
+async function membersApi(pathQuery, opts) {
+  const headers = Object.assign({}, ownerHeaders(), (opts && opts.headers) || {});
+  const init = Object.assign({}, opts || {}, { headers });
+  const urls = [
+    "/.netlify/functions/members" + (pathQuery || ""),
+    "/api/members" + (pathQuery || ""),
+  ];
+  let last = { ok: false, status: 0, json: { error: "unreachable" } };
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, init);
+      const json = await r.json().catch(() => ({}));
+      last = { ok: r.ok, status: r.status, json };
+      if (r.status !== 404) return last;
+    } catch (e) {
+      last = { ok: false, status: 0, json: { error: String(e) } };
+    }
+  }
+  return last;
+}
+
 function ownerHeaders() {
   return {
     "Content-Type": "application/json",
@@ -2700,15 +2719,14 @@ async function renderOwnerPage() {
   if (box) box.innerHTML = `<p class="muted">Loading members…</p>`;
   let members = loadLocalMembers();
   try {
-    const r = await fetch("/api/members?list=1", { headers: ownerHeaders() });
-    if (r.ok) {
-      const d = await r.json();
-      if (d.members) {
-        members = d.members;
-        saveLocalMembers(members);
-      }
+    const r = await membersApi("?list=1", { method: "GET" });
+    if (r.ok && r.json && r.json.members) {
+      members = r.json.members;
+      saveLocalMembers(members);
     } else if (msg) {
-      msg.textContent = "Server list unavailable — showing members saved on this device.";
+      msg.textContent = r.status === 404
+        ? "Function not on this deploy yet — list is saved on this device. Redeploy including netlify/functions/members.js."
+        : ("Server list unavailable (" + (r.status || "offline") + ") — showing this device.");
     }
   } catch (_) {
     if (msg && !msg.textContent) msg.textContent = "Using device list (API offline).";
@@ -2763,9 +2781,8 @@ async function ownerAddMember() {
   saveLocalMembers(local);
 
   try {
-    const r = await fetch("/api/members", {
+    const r = await membersApi("", {
       method: "POST",
-      headers: ownerHeaders(),
       body: JSON.stringify({
         action: "add",
         email,
@@ -2776,11 +2793,10 @@ async function ownerAddMember() {
         ownerEmail: OWNER_EMAIL,
       }),
     });
-    const d = await r.json().catch(() => ({}));
     if (msg) {
       msg.textContent = r.ok
         ? `Added ${plan.toUpperCase()} for ${email || "Team " + teamId} · ${days} days (until ${new Date(row.until).toLocaleDateString()})`
-        : ("Saved on this device. Server: " + (d.error || r.status));
+        : ("Saved on this device. Server " + (r.status || "") + ": " + (r.json.error || "deploy netlify/functions/members.js"));
     }
   } catch (e) {
     if (msg) msg.textContent = "Saved on this device only (server offline).";
@@ -2794,9 +2810,8 @@ async function ownerRemoveMember(email, teamId) {
   );
   saveLocalMembers(list);
   try {
-    await fetch("/api/members", {
+    await membersApi("", {
       method: "POST",
-      headers: ownerHeaders(),
       body: JSON.stringify({ action: "remove", email, teamId, ownerEmail: OWNER_EMAIL }),
     });
   } catch (_) {}
