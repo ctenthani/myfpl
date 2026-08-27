@@ -2738,16 +2738,42 @@ async function renderOwnerPage() {
   }
   box.innerHTML = `<table class="ml-table"><thead><tr>
     <th>Email</th><th>Team ID</th><th>Plan</th><th>Paid until</th><th></th>
-  </tr></thead><tbody>` + members.map((m, i) => `<tr>
+  </tr></thead><tbody>` + members.map((m) => `<tr>
     <td>${m.email || "—"}</td>
     <td>${m.teamId || "—"}</td>
     <td>${(m.plan || "").toUpperCase()}</td>
     <td>${formatUntil(m.until)}</td>
-    <td><button type="button" class="btn btn-ghost owner-mem-del" data-email="${m.email || ""}" data-team="${m.teamId || ""}">Remove</button></td>
-  </tr>`).join("") + `</tbody></table>`;
+    <td style="white-space:nowrap">
+      <button type="button" class="btn btn-outline owner-mem-link" data-email="${m.email || ""}" data-team="${m.teamId || ""}" data-plan="${m.plan || "pro"}" data-until="${m.until || ""}">Copy login link</button>
+      <button type="button" class="btn btn-ghost owner-mem-del" data-email="${m.email || ""}" data-team="${m.teamId || ""}">Remove</button>
+    </td>
+  </tr>`).join("") + `</tbody></table>
+  <p class="muted" style="margin-top:10px;font-size:0.82rem">If the server has no Blobs store, members are kept on this device. Send them the <strong>login link</strong> so they can activate on their phone.</p>`;
   box.querySelectorAll(".owner-mem-del").forEach(btn => {
     btn.addEventListener("click", () => ownerRemoveMember(btn.dataset.email, btn.dataset.team));
   });
+  box.querySelectorAll(".owner-mem-link").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const url = activationLink(btn.dataset.email, btn.dataset.team, btn.dataset.plan, btn.dataset.until);
+      try {
+        await navigator.clipboard.writeText(url);
+        const msg = $("ownerMemMsg");
+        if (msg) msg.textContent = "Login link copied.";
+      } catch (_) {
+        prompt("Copy this login link", url);
+      }
+    });
+  });
+}
+
+function activationLink(email, teamId, plan, until) {
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set("activate", "1");
+  if (email) u.searchParams.set("email", email);
+  if (teamId) u.searchParams.set("team", String(teamId));
+  u.searchParams.set("plan", plan || "pro");
+  u.searchParams.set("until", String(until || ""));
+  return u.toString();
 }
 
 async function ownerAddMember() {
@@ -2794,9 +2820,13 @@ async function ownerAddMember() {
       }),
     });
     if (msg) {
-      msg.textContent = r.ok
-        ? `Added ${plan.toUpperCase()} for ${email || "Team " + teamId} · ${days} days (until ${new Date(row.until).toLocaleDateString()})`
-        : ("Saved on this device. Server " + (r.status || "") + ": " + (r.json.error || "deploy netlify/functions/members.js"));
+      const link = activationLink(email, teamId, plan, row.until);
+      const blobOff = r.json && r.json.blobs === false;
+      msg.textContent = (r.ok
+        ? `Added ${plan.toUpperCase()} for ${email || "Team " + teamId} · ${days} days.`
+        : "Saved on this device.") +
+        (blobOff || !r.ok ? " Server store off — copy the login link for the member." : "") +
+        " Link: " + link;
     }
   } catch (e) {
     if (msg) msg.textContent = "Saved on this device only (server offline).";

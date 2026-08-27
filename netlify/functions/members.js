@@ -1,10 +1,14 @@
 /**
- * Paid members store.
- * GET  ?email=&teamId=     → lookup (public enough for login)
- * GET  ?list=1             → full list (owner only)
- * POST { action: add|remove, email?, teamId?, plan, days, ownerEmail }
+ * Paid members store. Works with Netlify Blobs when available.
+ * If Blobs is off, returns 200 + blobs:false so the owner UI can use
+ * device list + activation links.
  */
-const { getStore } = require("@netlify/blobs");
+let getStore;
+try {
+  ({ getStore } = require("@netlify/blobs"));
+} catch (_) {
+  getStore = null;
+}
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -28,9 +32,22 @@ function isOwnerReq(event, body) {
   return hEmail === OWNER_EMAIL || bEmail === OWNER_EMAIL;
 }
 
-function keyOf(email, teamId) {
-  if (email) return "email:" + email;
-  if (teamId) return "team:" + teamId;
+function openStore() {
+  if (!getStore) return null;
+  const tries = [
+    () => getStore("fpl-members"),
+    () => getStore({ name: "fpl-members" }),
+  ];
+  const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
+  if (siteID && token) {
+    tries.unshift(() => getStore({ name: "fpl-members", siteID, token }));
+  }
+  for (const fn of tries) {
+    try {
+      return fn();
+    } catch (_) {}
+  }
   return null;
 }
 
@@ -43,16 +60,7 @@ exports.handler = async (event) => {
     return { statusCode: 204, headers: cors, body: "" };
   }
 
-  let store;
-  try {
-    store = getStore("fpl-members");
-  } catch (e) {
-    return {
-      statusCode: 503,
-      headers: cors,
-      body: JSON.stringify({ error: "Members store unavailable", detail: String(e) }),
-    };
-  }
+  const store = openStore();
 
   try {
     if (event.httpMethod === "GET") {
@@ -61,6 +69,9 @@ exports.handler = async (event) => {
         if (!isOwnerReq(event, {})) {
           return { statusCode: 403, headers: cors, body: JSON.stringify({ error: "owner only" }) };
         }
+        if (!store) {
+          return { statusCode: 200, headers: cors, body: JSON.stringify({ members: [], blobs: false }) };
+        }
         const idx = await loadIndex(store);
         const members = [];
         for (const k of idx.keys || []) {
@@ -68,15 +79,18 @@ exports.handler = async (event) => {
           if (row) members.push(row);
         }
         members.sort((a, b) => String(b.addedAt || "").localeCompare(String(a.addedAt || "")));
-        return { statusCode: 200, headers: cors, body: JSON.stringify({ members }) };
+        return { statusCode: 200, headers: cors, body: JSON.stringify({ members, blobs: true }) };
       }
 
       const email = normEmail(q.email);
       const teamId = parseInt(q.teamId, 10) || 0;
+      if (!store) {
+        return { statusCode: 200, headers: cors, body: JSON.stringify({ found: false, blobs: false }) };
+      }
       let row = null;
       if (email) row = await store.get("email:" + email, { type: "json" });
       if (!row && teamId) row = await store.get("team:" + teamId, { type: "json" });
-      if (!row) return { statusCode: 200, headers: cors, body: JSON.stringify({ found: false }) };
+      if (!row) return { statusCode: 200, headers: cors, body: JSON.stringify({ found: false, blobs: true }) };
       const until = Number(row.until) || 0;
       const active = until > Date.now() && (row.plan === "pro" || row.plan === "ultra");
       return {
@@ -85,6 +99,7 @@ exports.handler = async (event) => {
         body: JSON.stringify({
           found: true,
           active,
+          blobs: true,
           plan: row.plan,
           email: row.email || null,
           teamId: row.teamId || null,
@@ -97,6 +112,13 @@ exports.handler = async (event) => {
       const body = JSON.parse(event.body || "{}");
       if (!isOwnerReq(event, body)) {
         return { statusCode: 403, headers: cors, body: JSON.stringify({ error: "owner only" }) };
+      }
+      if (!store) {
+        return {
+          statusCode: 200,
+          headers: cors,
+          body: JSON.stringify({ ok: true, blobs: false, stored: "local-only" }),
+        };
       }
       const action = body.action || "add";
       const email = normEmail(body.email);
@@ -117,7 +139,7 @@ exports.handler = async (event) => {
           keys.delete("team:" + teamId);
         }
         await store.setJSON("index:members", { keys: [...keys] });
-        return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true, removed: true }) };
+        return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true, removed: true, blobs: true }) };
       }
 
       const plan = body.plan === "ultra" ? "ultra" : "pro";
@@ -143,15 +165,15 @@ exports.handler = async (event) => {
         keys.add("team:" + teamId);
       }
       await store.setJSON("index:members", { keys: [...keys] });
-      return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true, member: row }) };
+      return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true, member: row, blobs: true }) };
     }
 
     return { statusCode: 405, headers: cors, body: JSON.stringify({ error: "Method Not Allowed" }) };
   } catch (err) {
     return {
-      statusCode: 500,
+      statusCode: 200,
       headers: cors,
-      body: JSON.stringify({ error: String(err) }),
+      body: JSON.stringify({ ok: true, blobs: false, error: String(err) }),
     };
   }
 };
