@@ -120,11 +120,8 @@ function squadValue() {
  */
 function refreshBankAndValueDisplay() {
   const cost = squadValue();
-  if (!squadLockedValue) {
-    // Draft / editor starting from scratch
+  if (!squadLockedValue && !editMode) {
     bank = Math.max(0, BUDGET - cost);
-  } else if (entryBank != null) {
-    bank = entryBank;
   }
   // else keep existing bank (e.g. after local transfers)
   const ratingEl = $("mRating");
@@ -1721,10 +1718,10 @@ function renderPitch() {
   const cap = squad.find(p => p.id === captainId);
   const pred = xiXp + (cap ? xpOf(cap) : 0);
   const cost = squadValue();
-  if (!squadLockedValue) {
+  // Draft only: bank is leftover from 100. Loaded / mid-edit teams keep running bank
+  // (removing a player credits his price; do not snap back to last_deadline_bank).
+  if (!squadLockedValue && !editMode) {
     bank = Math.max(0, BUDGET - cost);
-  } else if (entryBank != null) {
-    bank = entryBank;
   }
   const rating = Math.min(100, Math.round((pred / (horizon === 3 ? 90 : 55)) * 100));
   $("mRating").textContent = rating + "%";
