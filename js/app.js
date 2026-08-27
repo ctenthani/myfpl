@@ -2206,9 +2206,107 @@ function renderChips() {
   grid.querySelectorAll(".chip-item").forEach(el => {
     el.addEventListener("click", () => openChipModal(el.dataset.chip));
   });
-  $("chipAdviceShort").innerHTML = `<p><strong>Tap a chip</strong> to choose the gameweek you plan to play it.</p>
-    <p class="muted">This is a planner only — you still activate chips on the official FPL site before the deadline.</p>`;
+  $("chipAdviceShort").innerHTML = chipStandingAdviceHtml();
+  const applyBtn = $("chipApplySuggestBtn");
+  if (applyBtn) applyBtn.addEventListener("click", () => {
+    const ctx = huntStandingContext();
+    const spec = detectSpecialGws();
+    const next = spec.nextGw;
+    const dgw = spec.doubles.find(g => g >= next);
+    const bgw = spec.blanks.find(g => g >= next);
+    const plan = getChipPlan();
+    plan.wc = ctx.posture === "chasing" ? next : (dgw || next + 4);
+    plan.fh = bgw || (ctx.posture === "chasing" ? next : next + 2);
+    plan.bb = dgw || next;
+    plan.tc = dgw || next;
+    saveChipPlan(plan);
+    renderChips();
+    setStatus("Chip planner updated from league standing");
+  });
 }
+
+function huntStandingContext() {
+  const hunt = normalizeHunt(_leagueHunt && _leagueHunt.sample ? _leagueHunt : loadLeagueHunt(currentTeamId()), currentTeamId());
+  const leagues = hunt.leagues || [];
+  const ranks = leagues.map(l => l.myRank).filter(r => r != null);
+  const worst = ranks.length ? Math.max(...ranks) : null;
+  const best = ranks.length ? Math.min(...ranks) : null;
+  const midCut = 8;
+  let posture = "unknown";
+  if (best != null && best <= 3 && (worst == null || worst <= 5)) posture = "leading";
+  else if (worst != null && worst > midCut) posture = "chasing";
+  else if (best != null) posture = "mid";
+  return { hunt, leagues, worst, best, posture };
+}
+
+function detectSpecialGws() {
+  const byEvent = {};
+  (fixtures || []).forEach(f => {
+    if (!f.event) return;
+    byEvent[f.event] = (byEvent[f.event] || 0) + 1;
+  });
+  const counts = Object.values(byEvent);
+  const median = counts.sort((a, b) => a - b)[Math.floor(counts.length / 2)] || 10;
+  const doubles = [];
+  const blanks = [];
+  Object.entries(byEvent).forEach(([ev, n]) => {
+    if (n >= median * 1.35) doubles.push(+ev);
+    if (n <= median * 0.55) blanks.push(+ev);
+  });
+  return { doubles, blanks, nextGw: planningGw() };
+}
+
+function chipStandingAdviceHtml() {
+  const ctx = huntStandingContext();
+  const spec = detectSpecialGws();
+  const next = spec.nextGw;
+  const dgw = spec.doubles.find(g => g >= next);
+  const bgw = spec.blanks.find(g => g >= next);
+  const leagueLine = ctx.leagues.length
+    ? ctx.leagues.map(l => `${l.name || "League"} (${l.id})${l.myRank ? " · rank " + l.myRank : ""}`).join(" · ")
+    : "No hunt league set — advice is general. Owner: add leagues under League hunter.";
+
+  let postureTxt = "Standing unknown — set a hunt league for sharper chip timing.";
+  if (ctx.posture === "leading") postureTxt = "You are <strong>leading</strong> the hunt league(s). Protect the gap: do not burn chips for a small swing.";
+  if (ctx.posture === "mid") postureTxt = "You are <strong>in the pack</strong>. Use chips when they create a clean edge over rivals, not just extra overall points.";
+  if (ctx.posture === "chasing") postureTxt = "You are <strong>chasing</strong>. Chips should create a score gap the leaders cannot match this week.";
+
+  const wcGw = ctx.posture === "chasing" ? next : (dgw || next + 4);
+  const fhGw = bgw || (ctx.posture === "chasing" ? next : next + 2);
+  const bbGw = dgw || next;
+  const tcGw = dgw || next;
+
+  const rows = [
+    ["Wildcard", ctx.posture === "chasing"
+      ? `Play soon (around GW ${next}) if the squad is structurally wrong versus the league template. A late WC while 10+ points behind often arrives too late.`
+      : ctx.posture === "leading"
+        ? `Hold WC until a fixture swing or DGW cluster${dgw ? " (GW " + dgw + ")" : ""}. Leaders who WC early give chasers a free shot.`
+        : `WC when 4+ transfers are needed and you would otherwise take hits. Target the next fixture swing${dgw ? " or before DGW " + dgw : ""}.`],
+    ["Free Hit", bgw
+      ? `Reserve FH for blank GW ${bgw} if you would field fewer than 11. That is the highest-leverage week in most mini-leagues.`
+      : ctx.posture === "chasing"
+        ? `If there is no blank soon, FH this week only if your XI is far worse than the league template and you can field 11 strong starters.`
+        : `Hold FH for a blank or a week when 3+ of your starters are out. Do not FH just to copy a template.`],
+    ["Bench Boost", dgw
+      ? `Best on DGW ${dgw} if all 15 have minutes. ${ctx.posture === "leading" ? "Safe chip — use it when the bench is nailed." : "If chasing, BB a DGW can jump several ranks in one hit."}`
+      : `Do not BB a single-gameweek unless every bench player is nailed and you have no better DGW coming.`],
+    ["Triple Captain", dgw
+      ? `TC a premium on DGW ${dgw} (Haaland / Salah type). ${ctx.posture === "chasing" ? "If leaders already own that premium, TC is less of a differential — pair with a FH/WC differential elsewhere." : "Leaders should TC the same premium as the field to avoid a 20-point swing against them."}`
+      : `Wait for a DGW unless a premium has an elite single fixture and you are far behind.`],
+  ];
+
+  return `<div class="chip-stand-advice">
+    <p><strong>Chip advice from league standing</strong></p>
+    <p class="muted" style="font-size:0.85rem">${leagueLine}</p>
+    <p>${postureTxt}</p>
+    <ul style="margin:8px 0 0;padding-left:18px;font-size:0.9rem">
+      ${rows.map(r => `<li><strong>${r[0]}:</strong> ${r[1]}</li>`).join("")}
+    </ul>
+    <p class="muted" style="margin-top:10px;font-size:0.8rem">Suggested planner marks: WC GW ${wcGw} · FH GW ${fhGw} · BB GW ${bbGw} · TC GW ${tcGw}. Tap a chip to lock it. Activate on official FPL before the deadline.</p>
+    <button type="button" class="btn btn-outline" id="chipApplySuggestBtn" style="margin-top:8px">Apply suggested GWs to planner</button>
+  </div>`;
+}
+
 
 function openChipModal(key) {
   chipModalKey = key;
