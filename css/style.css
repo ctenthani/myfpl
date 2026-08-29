@@ -1369,3 +1369,23 @@ body.pitch-simple .shirt-img { display: none !important; }
 body.pitch-simple .shirt-fallback, body.pitch-simple .shirt { display: flex !important; }
 body.hide-promo .upgrade-card { display: none !important; }
 .chip-now-banner
+
+.ml-pcard .pts { font-weight: 800; font-size: 0.95rem; color: #0f172a; line-height: 1.1; }
+.ml-mins { font-size: 0.58rem; color: #64748b; }
+.ml-header-pts { font-weight: 600; }
+
+.arr.up { color:#16a34a; font-weight:700; }
+.arr.down { color:#dc2626; font-weight:700; }
+.arr.flat { color:#94a3b8; }
+.up-row { display:flex; gap:8px; overflow-x:auto; padding:8px 0; }
+.up-card { min-width:72px; text-align:center; background:#f8fafc; border-radius:10px; padding:8px 6px; font-size:0.75rem; }
+.up-name { font-weight:700; }
+.up-fix,.up-pts { color:#64748b; }
+.my-stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+@media(max-width:700px){ .my-stats-grid{grid-template-columns:1fr;} }
+.my-stat-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; }
+.my-stat-card h3 { margin:0 0 8px; font-size:0.95rem; }
+.chip-avail { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.chip-avail span { border-radius:999px; padding:6px 10px; font-size:0.78rem; font-weight:700; background:#e2e8f0; color:#475569; }
+.chip-avail span.on { background:#dcfce7; color:#166534; }
+.chip-avail span.off { background:#fee2e2; color:#991b1b; }

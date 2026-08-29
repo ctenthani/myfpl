@@ -3411,6 +3411,15 @@ let _rankEntryCache = null;
 let _rankLeaguesCache = []; // { id, name }
 let _rankExpanded = null; // entry id expanded
 
+function liveRankGw() {
+  if (bootstrap && bootstrap.events) {
+    const cur = bootstrap.events.find(e => e.is_current);
+    if (cur) return cur.id;
+  }
+  if (_rankEntryCache && _rankEntryCache.current_event) return _rankEntryCache.current_event;
+  return planningGw();
+}
+
 async function getLivePointsMap(gw) {
   try {
     const live = await fetchJson(`event/${gw}/live/`);
@@ -3478,11 +3487,13 @@ function renderLivePitchFromPicks(picks, liveMap, entryName) {
     const sh = mlShirt(c.pl);
     const badge = c.isC ? `<span class="badge">C</span>` : (c.isV ? `<span class="badge vc">V</span>` : "");
     const dim = c.mult === 0 ? "opacity:0.55" : "";
+    const capMark = (c.isC && c.mult > 1) ? ("×" + c.mult) : "";
     return `<div class="ml-pcard" style="${dim}">
       ${badge}
       ${sh ? `<img src="${sh}" alt="" loading="lazy" onerror="this.style.display='none'" />` : ""}
       <div class="nm">${c.pl.web_name}</div>
-      <div class="pts">${c.pts}</div>
+      <div class="pts">${c.pts}${capMark}</div>
+      <div class="ml-mins">${c.mins ? (c.mins + "′") : "DNP"}</div>
     </div>`;
   }
 
@@ -3513,6 +3524,160 @@ async function loadManagerPicks(entryId, gw) {
   }
 }
 
+
+async function loadEntryTransfers(teamId) {
+  try { return await fetchJson("entry/" + teamId + "/transfers/"); }
+  catch (_) { return []; }
+}
+
+function playerFixtureChip(p, gw) {
+  if (!p) return "";
+  const fxt = (fixtures || []).filter(f => f.event === gw && (f.team_h === p.team_id || f.team_a === p.team_id));
+  if (!fxt.length) return "TBC";
+  const f = fxt[0];
+  const home = f.team_h === p.team_id;
+  const oppId = home ? f.team_a : f.team_h;
+  const opp = teamsMap[oppId];
+  const code = opp ? (opp.short_name || opp.name) : "?";
+  return code + (home ? " (H)" : " (A)");
+}
+
+function stillToPlayCount(picks, liveMap, gw) {
+  if (!picks || !picks.picks) return 0;
+  let n = 0;
+  picks.picks.forEach(pk => {
+    if (pk.position > 11 && !(picks.active_chip === "bboost")) return;
+    const st = liveMap[pk.element] || {};
+    const mins = st.minutes || 0;
+    if (mins > 0) return;
+    const pl = players.find(x => x.id === pk.element);
+    if (!pl) { n += 1; return; }
+    const fxt = (fixtures || []).filter(f => f.event === gw && (f.team_h === pl.team_id || f.team_a === pl.team_id));
+    const finished = fxt.length && fxt.every(f => f.finished || f.finished_provisional);
+    if (!finished) n += (pk.is_captain && getUiPrefs().capMultiplier !== false && pk.multiplier > 1) ? pk.multiplier : 1;
+  });
+  return n;
+}
+
+function leagueArrow(last, now) {
+  if (last == null || now == null) return "–";
+  if (now < last) return `<span class="arr up">▲ ${last - now}</span>`;
+  if (now > last) return `<span class="arr down">▼ ${now - last}</span>`;
+  return `<span class="arr flat">–</span>`;
+}
+
+function chipStatusFromHistory(history) {
+  const used = {};
+  (history && history.chips || []).forEach(c => { used[c.name] = c.event; });
+  return {
+    wc: !used.wildcard,
+    tc: !used["3xc"],
+    bb: !used.bboost,
+    fh: !used.freehit,
+    used,
+  };
+}
+
+async function renderMyTeamDashboard(teamId, entry, liveMap, gw) {
+  const tableBox = $("rankLeagueTable");
+  const metaBox = $("rankLeagueMeta");
+  if (metaBox) metaBox.textContent = (entry && entry.name ? entry.name + " · " : "") + "GW " + gw;
+  const picks = await loadManagerPicks(teamId, gw);
+  const history = await loadEntryHistory(teamId);
+  const transfers = await loadEntryTransfers(teamId);
+  const gwTransfers = (Array.isArray(transfers) ? transfers : []).filter(tr => Number(tr.event) === Number(gw));
+  const chips = chipStatusFromHistory(history);
+  const lastHist = history && history.current && history.current.length ? history.current[history.current.length - 1] : null;
+  const prevHist = history && history.current && history.current.length > 1 ? history.current[history.current.length - 2] : null;
+  const value = entry && entry.last_deadline_value != null ? (entry.last_deadline_value / 10) : squadValue();
+  const bankAmt = entry && entry.last_deadline_bank != null ? (entry.last_deadline_bank / 10) : bank;
+  const ft = lastHist && lastHist.event === gw ? (lastHist.event_transfers != null ? lastHist.event_transfers : 0) : (entry && entry.last_deadline_total_transfers);
+  const seasonTr = lastHist ? lastHist.event_transfers : 0;
+  // season transfer count approx from history
+  const seasonMoves = (history && history.current || []).reduce((s, h) => s + (h.event_transfers || 0), 0);
+  const seasonCost = (history && history.current || []).reduce((s, h) => s + (h.event_transfers_cost || 0), 0);
+
+  const pitch = renderLivePitchFromPicks(picks, liveMap, entry && entry.name);
+
+  // still-to-play strip: players with 0 mins
+  let upcoming = "";
+  if (picks && picks.picks) {
+    const cards = picks.picks.map(pk => {
+      const pl = players.find(x => x.id === pk.element);
+      const st = liveMap[pk.element] || {};
+      const mins = st.minutes || 0;
+      if (mins > 0) return null;
+      if (!pl) return null;
+      const pts = livePlayerPts(pk.element, pk.multiplier, liveMap);
+      return `<div class="up-card">
+        <div class="up-name">${pl.web_name}</div>
+        <div class="up-fix">${playerFixtureChip(pl, gw)}</div>
+        <div class="up-pts">${pts} pts</div>
+      </div>`;
+    }).filter(Boolean).join("");
+    if (cards) upcoming = `<div class="up-row">${cards}</div>`;
+  }
+
+  const trRows = gwTransfers.length ? gwTransfers.map(tr => {
+    const inn = players.find(x => x.id === tr.element_in);
+    const out = players.find(x => x.id === tr.element_out);
+    const inPts = livePlayerPts(tr.element_in, 1, liveMap);
+    const outPts = livePlayerPts(tr.element_out, 1, liveMap);
+    const diff = inPts - outPts;
+    return `<tr>
+      <td>↑ ${inn ? inn.web_name : tr.element_in} <span class="muted">${inPts}pts</span></td>
+      <td>↓ ${out ? out.web_name : tr.element_out} <span class="muted">${outPts}pts</span></td>
+      <td class="${diff >= 0 ? "ml-delta up" : "ml-delta"}">${diff >= 0 ? "+" : ""}${diff}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="3" class="muted">No transfers this GW</td></tr>`;
+
+  const classic = (entry && entry.leagues && entry.leagues.classic) || [];
+  const leagueRows = classic.map(l => {
+    const arr = leagueArrow(l.entry_last_rank, l.entry_rank);
+    return `<tr>
+      <td>${l.name}</td>
+      <td>${formatRank(l.entry_rank)}</td>
+      <td>${arr}</td>
+      <td class="muted">${l.rank_count ? formatRank(l.rank_count) : ""}</td>
+    </tr>`;
+  }).join("");
+
+  const gwPts = entry.summary_event_points;
+  const orank = entry.summary_overall_rank;
+  const lastGw = prevHist ? prevHist.event : 1;
+  const lastPts = prevHist ? prevHist.points : "–";
+  const lastOr = prevHist ? formatRank(prevHist.overall_rank) : "–";
+
+  tableBox.innerHTML = `
+    ${upcoming}
+    <div class="ml-expand" style="display:block;margin-top:10px">${pitch}</div>
+    <div class="my-stats-grid">
+      <div class="my-stat-card">
+        <h3>Gameweek transfers</h3>
+        <table class="ml-table"><thead><tr><th>In</th><th>Out</th><th>Pts diff</th></tr></thead>
+        <tbody>${trRows}</tbody></table>
+      </div>
+      <div class="my-stat-card">
+        <h3>Points and rank</h3>
+        <p>GW ${gw} · <strong>${gwPts ?? "–"}</strong> pts · OR ${formatRank(orank)}</p>
+        <p class="muted">GW ${lastGw} · ${lastPts} pts · OR ${lastOr}</p>
+        <p>Team value ${money(value)} · Bank ${money(bankAmt)}</p>
+        <p>Season transfers ${seasonMoves} · hits −${seasonCost}</p>
+      </div>
+    </div>
+    <div class="chip-avail">
+      <span class="${chips.wc ? "on" : "off"}">WC ${chips.wc ? "Available" : "Used GW " + chips.used.wildcard}</span>
+      <span class="${chips.tc ? "on" : "off"}">TC ${chips.tc ? "Available" : "Used GW " + chips.used["3xc"]}</span>
+      <span class="${chips.bb ? "on" : "off"}">BB ${chips.bb ? "Available" : "Used GW " + chips.used.bboost}</span>
+      <span class="${chips.fh ? "on" : "off"}">FH ${chips.fh ? "Available" : "Used GW " + chips.used.freehit}</span>
+    </div>
+    <div class="my-stat-card" style="margin-top:12px">
+      <h3>Standing in all leagues</h3>
+      <table class="ml-table"><thead><tr><th>League</th><th>Rank</th><th>Arrow</th><th>Size</th></tr></thead>
+      <tbody>${leagueRows || "<tr><td colspan=4 class=muted>No classic leagues</td></tr>"}</tbody></table>
+    </div>`;
+}
+
 async function renderLiveRank() {
   const teamId = parseInt(($("rankTeamId") && $("rankTeamId").value) || ($("teamIdInput") && $("teamIdInput").value), 10);
   if ($("rankTeamId") && teamId) $("rankTeamId").value = teamId;
@@ -3532,7 +3697,7 @@ async function renderLiveRank() {
   if (histBox) histBox.innerHTML = "";
   if (metaBox) metaBox.textContent = "";
 
-  const gw = planningGw();
+  const gw = liveRankGw();
   try {
     const entry = await loadEntrySummary(teamId);
     _rankEntryCache = entry;
@@ -3555,8 +3720,7 @@ async function renderLiveRank() {
       sel.innerHTML = `<option value="my">My team</option>` +
         classic.map(l => `<option value="${l.id}">${l.name}</option>`).join("") +
         extras.map(l => `<option value="${l.id}">${l.name}</option>`).join("");
-      if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
-      else if (classic.length) sel.value = String(classic[0].id);
+      sel.value = "my";
     }
 
     const overallPts = entry.summary_overall_points;
@@ -3599,19 +3763,15 @@ async function renderRankLeagueTable(myTeamId, entry) {
   if (!tableBox) return;
 
   const choice = sel ? sel.value : "my";
-  const gw = planningGw();
+  const gw = liveRankGw();
   const liveMap = _rankLiveMap || await getLivePointsMap(gw);
   _rankLiveMap = liveMap;
   const orderBy = ($("rankOrderBy") && $("rankOrderBy").value) || "score";
 
   // ---- My team only ----
   if (!choice || choice === "my") {
-    if (metaBox) metaBox.textContent = `My team · GW ${gw}`;
-    tableBox.innerHTML = `<p class="muted">Loading your live pitch…</p>`;
-    const picks = await loadManagerPicks(myTeamId, gw);
-    const pitch = renderLivePitchFromPicks(picks, liveMap, entry && entry.name);
-    tableBox.innerHTML = `<div class="ml-expand" style="display:block">${pitch}</div>
-      <p class="muted" style="margin-top:8px;font-size:0.8rem">Choose a classic league above to see the full table with expandable teams.</p>`;
+    tableBox.innerHTML = `<p class="muted">Loading your team…</p>`;
+    await renderMyTeamDashboard(myTeamId, entry, liveMap, gw);
     return;
   }
 
@@ -3674,6 +3834,9 @@ async function renderRankLeagueTable(myTeamId, entry) {
     return (b.liveScore || 0) - (a.liveScore || 0);
   });
 
+  const meRow = enriched.find(x => Number(x.entry) === Number(myTeamId));
+  const myTotal = meRow ? meRow.totalPts : null;
+  const myScore = meRow ? meRow.liveScore : null;
   let html = `<table class="ml-table"><thead><tr>
     <th>Rank</th><th>Team &amp; Manager</th><th style="text-align:right">Score</th><th style="text-align:right">Total</th>
   </tr></thead><tbody>`;
@@ -3690,16 +3853,26 @@ async function renderRankLeagueTable(myTeamId, entry) {
       return `<span class="ml-chip ${r.chips[k] ? "on" : ""}">${labels[k]}</span>`;
     }).join("");
     const isMe = Number(r.entry) === Number(myTeamId);
+    const vs = (prefs.showPtsDiff === false || myTotal == null || r.totalPts == null)
+      ? ""
+      : (function(){
+          const d = r.totalPts - myTotal;
+          if (isMe || d === 0) return `<div class="muted">0</div>`;
+          return `<div class="ml-delta ${d > 0 ? "up" : ""}">${d > 0 ? "+" : ""}${d}</div>`;
+        })();
+    const toPlay = stillToPlayCount(r.picks, liveMap, gw);
+    const toPlayHtml = (prefs.showToPlay === false) ? "" : `<div class="muted">${toPlay} to play</div>`;
+    const arr = leagueArrow(r.last_rank, r.rank);
     html += `<tr class="ml-row" data-entry="${r.entry}" data-idx="${idx}">
-      <td><strong>${rank}</strong></td>
+      <td><strong>${rank}</strong> ${arr}</td>
       <td>
         <div class="ml-team-name">${isMe ? "★ " : ""}${r.entry_name || "Team"}</div>
         <div class="ml-manager"><span class="ml-live">LIVE</span>${r.player_name || ""}</div>
         <div>${chipHtml}</div>
-        ${(prefs.showCaptains === false || !r.capName) ? "" : `<div class=\"ml-cap\">© ${r.capName}</div>`}
+        ${(prefs.showCaptains === false || !r.capName) ? "" : `<div class="ml-cap">© ${r.capName}</div>`}
       </td>
-      <td class="ml-score">${r.liveScore ?? "–"}${deltaHtml}</td>
-      <td class="ml-total">${r.totalPts ?? "–"}</td>
+      <td class="ml-score">${r.liveScore ?? "–"}${toPlayHtml}</td>
+      <td class="ml-total">${r.totalPts ?? "–"}${vs}</td>
     </tr>
     <tr class="ml-detail hidden" id="ml-detail-${r.entry}"><td colspan="4"></td></tr>`;
   });
