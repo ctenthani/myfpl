@@ -743,14 +743,17 @@ function enforceValidXI() {
   const outfield = squad.filter(p => p.position !== "GKP");
   let xi = [];
   let bench = [];
-  // Prefer existing starting outfield, then fill
+  // Keep the GK the user already started (do not force highest-XP keeper)
+  const currentGkId = startingIds.map(id => squad.find(p => p.id === id)).find(p => p && p.position === "GKP");
+  const gkStart = currentGkId
+    ? [currentGkId, ...gk.filter(p => p.id !== currentGkId.id)]
+    : gk.slice().sort((a, b) => xpOf(b) - xpOf(a));
   const startOut = startingIds
     .map(id => squad.find(p => p.id === id))
     .filter(p => p && p.position !== "GKP");
   const restOut = outfield.filter(p => !startOut.some(x => x.id === p.id))
     .sort((a, b) => xpOf(b) - xpOf(a));
   const xiOut = [...startOut, ...restOut].slice(0, 10);
-  const gkStart = gk.slice().sort((a, b) => xpOf(b) - xpOf(a));
   if (gkStart[0]) xi.push(gkStart[0]);
   xi.push(...xiOut);
   // pad if needed
@@ -1635,6 +1638,78 @@ function recommendTransferFor(playerId) {
   setStatus("Recommend transfer open on AI Transfers");
 }
 
+
+let subPickId = null;
+
+function xiAfterSwap(idA, idB) {
+  const aIn = startingIds.includes(idA);
+  const bIn = startingIds.includes(idB);
+  if (aIn === bIn) return startingIds.slice();
+  const next = startingIds.map(id => id === idA ? idB : (id === idB ? idA : id));
+  if (!next.includes(idA) && startingIds.includes(idB)) {
+    // idB was starter, idA was bench
+    return startingIds.map(id => id === idB ? idA : id);
+  }
+  if (!next.includes(idB) && startingIds.includes(idA)) {
+    return startingIds.map(id => id === idA ? idB : id);
+  }
+  return next;
+}
+
+function formationOk(startIds) {
+  const xi = startIds.map(id => squad.find(p => p.id === id)).filter(Boolean);
+  if (xi.length !== 11) return false;
+  const n = { GKP: 0, DEF: 0, MID: 0, FWD: 0 };
+  xi.forEach(p => { if (n[p.position] != null) n[p.position]++; });
+  if (n.GKP !== 1) return false;
+  if (n.DEF < 3 || n.DEF > 5) return false;
+  if (n.MID < 2 || n.MID > 5) return false;
+  if (n.FWD < 1 || n.FWD > 3) return false;
+  return n.GKP + n.DEF + n.MID + n.FWD === 11;
+}
+
+function legalSubTargets(fromId) {
+  const from = squad.find(p => p.id === fromId);
+  if (!from) return [];
+  const others = squad.filter(p => p.id !== fromId);
+  return others.filter(p => {
+    const aStart = startingIds.includes(fromId);
+    const bStart = startingIds.includes(p.id);
+    if (aStart === bStart) return false; // must be XI <-> bench
+    return formationOk(xiAfterSwap(fromId, p.id));
+  }).map(p => p.id);
+}
+
+function applySwap(idA, idB) {
+  if (!formationOk(xiAfterSwap(idA, idB))) {
+    setStatus("That swap is not allowed for this formation");
+    return false;
+  }
+  const aStart = startingIds.includes(idA);
+  if (aStart) {
+    startingIds = startingIds.map(id => id === idA ? idB : id);
+    benchIds = benchIds.filter(id => id !== idB).concat([idA]);
+  } else {
+    startingIds = startingIds.map(id => id === idB ? idA : id);
+    benchIds = benchIds.filter(id => id !== idA).concat([idB]);
+  }
+  if (captainId === idA && !startingIds.includes(idA)) captainId = idB;
+  if (captainId === idB && !startingIds.includes(idB)) captainId = idA;
+  if (viceCaptainId && !startingIds.includes(viceCaptainId)) viceCaptainId = null;
+  return true;
+}
+
+function paintSubHighlights() {
+  document.querySelectorAll(".pcard").forEach(el => {
+    el.classList.remove("sub-from", "sub-legal", "sub-blocked");
+    const id = +el.dataset.id;
+    if (!subPickId) return;
+    if (id === subPickId) el.classList.add("sub-from");
+    else if (legalSubTargets(subPickId).includes(id)) el.classList.add("sub-legal");
+    else el.classList.add("sub-blocked");
+  });
+}
+
 function handlePlayerAction(act) {
   const id = menuPlayerId;
   hidePlayerMenu();
@@ -1657,31 +1732,19 @@ function handlePlayerAction(act) {
     renderPitch();
     setStatus("Vice captain: " + p.web_name);
   } else if (act === "sub") {
-    const isStarter = startingIds.includes(id);
-    if (isStarter) {
-      // swap with best bench same eligibility loosely
-      if (!benchIds.length) { setStatus("Bench is empty"); return; }
-      const outIdx = startingIds.indexOf(id);
-      // prefer same position on bench
-      let inId = benchIds.find(bid => {
-        const bp = squad.find(x => x.id === bid);
-        return bp && bp.position === p.position;
-      }) || benchIds[0];
-      startingIds[outIdx] = inId;
-      benchIds = benchIds.filter(x => x !== inId).concat([id]);
-    } else {
-      // promote to XI — demote lowest XP same or any
-      const weak = [...startingIds]
-        .map(sid => squad.find(x => x.id === sid))
-        .filter(Boolean)
-        .sort((a, b) => xpOf(a) - xpOf(b))[0];
-      if (!weak) return;
-      startingIds = startingIds.map(x => x === weak.id ? id : x);
-      benchIds = benchIds.filter(x => x !== id).concat([weak.id]);
-    }
-    saveSquadLocal();
+    subPickId = id;
+    const targets = legalSubTargets(id);
     renderPitch();
-    setStatus("Line-up updated");
+    paintSubHighlights();
+    const who = p.web_name + (p.position === "GKP" ? " (GK)" : "");
+    if (!targets.length) {
+      setStatus(p.position === "GKP"
+        ? "Keeper can only swap with the other keeper — check both are in the squad"
+        : "No legal swap for " + who + " with this formation");
+    } else {
+      setStatus("Substitute " + who + " — tap a highlighted player (legal on position quotas)");
+    }
+    return;
   } else if (act === "transfer") {
     // Soft transfer-out: enter edit mode and highlight
     editMode = true;
@@ -1735,6 +1798,27 @@ function renderPitch() {
     el.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (subPickId) {
+        const tap = +el.dataset.id;
+        if (tap === subPickId) {
+          subPickId = null;
+          renderPitch();
+          setStatus("Sub cancelled");
+          return;
+        }
+        if (!legalSubTargets(subPickId).includes(tap)) {
+          setStatus("Not a legal swap for this formation (GK must stay 1; min 3 DEF / 2 MID / 1 FWD)");
+          return;
+        }
+        const a = squad.find(x => x.id === subPickId);
+        const b = squad.find(x => x.id === tap);
+        applySwap(subPickId, tap);
+        subPickId = null;
+        saveSquadLocal();
+        renderPitch();
+        setStatus("Sub: " + (a && a.web_name) + " ⇄ " + (b && b.web_name));
+        return;
+      }
       if (editMode) {
         removePlayer(+el.dataset.id);
         return;
@@ -1742,6 +1826,7 @@ function renderPitch() {
       openPlayerMenu(+el.dataset.id, e);
     });
   });
+  paintSubHighlights();
 }
 
 function populateTeamFilter() {

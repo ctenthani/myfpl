@@ -1389,3 +1389,7 @@ body.hide-promo .upgrade-card { display: none !important; }
 .chip-avail span { border-radius:999px; padding:6px 10px; font-size:0.78rem; font-weight:700; background:#e2e8f0; color:#475569; }
 .chip-avail span.on { background:#dcfce7; color:#166534; }
 .chip-avail span.off { background:#fee2e2; color:#991b1b; }
+
+.pcard.sub-from { outline: 3px solid #2563eb; box-shadow: 0 0 0 3px #bfdbfe; }
+.pcard.sub-legal { outline: 3px solid #16a34a; box-shadow: 0 0 0 3px #bbf7d0; cursor: pointer; }
+.pcard.sub-blocked { opacity: 0.38; filter: grayscale(0.4); }
