@@ -1239,10 +1239,40 @@ function restoreOwnerHuntDefault() {
   try { return JSON.parse(localStorage.getItem("fpl_owner_hunt_v1") || "null"); } catch (_) { return null; }
 }
 
+function transferStyle() {
+  const v = ($("trStyle") && $("trStyle").value) || (getUiPrefs() && getUiPrefs().trStyle) || "optimised";
+  return v;
+}
+
+function styleAdjustXp(p, xp) {
+  const st = transferStyle();
+  const mins = Number(p.minutes) || 0;
+  const own = Number(p.selected_by_percent) || 0;
+  const form = Number(p.form) || 0;
+  const chance = Number(p.chance_of_playing_next_round);
+  const risky = (mins < 200 && chance !== 100) || (p.news && /doubt|injur|suspend/i.test(p.news));
+  if (st === "conservative") {
+    if (own >= 15) xp += 0.35;
+    if (mins >= 400) xp += 0.25;
+    if (risky) xp -= 0.9;
+    if (form >= 6 && mins < 180) xp -= 0.4; // hot but unused — fade
+  } else if (st === "aggressive") {
+    if (own < 12) xp += 0.45;
+    if (form >= 5) xp += 0.3;
+    if (risky) xp -= 0.15; // still allow
+    xp += huntBoost(p) * 0.5; // extra differential vs hunt field
+  } else {
+    if (own >= 20) xp += 0.15;
+    if (risky) xp -= 0.45;
+  }
+  return xp;
+}
+
 function transferXp(p) {
   const hz = parseInt(($("trHorizon") && $("trHorizon").value) || "3", 10) || 3;
   let xp = hz <= 1 ? expectedPoints(p, 1) : (hz >= 6 ? expectedPoints(p, 3) * 2 : expectedPoints(p, 3));
   xp += huntBoost(p);
+  xp = styleAdjustXp(p, xp);
   return xp;
 }
 
@@ -1270,6 +1300,11 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
   const availableBudget = bank;
 
   let outs = [...squad].sort((a, b) => transferXp(a) - transferXp(b));
+  const style = transferStyle();
+  if (style === "conservative") {
+    outs = outs.filter(p => (Number(p.selected_by_percent) || 0) < 35 || transferXp(p) < 3.2);
+    if (!outs.length) outs = [...squad].sort((a, b) => transferXp(a) - transferXp(b));
+  }
   if (filters) outs = outs.filter(p => passOutFilters(p, filters));
   // Prefer selling weak starters / low XP; keep one GK only if both GKs are terrible
   outs = outs.slice(0, 14);
@@ -4355,6 +4390,28 @@ if (doneBtn) doneBtn.addEventListener("click", () => setEditMode(false));
 on("runTransfersBtn", "click", renderTransfersUI);
 on("trMode", "change", () => { syncTransferModeUI(); renderTransfersUI(); });
 on("trHorizon", "change", () => renderTransfersUI());
+on("trStyle", "change", () => {
+  const st = transferStyle();
+  if ($("trHorizon")) {
+    if (st === "conservative") $("trHorizon").value = "6";
+    else if (st === "aggressive") $("trHorizon").value = "1";
+    else $("trHorizon").value = "3";
+  }
+  try {
+    const ui = getUiPrefs();
+    ui.trStyle = st;
+    localStorage.setItem("fpl_ui_prefs_v1", JSON.stringify(ui));
+  } catch (_) {}
+  const hint = $("trModeHint");
+  if (hint) {
+    hint.textContent = st === "conservative"
+      ? "Conservative: nailed minutes, template-friendly, longer horizon, avoid injury risks."
+      : st === "aggressive"
+        ? "Aggressive: next-GW upside, differentials vs your leagues, more risk allowed."
+        : "Optimised: balance of fixtures, ownership and the next 3 GWs.";
+  }
+  renderTransfersUI();
+});
 on("runCustomTransfersBtn", "click", renderCustomTransfersUI);
 document.querySelectorAll(".tr-tab").forEach(tab => {
   tab.addEventListener("click", () => {
