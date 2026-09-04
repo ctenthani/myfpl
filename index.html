@@ -93,6 +93,13 @@
           <div class="bench" id="bench"></div>
         </div>
         <div class="pitch-actions">
+          <label class="focus-label">Focus
+            <select id="squadFocus">
+              <option value="strongXI" selected>Strong XI · cheap bench</option>
+              <option value="balanced">Balanced 15</option>
+              <option value="strongBench">Strong bench (BB)</option>
+            </select>
+          </label>
           <button id="optimiseBtn" class="btn btn-blue">✨ Optimise lineup</button>
           <button id="editBtn" class="btn btn-cyan">✎ Edit team</button>
           <button id="resetBtn" class="btn btn-ghost">🗑 Reset team</button>
@@ -154,6 +161,13 @@
             </label>
             <label>Free transfers <input type="number" id="ftInput" value="1" min="0" max="15" /></label>
             <label>Max hits <input type="number" id="hitsInput" value="0" min="0" max="3" /></label>
+            <label>Focus
+              <select id="trFocus">
+                <option value="strongXI" selected>Strong XI · cheap bench</option>
+                <option value="balanced">Balanced 15</option>
+                <option value="strongBench">Strong bench (BB)</option>
+              </select>
+            </label>
             <label>Style
               <select id="trStyle">
                 <option value="conservative">Conservative — long-term stability</option>
@@ -240,6 +254,13 @@
         <p class="muted">Alternative strong squads for Wildcard / Free Hit / building from scratch. Optimised for XI points under £100m.</p>
         <div class="controls-row">
           <label>Budget £<input type="number" id="aiBudget" value="100" min="90" max="100" step="0.5" /></label>
+          <label>Focus
+            <select id="aiFocus">
+              <option value="strongXI" selected>Strong XI · cheap bench</option>
+              <option value="balanced">Balanced 15</option>
+              <option value="strongBench">Strong bench (BB)</option>
+            </select>
+          </label>
           <button id="genTeamsBtn" class="btn btn-blue">Generate AI teams</button>
         </div>
         <div id="aiTeamsResults"></div>

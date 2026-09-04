@@ -1393,3 +1393,6 @@ body.hide-promo .upgrade-card { display: none !important; }
 .pcard.sub-from { outline: 3px solid #2563eb; box-shadow: 0 0 0 3px #bfdbfe; }
 .pcard.sub-legal { outline: 3px solid #16a34a; box-shadow: 0 0 0 3px #bbf7d0; cursor: pointer; }
 .pcard.sub-blocked { opacity: 0.38; filter: grayscale(0.4); }
+
+.focus-label{font-size:.8rem;display:flex;align-items:center;gap:6px}
+.focus-label select{max-width:200px}

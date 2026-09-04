@@ -833,9 +833,12 @@ function optimiseLineup() {
   }
   const xiIds = new Set(bestXI.map(p => p.id));
   const bench = squad.filter(p => !xiIds.has(p.id));
+  const focusL = squadFocusMode();
   bench.sort((a, b) => {
     if (a.position === "GKP" && b.position !== "GKP") return -1;
     if (b.position === "GKP" && a.position !== "GKP") return 1;
+    if (focusL === "strongXI") return a.price - b.price || xpOf(b) - xpOf(a);
+    if (focusL === "strongBench") return xpOf(b) - xpOf(a);
     return xpOf(b) - xpOf(a);
   });
   startingIds = bestXI.map(p => p.id);
@@ -878,6 +881,7 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
     } else if (mode === "wildcard") {
       s = (p.xp3 || s) + (p.price >= 7 ? 0.25 : 0) + Math.min(0.4, (p.selected_by_percent || 0) / 80);
     }
+    s += huntBoost(p);
     return s;
   };
 
@@ -907,6 +911,9 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
       spent += p.price;
     }
   }
+
+  // Strong XI: leave budget for 11 quality, fill leftover slots later with cheapest
+  const focus = squadFocusMode();
 
   // Phase 2: fill remaining slots with cheapest valid players
   if (picked.length < 15) {
@@ -988,8 +995,21 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
   bench.sort((a, b) => {
     if (a.position === "GKP" && b.position !== "GKP") return -1;
     if (b.position === "GKP" && a.position !== "GKP") return 1;
+    if (focus === "strongXI") return a.price - b.price || scoreOf(b) - scoreOf(a);
     return scoreOf(b) - scoreOf(a);
   });
+  if (focus === "strongXI") {
+    for (const b of bench.slice()) {
+      if (b.position === "GKP") continue;
+      const cheap = pool
+        .filter(c => c.position === b.position && !picked.includes(c) && c.price < b.price - 0.2)
+        .filter(c => picked.filter(s => s.team_id === c.team_id).length < 3)
+        .sort((a, c) => a.price - c.price)[0];
+      if (!cheap) continue;
+      const i = picked.indexOf(b);
+      if (i >= 0) picked[i] = cheap;
+    }
+  }
 
   const full = [...bestXI, ...bench].slice(0, 15);
   const xiFinal = full.filter(p => xiIds.has(p.id)).slice(0, 11);
@@ -1153,15 +1173,39 @@ function normalizeHunt(data, teamId) {
   };
 }
 
+function squadFocusMode() {
+  const v = ($("squadFocus") && $("squadFocus").value)
+    || ($("trFocus") && $("trFocus").value)
+    || ($("aiFocus") && $("aiFocus").value)
+    || (getUiPrefs() && getUiPrefs().squadFocus)
+    || "strongXI";
+  return v;
+}
+function persistSquadFocus(v) {
+  try {
+    const ui = getUiPrefs();
+    ui.squadFocus = v;
+    localStorage.setItem("fpl_ui_prefs_v1", JSON.stringify(ui));
+  } catch (_) {}
+  ["squadFocus", "trFocus", "aiFocus"].forEach(id => {
+    const el = $(id);
+    if (el && el.value !== v) el.value = v;
+  });
+}
+
 function huntBoost(p) {
   const h = _leagueHunt;
   if (!h || !h.sample || !p) return 0;
   const owned = (h.ownMap[p.id] || 0) / h.sample;
   const behind = h.myRank != null && h.myRank > Math.max(3, Math.ceil(h.sample * 0.35));
   const leading = h.myRank != null && h.myRank <= 3;
-  if (behind) return (0.55 - owned) * 1.4;
-  if (leading) return (owned - 0.35) * 0.5;
-  return (0.4 - owned) * 0.6;
+  let b = 0;
+  if (behind) b = (0.55 - owned) * 1.4;
+  else if (leading) b = (owned - 0.35) * 0.5;
+  else b = (0.4 - owned) * 0.6;
+  // Owner account: push harder at hunt mini-leagues
+  if (typeof isOwnerSession === "function" && isOwnerSession()) b *= 1.85;
+  return b;
 }
 
 
@@ -1710,18 +1754,30 @@ function legalSubTargets(fromId) {
   return others.filter(p => {
     const aStart = startingIds.includes(fromId);
     const bStart = startingIds.includes(p.id);
-    if (aStart === bStart) return false; // must be XI <-> bench
+    // Bench order: any two bench players can swap places (auto-sub order)
+    if (!aStart && !bStart) return true;
+    // Both in XI: only if formation stays legal after a positional swap
+    if (aStart && bStart) return formationOk(xiAfterSwap(fromId, p.id));
     return formationOk(xiAfterSwap(fromId, p.id));
   }).map(p => p.id);
 }
 
 function applySwap(idA, idB) {
-  if (!formationOk(xiAfterSwap(idA, idB))) {
+  const aStart = startingIds.includes(idA);
+  const bStart = startingIds.includes(idB);
+  if (aStart !== bStart && !formationOk(xiAfterSwap(idA, idB))) {
     setStatus("That swap is not allowed for this formation");
     return false;
   }
-  const aStart = startingIds.includes(idA);
-  if (aStart) {
+  if (!aStart && !bStart) {
+    const i = benchIds.indexOf(idA);
+    const j = benchIds.indexOf(idB);
+    if (i < 0 || j < 0) return false;
+    benchIds[i] = idB;
+    benchIds[j] = idA;
+  } else if (aStart && bStart) {
+    startingIds = startingIds.map(id => id === idA ? idB : (id === idB ? idA : id));
+  } else if (aStart) {
     startingIds = startingIds.map(id => id === idA ? idB : id);
     benchIds = benchIds.filter(id => id !== idB).concat([idA]);
   } else {
@@ -1777,7 +1833,7 @@ function handlePlayerAction(act) {
         ? "Keeper can only swap with the other keeper — check both are in the squad"
         : "No legal swap for " + who + " with this formation");
     } else {
-      setStatus("Substitute " + who + " — tap a highlighted player (legal on position quotas)");
+      setStatus("Substitute " + who + " — tap a highlighted player (XI or bench order)");
     }
     return;
   } else if (act === "transfer") {
@@ -4390,6 +4446,25 @@ if (doneBtn) doneBtn.addEventListener("click", () => setEditMode(false));
 on("runTransfersBtn", "click", renderTransfersUI);
 on("trMode", "change", () => { syncTransferModeUI(); renderTransfersUI(); });
 on("trHorizon", "change", () => renderTransfersUI());
+function bindFocusSelects() {
+  ["squadFocus", "trFocus", "aiFocus"].forEach(id => {
+    const el = $(id);
+    if (!el || el.dataset.bound === "1") return;
+    el.dataset.bound = "1";
+    const saved = getUiPrefs().squadFocus;
+    if (saved) el.value = saved;
+    el.addEventListener("change", () => {
+      persistSquadFocus(el.value);
+      setStatus(el.value === "strongXI"
+        ? "Focus: strong starting 11, cheapest legal bench"
+        : el.value === "strongBench"
+          ? "Focus: bench quality (Bench Boost weeks)"
+          : "Focus: balanced 15");
+    });
+  });
+}
+bindFocusSelects();
+
 on("trStyle", "change", () => {
   const st = transferStyle();
   if ($("trHorizon")) {
