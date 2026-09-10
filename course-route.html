@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BT42.195km Race 2026 Route</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: #f8f9fa; color: #2c3e50; }
+  .header {
+    background: linear-gradient(135deg, #1a5276 0%, #2980b9 50%, #3498db 100%);
+    color: white; padding: 24px 32px; text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  }
+  .header h1 { font-size: 28px; font-weight: 800; margin-bottom: 6px; text-shadow: 1px 1px 3px rgba(0,0,0,0.3); }
+  .header .subtitle { font-size: 14px; font-weight: 400; opacity: 0.9; }
+  .header .distance-badge {
+    display: inline-block; background: rgba(255,255,255,0.2);
+    border: 2px solid rgba(255,255,255,0.6); border-radius: 20px;
+    padding: 4px 16px; font-size: 15px; font-weight: 700; margin-top: 10px;
+  }
+  .map-container { position: relative; width: 100%; height: 65vh; min-height: 400px; }
+  #map { width: 100%; height: 100%; }
+  .info-panel {
+    background: white; border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08); margin: 16px; padding: 20px;
+  }
+  .info-panel h2 { font-size: 18px; font-weight: 700; margin-bottom: 12px; color: #1a5276; }
+  .water-points-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;
+  }
+  .water-point-card {
+    background: linear-gradient(135deg, #eaf4fc 0%, #d6eaf8 100%);
+    border-left: 4px solid #2980b9; border-radius: 8px;
+    padding: 14px; transition: transform 0.2s; cursor: pointer;
+  }
+  .water-point-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+  .water-point-card .wp-name { font-weight: 700; font-size: 15px; color: #1a5276; }
+  .water-point-card .wp-km { font-size: 13px; color: #5d6d7e; margin-top: 4px; }
+  .water-point-card .wp-icon { font-size: 22px; margin-right: 8px; }
+  .runner-notice { margin: 16px 16px 0; padding: 14px 18px; border-radius: 10px; background: #fff8e1; border-left: 5px solid #f39c12; color: #784c00; font-size: 14px; font-weight: 600; }
+  .water-kiosk-marker { position: relative; width: 42px; height: 46px; }
+  .water-kiosk-roof { position: absolute; left: 2px; top: 0; width: 38px; height: 12px; background: #f39c12; border: 3px solid white; border-radius: 6px 6px 1px 1px; box-shadow: 0 2px 7px rgba(0,0,0,.28); }
+  .water-kiosk-body { position: absolute; left: 6px; top: 11px; width: 30px; height: 31px; display: flex; align-items: center; justify-content: center; background: #087f8c; color: white; font-size: 17px; font-weight: 800; border: 3px solid white; border-radius: 2px 2px 5px 5px; box-shadow: 0 3px 9px rgba(0,0,0,.3); }
+  .water-label { font: 700 12px 'Inter', sans-serif; color: #074f57; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 0; align-items: center; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .legend-line { width: 30px; height: 4px; border-radius: 2px; }
+  .legend-circle { width: 14px; height: 14px; border-radius: 50%; border: 2px solid; }
+  .controls {
+    position: absolute; top: 12px; right: 12px; z-index: 1000;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .lap-toolbar { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 10px 12px; background: #edf6fb; border-bottom: 1px solid #c8dce8; }
+  .lap-toolbar span { font-size: 13px; font-weight: 700; color: #1a5276; margin-right: 4px; }
+  .lap-btn { border: 1px solid #2980b9; background: white; color: #1a5276; border-radius: 18px; padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .lap-btn.active { background: #2980b9; color: white; box-shadow: 0 2px 7px rgba(41,128,185,.28); }
+  .ctrl-btn {
+    background: white; border: none; border-radius: 8px;
+    padding: 8px 14px; font-size: 12px; font-weight: 600;
+    cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.15); transition: all 0.2s;
+  }
+  .ctrl-btn:hover { background: #ecf0f1; transform: scale(1.05); }
+  .ctrl-btn.active { background: #2980b9; color: white; }
+  .route-stats {
+    display: flex; justify-content: space-around; padding: 12px 0;
+    border-top: 1px solid #ecf0f1; margin-top: 12px;
+  }
+  .stat { text-align: center; }
+  .stat .stat-value { font-size: 20px; font-weight: 800; color: #1a5276; }
+  .stat .stat-label { font-size: 11px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
+  .leaflet-popup-content-wrapper { border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+  .leaflet-popup-content { margin: 12px 16px; font-family: 'Inter', sans-serif; }
+  .popup-title { font-weight: 700; font-size: 15px; color: #1a5276; margin-bottom: 4px; }
+  .popup-detail { font-size: 12px; color: #5d6d7e; }
+  @media print {
+    .header { padding: 12px; } .header h1 { font-size: 20px; }
+    .info-panel { box-shadow: none; border: 1px solid #ddd; } .controls { display: none; }
+  }
+  @media (max-width: 600px) {
+    .header h1 { font-size: 20px; } .map-container { height: 55vh; }
+    .water-points-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏃 BT42.195km Race 2026 Route</h1>
+  <div class="subtitle">Blantyre, Malawi • Three-lap athlete route with stadium finish</div>
+  <div class="distance-badge">📏 Official race distance: 42.195 km</div>
+</div>
+
+<div class="lap-toolbar" aria-label="Select race lap">
+  <span>Show cumulative distances:</span>
+  <button class="lap-btn active" id="lapBtn1" onclick="setLap(1)">Lap 1</button>
+  <button class="lap-btn" id="lapBtn2" onclick="setLap(2)">Lap 2</button>
+  <button class="lap-btn" id="lapBtn3" onclick="setLap(3)">Lap 3 + Finish</button>
+</div>
+
+<div class="map-container">
+  <div id="map"></div>
+  <div class="controls">
+    <button class="ctrl-btn active" onclick="toggleArrows()" id="arrowBtn">➡ Arrows</button>
+    <button class="ctrl-btn" onclick="toggleKmMarkers()" id="kmBtn">🔢 Km</button>
+    <button class="ctrl-btn active" onclick="fitRoute()" title="Zoom to route">🎯 Fit</button>
+  </div>
+</div>
+
+<div class="runner-notice">💧 Four water kiosks are positioned along each lap. Runners should hydrate as needed and follow race-marshal directions. On the final lap, turn at Shoprite Roundabout onto Kamuzu Stadium Road and proceed into Kamuzu Stadium for the VIP-section finish.</div>
+
+<div class="info-panel">
+  <h2>💧 Water Kiosk Stations</h2>
+  <div class="water-points-grid" id="wpGrid"></div>
+  <div style="margin-top: 16px;">
+    <h2>📋 Route Legend</h2>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-line" style="background: #e74c3c;"></div><span>Three-lap race circuit</span></div>
+      <div class="legend-item"><div class="legend-line" style="background: #8e44ad;"></div><span>Final-lap stadium approach</span></div>
+      <div class="legend-item"><div class="legend-circle" style="background: #27ae60; border-color: #1e8449;"></div><span>Start / Finish</span></div>
+      <div class="legend-item"><div class="legend-circle" style="background: #2980b9; border-color: #1a5276;"></div><span>💧 Water Kiosk</span></div>
+      <div class="legend-item"><div class="legend-line" style="background: #f39c12; height: 8px; width: 20px; border-radius: 4px;"></div><span>5 km Marker</span></div>
+      <div class="legend-item"><div class="legend-line" style="background: #95a5a6; height: 4px; width: 10px; border-radius: 2px;"></div><span>1 km Marker</span></div>
+    </div>
+  </div>
+  <div class="route-stats">
+    <div class="stat"><div class="stat-value">42.195</div><div class="stat-label">Race distance (km)</div></div>
+    <div class="stat"><div class="stat-value">4</div><div class="stat-label">Water Points</div></div>
+    <div class="stat"><div class="stat-value">3 laps</div><div class="stat-label">Course format</div></div>
+    <div class="stat"><div class="stat-value">🏟️</div><div class="stat-label">Stadium finish</div></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+var routeCoords = [[-15.800753, 35.021923], [-15.800772, 35.021927], [-15.800822, 35.021921], [-15.800868, 35.021898], [-15.800904, 35.021861], [-15.800927, 35.021814], [-15.800934, 35.021762], [-15.800925, 35.021709], [-15.8009, 35.021663], [-15.800862, 35.021627], [-15.800814, 35.021605], [-15.800761, 35.021602], [-15.80071, 35.021616], [-15.800667, 35.021648], [-15.800636, 35.021692], [-15.800626, 35.021718], [-15.80062, 35.021772], [-15.800632, 35.021826], [-15.800659, 35.021872], [-15.8007, 35.021907], [-15.800722, 35.021917], [-15.800762, 35.022032], [-15.800794, 35.022128], [-15.800812, 35.02229], [-15.800815, 35.022321], [-15.800834, 35.022796], [-15.80085, 35.024154], [-15.800857, 35.024637], [-15.800864, 35.025395], [-15.800868, 35.02601], [-15.800874, 35.026645], [-15.800878, 35.027034], [-15.800889, 35.027982], [-15.800899, 35.028638], [-15.800898, 35.029242], [-15.800915, 35.03012], [-15.800912, 35.030671], [-15.80092, 35.031466], [-15.800946, 35.032079], [-15.800981, 35.032474], [-15.801015, 35.03274], [-15.801057, 35.032977], [-15.801106, 35.033254], [-15.801181, 35.033598], [-15.801257, 35.033891], [-15.801617, 35.035147], [-15.801677, 35.035397], [-15.801697, 35.035534], [-15.801703, 35.035609], [-15.801688, 35.035734], [-15.801673, 35.035798], [-15.801658, 35.035855], [-15.801648, 35.035875], [-15.80163, 35.035954], [-15.801635, 35.03599], [-15.801642, 35.036034], [-15.801682, 35.036103], [-15.801731, 35.036145], [-15.801793, 35.03628], [-15.801812, 35.036353], [-15.801833, 35.036449], [-15.801861, 35.036626], [-15.80187, 35.036699], [-15.801877, 35.036789], [-15.801928, 35.037215], [-15.801955, 35.037491], [-15.801973, 35.037804], [-15.801992, 35.03804], [-15.802014, 35.038244], [-15.802043, 35.038395], [-15.802085, 35.038567], [-15.802151, 35.038739], [-15.80222, 35.038908], [-15.802289, 35.039051], [-15.802399, 35.039217], [-15.802542, 35.039398], [-15.802701, 35.039566], [-15.802853, 35.039732], [-15.802915, 35.039825], [-15.802973, 35.039919], [-15.802999, 35.039961], [-15.80305, 35.040073], [-15.803129, 35.040255], [-15.80326, 35.040559], [-15.803427, 35.040883], [-15.803611, 35.041184], [-15.803925, 35.041657], [-15.804063, 35.041965], [-15.804118, 35.042125], [-15.804164, 35.042325], [-15.804206, 35.042511], [-15.804233, 35.042724], [-15.804252, 35.042895], [-15.804266, 35.043026], [-15.804279, 35.043176], [-15.804298, 35.043516], [-15.804321, 35.043603], [-15.804326, 35.043823], [-15.80431, 35.044132], [-15.804288, 35.044366], [-15.80428, 35.044432], [-15.804261, 35.044589], [-15.804207, 35.044887], [-15.804153, 35.045153], [-15.804096, 35.045392], [-15.804013, 35.04566], [-15.803903, 35.045956], [-15.803652, 35.046524], [-15.803376, 35.046984], [-15.803158, 35.047336], [-15.802716, 35.048077], [-15.802453, 35.048516], [-15.802317, 35.048776], [-15.802186, 35.049053], [-15.802055, 35.049339], [-15.801991, 35.049515], [-15.801946, 35.049813], [-15.801939, 35.04998], [-15.801929, 35.050153], [-15.801891, 35.050438], [-15.801886, 35.050473], [-15.80186, 35.050486], [-15.801839, 35.050506], [-15.801825, 35.050532], [-15.801818, 35.05056], [-15.80182, 35.050593], [-15.801831, 35.050623], [-15.80185, 35.050648], [-15.801876, 35.050665], [-15.801905, 35.050673], [-15.801944, 35.05067], [-15.801979, 35.050651], [-15.802004, 35.05062], [-15.802015, 35.050587], [-15.802014, 35.050552], [-15.802003, 35.05052], [-15.802028, 35.050159], [-15.802053, 35.049976], [-15.802074, 35.049819], [-15.802122, 35.04955], [-15.80217, 35.049394], [-15.802286, 35.049091], [-15.802411, 35.048809], [-15.802535, 35.048562], [-15.802806, 35.048117], [-15.803271, 35.047393], [-15.803491, 35.047069], [-15.803755, 35.04659], [-15.80389, 35.046341], [-15.80403, 35.046024], [-15.804155, 35.045719], [-15.804243, 35.045439], [-15.804308, 35.045188], [-15.804363, 35.044923], [-15.804417, 35.044606], [-15.804447, 35.044387], [-15.804466, 35.044156], [-15.804483, 35.043819], [-15.804478, 35.043598], [-15.804477, 35.043507], [-15.804453, 35.043155], [-15.804432, 35.042993], [-15.804503, 35.042984], [-15.804603, 35.042971], [-15.804958, 35.042921], [-15.805059, 35.04291], [-15.805494, 35.042893], [-15.805962, 35.042825], [-15.805982, 35.042786], [-15.805988, 35.042754], [-15.805993, 35.042719], [-15.805997, 35.042681], [-15.806082, 35.042734], [-15.80613, 35.042762], [-15.806183, 35.042777], [-15.806405, 35.042749], [-15.806509, 35.04274], [-15.806612, 35.042734], [-15.806717, 35.042736], [-15.8068, 35.042738], [-15.80683, 35.042735], [-15.806863, 35.042727], [-15.806887, 35.042687], [-15.806954, 35.042678], [-15.807247, 35.042636], [-15.807284, 35.042631], [-15.807762, 35.042526], [-15.807935, 35.042541], [-15.808458, 35.042677], [-15.80866, 35.04268], [-15.809151, 35.042693], [-15.8097, 35.042712], [-15.809834, 35.042717], [-15.809806, 35.042453], [-15.809779, 35.042167], [-15.809751, 35.041788], [-15.809734, 35.041419], [-15.809696, 35.04064], [-15.809652, 35.040025], [-15.809644, 35.039922], [-15.809633, 35.039787], [-15.809609, 35.039413], [-15.809546, 35.038797], [-15.809498, 35.038489], [-15.809416, 35.038207], [-15.809369, 35.038068], [-15.809323, 35.037941], [-15.809187, 35.037596], [-15.809092, 35.03737], [-15.809073, 35.037324], [-15.808979, 35.037098], [-15.808844, 35.036786], [-15.808768, 35.03658], [-15.808679, 35.036334], [-15.808616, 35.035992], [-15.808605, 35.035744], [-15.808612, 35.035517], [-15.808627, 35.035364], [-15.808644, 35.035231], [-15.808686, 35.035021], [-15.808725, 35.034842], [-15.808751, 35.034724], [-15.808828, 35.034446], [-15.808857, 35.034336], [-15.808892, 35.034248], [-15.808949, 35.034153], [-15.808969, 35.03413], [-15.808983, 35.034105], [-15.808994, 35.034067], [-15.808995, 35.034027], [-15.808986, 35.033989], [-15.808967, 35.033955], [-15.80894, 35.033927], [-15.808927, 35.033918], [-15.808914, 35.03391], [-15.808874, 35.033803], [-15.808847, 35.033707], [-15.808777, 35.033454], [-15.808608, 35.032823], [-15.808387, 35.032197], [-15.808293, 35.031944], [-15.808164, 35.03154], [-15.807873, 35.030647], [-15.80763, 35.029848], [-15.80744, 35.029177], [-15.807289, 35.028708], [-15.807156, 35.028097], [-15.80708, 35.027499], [-15.807045, 35.027142], [-15.807007, 35.026646], [-15.806921, 35.025982], [-15.806906, 35.025578], [-15.806911, 35.025479], [-15.806923, 35.0253], [-15.80698, 35.024928], [-15.807041, 35.024608], [-15.807089, 35.024363], [-15.807178, 35.023895], [-15.807222, 35.02367], [-15.807293, 35.023404], [-15.807364, 35.023158], [-15.807425, 35.022983], [-15.807612, 35.022608], [-15.807784, 35.022268], [-15.808053, 35.021712], [-15.808143, 35.021506], [-15.808236, 35.021204], [-15.808281, 35.020909], [-15.808321, 35.020599], [-15.808319, 35.020307], [-15.808298, 35.020048], [-15.808274, 35.019844], [-15.808245, 35.019673], [-15.808203, 35.019515], [-15.80817, 35.019392], [-15.808121, 35.019071], [-15.808095, 35.018851], [-15.80808, 35.018633], [-15.808085, 35.018389], [-15.808096, 35.018226], [-15.808127, 35.018089], [-15.808173, 35.017959], [-15.808251, 35.017814], [-15.808333, 35.017671], [-15.808392, 35.017569], [-15.80851, 35.01738], [-15.808698, 35.016999], [-15.808758, 35.016842], [-15.808792, 35.016694], [-15.808811, 35.016541], [-15.808829, 35.016267], [-15.80883, 35.016203], [-15.808831, 35.016121], [-15.808831, 35.016058], [-15.808829, 35.015915], [-15.80883, 35.015778], [-15.808814, 35.015533], [-15.808809, 35.015411], [-15.808781, 35.01513], [-15.808765, 35.014987], [-15.80875, 35.014745], [-15.808731, 35.014562], [-15.808735, 35.014384], [-15.808759, 35.014282], [-15.808806, 35.01417], [-15.808873, 35.014076], [-15.808939, 35.014008], [-15.809261, 35.01377], [-15.809369, 35.01369], [-15.809873, 35.0133], [-15.810077, 35.013559], [-15.810777, 35.014551], [-15.811082, 35.014304], [-15.811267, 35.014153], [-15.811329, 35.014092], [-15.811361, 35.014041], [-15.811008, 35.013567], [-15.810661, 35.013096], [-15.810077, 35.013559], [-15.809883, 35.013312], [-15.809873, 35.0133], [-15.809616, 35.012945], [-15.809428, 35.01272], [-15.809243, 35.012555], [-15.809019, 35.012414], [-15.80887, 35.012336], [-15.808307, 35.012041], [-15.808038, 35.0119], [-15.807891, 35.011808], [-15.807583, 35.011611], [-15.807299, 35.011466], [-15.807032, 35.011364], [-15.806898, 35.011306], [-15.806773, 35.011275], [-15.806366, 35.011175], [-15.806074, 35.011088], [-15.805894, 35.011031], [-15.805512, 35.010894], [-15.805309, 35.010807], [-15.805099, 35.010687], [-15.804899, 35.01053], [-15.804725, 35.010387], [-15.804679, 35.01035], [-15.80439, 35.010645], [-15.804157, 35.010866], [-15.803949, 35.011033], [-15.803643, 35.011244], [-15.802941, 35.011706], [-15.802748, 35.011833], [-15.802328, 35.01212], [-15.802106, 35.012301], [-15.802003, 35.012403], [-15.801942, 35.012508], [-15.80188, 35.012687], [-15.801869, 35.012743], [-15.80184, 35.012879], [-15.801762, 35.013287], [-15.801593, 35.014271], [-15.801426, 35.015261], [-15.801253, 35.016341], [-15.801075, 35.017472], [-15.800989, 35.017999], [-15.800893, 35.018619], [-15.800819, 35.018898], [-15.800761, 35.019023], [-15.800698, 35.019113], [-15.800622, 35.019219], [-15.800515, 35.019352], [-15.800482, 35.019392], [-15.800384, 35.019164], [-15.800279, 35.018902], [-15.800198, 35.018732], [-15.800079, 35.018533], [-15.798966, 35.016816], [-15.798877, 35.016662], [-15.798818, 35.016548], [-15.798753, 35.01642], [-15.79868, 35.016236], [-15.798587, 35.015923], [-15.798444, 35.015413], [-15.798243, 35.014906], [-15.798169, 35.014753], [-15.798045, 35.014558], [-15.797996, 35.014485], [-15.797852, 35.014297], [-15.797709, 35.014168], [-15.797347, 35.013849], [-15.79668, 35.013319], [-15.796317, 35.013054], [-15.796056, 35.012905], [-15.795804, 35.012773], [-15.795435, 35.012655], [-15.795063, 35.012552], [-15.794556, 35.012412], [-15.794409, 35.012371], [-15.794236, 35.012323], [-15.794077, 35.012279], [-15.7939, 35.012215], [-15.793784, 35.012156], [-15.793715, 35.012108], [-15.793673, 35.012141], [-15.793366, 35.012384], [-15.79325, 35.012476], [-15.792232, 35.013261], [-15.791944, 35.013449], [-15.791616, 35.01364], [-15.791468, 35.013727], [-15.791216, 35.013852], [-15.790879, 35.013953], [-15.790506, 35.014001], [-15.790405, 35.014027], [-15.790352, 35.014047], [-15.790304, 35.014071], [-15.790277, 35.014111], [-15.790247, 35.014195], [-15.789334, 35.013942], [-15.788574, 35.013716], [-15.788418, 35.013659], [-15.788373, 35.013636], [-15.788287, 35.013586], [-15.788211, 35.013527], [-15.78812, 35.013449], [-15.787999, 35.01334], [-15.787942, 35.013352], [-15.787907, 35.013363], [-15.787881, 35.013392], [-15.787869, 35.013414], [-15.787865, 35.013445], [-15.787871, 35.013483], [-15.787881, 35.013519], [-15.787919, 35.013561], [-15.787957, 35.013588], [-15.788025, 35.013611], [-15.788061, 35.013608], [-15.78808, 35.013594], [-15.788102, 35.013577], [-15.78812, 35.013548], [-15.788129, 35.013511], [-15.78812, 35.013449], [-15.787999, 35.01334], [-15.787942, 35.013352], [-15.787907, 35.013363], [-15.787881, 35.013392], [-15.787869, 35.013414], [-15.787865, 35.013445], [-15.787871, 35.013483], [-15.787881, 35.013519], [-15.787919, 35.013561], [-15.787957, 35.013588], [-15.788025, 35.013611], [-15.788061, 35.013608], [-15.788185, 35.013649], [-15.788316, 35.013719], [-15.788377, 35.01375], [-15.788539, 35.013822], [-15.788641, 35.01386], [-15.788849, 35.013921], [-15.789306, 35.014058], [-15.790218, 35.014309], [-15.790631, 35.014424], [-15.790935, 35.014531], [-15.791505, 35.014786], [-15.792709, 35.015328], [-15.793513, 35.015704], [-15.794, 35.015895], [-15.79443, 35.016026], [-15.794847, 35.016146], [-15.795018, 35.016217], [-15.795153, 35.01628], [-15.795375, 35.016402], [-15.795609, 35.016563], [-15.796315, 35.017086], [-15.796682, 35.017383], [-15.797912, 35.018479], [-15.798617, 35.019107], [-15.799371, 35.019778], [-15.799439, 35.019838], [-15.799543, 35.019956], [-15.799611, 35.020092], [-15.799612, 35.020114], [-15.799624, 35.020163], [-15.799649, 35.020207], [-15.799684, 35.020243], [-15.799727, 35.020267], [-15.799777, 35.020278], [-15.799827, 35.020274], [-15.799934, 35.020332], [-15.800027, 35.020403], [-15.800114, 35.020501], [-15.800262, 35.020709], [-15.800356, 35.020871], [-15.800455, 35.021065], [-15.800563, 35.021305], [-15.80061, 35.021433], [-15.800636, 35.021692], [-15.800626, 35.021718], [-15.80062, 35.021772], [-15.800632, 35.021826], [-15.800659, 35.021872], [-15.8007, 35.021907], [-15.800722, 35.021917], [-15.800735, 35.021956]];
+// Remove the erroneous detour at the Kamba T-junction and orient the lap from NBS Bank.
+routeCoords.splice(310, 11);
+
+var waterPoints = [{"name": "Trade Fair Grounds", "lat": -15.80048, "lng": 35.02909, "type": "water_kiosk", "route_km": 0.9}, {"name": "Kamba", "lat": -15.809873, "lng": 35.0133, "type": "water_kiosk", "route_km": 8.2}, {"name": "Kwacha Roundabout (Moi Road intersection)", "lat": -15.8089404, "lng": 35.0341673, "type": "water_kiosk", "route_km": 5.8}, {"name": "CFAO", "lat": -15.79383, "lng": 35.01169, "type": "water_kiosk", "route_km": 11.1}];
+var kmMarkers = [{"km":1,"lat":-15.800914,"lng":35.030259,"is_5km":false},{"km":2,"lat":-15.802476,"lng":35.039315,"is_5km":false},{"km":3,"lat":-15.802883,"lng":35.047797,"is_5km":false},{"km":4,"lat":-15.804307,"lng":35.045191,"is_5km":false},{"km":5,"lat":-15.809734,"lng":35.041411,"is_5km":true},{"km":6,"lat":-15.808466,"lng":35.03242,"is_5km":false},{"km":7,"lat":-15.807311,"lng":35.023343,"is_5km":false},{"km":8,"lat":-15.808734,"lng":35.014418,"is_5km":false},{"km":9,"lat":-15.803643,"lng":35.011244,"is_5km":false},{"km":10,"lat":-15.800462,"lng":35.019346,"is_5km":true},{"km":11,"lat":-15.794927,"lng":35.012514,"is_5km":false},{"km":12,"lat":-15.787984,"lng":35.013597,"is_5km":false},{"km":13,"lat":-15.796277,"lng":35.017058,"is_5km":false}];
+var startPos = [-15.800727, 35.0219592];
+var endPos = [-15.79890, 35.03450];
+var totalKm = 42.195;
+var finalApproachCoords = [
+  [-15.801635, 35.035990],
+  [-15.800900, 35.036120],
+  [-15.799700, 35.036350],
+  [-15.798900, 35.036450],
+  [-15.798450, 35.036480],
+  [-15.798430, 35.035700],
+  [-15.798400, 35.034950],
+  [-15.798300, 35.034650],
+  [-15.798250, 35.034350],
+  [-15.798420, 35.034100],
+  [-15.798750, 35.034050],
+  [-15.798900, 35.034500]
+];
+var lapLength = 14.065;
+var activeLap = 1;
+
+var map = L.map('map', { zoomControl: true }).setView([-15.800, 35.030], 14);
+
+var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles © Esri, Maxar, Earthstar Geographics',
+  maxZoom: 19
+});
+var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap',
+  maxZoom: 19
+});
+sat.addTo(map);
+L.control.layers({ 'Satellite': sat, 'Streets': osm }).addTo(map);
+
+// Route polyline
+var routeLine = L.polyline(routeCoords, {
+  color: '#e74c3c', weight: 5, opacity: 0.85,
+  smoothFactor: 1, lineCap: 'round', lineJoin: 'round'
+}).addTo(map);
+
+var finalApproachLine = L.polyline(finalApproachCoords, {
+  color: '#8e44ad', weight: 7, opacity: 0.95,
+  smoothFactor: 0.5, lineCap: 'round', lineJoin: 'round'
+}).bindPopup('<div class="popup-title">Final-lap diversion</div><div class="popup-detail">At Shoprite Roundabout, continue north on Kamuzu Stadium Road, turn left at the stadium entrance, then follow the running track to the VIP finish.</div>');
+
+var finalTurnMarker = L.circleMarker(finalApproachCoords[0], { radius: 7, color: '#6c3483', weight: 3, fillColor: '#d2b4de', fillOpacity: 1 })
+  .bindTooltip('Final lap: turn at Shoprite Roundabout', { permanent: false, sticky: true, direction: 'top' })
+  .bindPopup('<div class="popup-title">Final-lap turn</div><div class="popup-detail">Shoprite Roundabout → Kamuzu Stadium Road → Kamuzu Stadium</div>');
+
+// Directional arrows
+var arrowGroup = L.layerGroup();
+var finalArrowGroup = L.layerGroup();
+var arrowsVisible = false;
+
+function createArrows() {
+  var step = Math.max(1, Math.floor(routeCoords.length / 25));
+  for (var i = step; i < routeCoords.length - 1; i += step) {
+    var p1 = routeCoords[i];
+    var p2 = routeCoords[Math.min(i + 3, routeCoords.length - 1)];
+    var angle = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) * 180 / Math.PI;
+    var icon = L.divIcon({
+      className: 'arrow-icon',
+      html: '<div style="transform:rotate(' + angle + 'deg);font-size:16px;color:#c0392b;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">&#9654;</div>',
+      iconSize: [20, 20], iconAnchor: [10, 10]
+    });
+    arrowGroup.addLayer(L.marker(p1, { icon: icon }));
+  }
+  var finalStep = Math.max(1, Math.floor(finalApproachCoords.length / 4));
+  for (var j = finalStep; j < finalApproachCoords.length - 1; j += finalStep) {
+    var f1 = finalApproachCoords[j];
+    var f2 = finalApproachCoords[Math.min(j + 1, finalApproachCoords.length - 1)];
+    var finalAngle = Math.atan2(f2[1] - f1[1], f2[0] - f1[0]) * 180 / Math.PI;
+    var finalIcon = L.divIcon({
+      className: 'arrow-icon',
+      html: '<div style="transform:rotate(' + finalAngle + 'deg);font-size:18px;color:#6c3483;filter:drop-shadow(0 1px 2px white);">&#9654;</div>',
+      iconSize: [22, 22], iconAnchor: [11, 11]
+    });
+    finalArrowGroup.addLayer(L.marker(f1, { icon: finalIcon }));
+  }
+}
+createArrows();
+arrowGroup.addTo(map);
+arrowsVisible = true;
+
+function toggleArrows() {
+  if (arrowsVisible) {
+    arrowGroup.removeFrom(map); arrowsVisible = false;
+    finalArrowGroup.removeFrom(map);
+    document.getElementById('arrowBtn').classList.remove('active');
+  } else {
+    arrowGroup.addTo(map); arrowsVisible = true;
+    if (activeLap === 3) finalArrowGroup.addTo(map);
+    document.getElementById('arrowBtn').classList.add('active');
+  }
+}
+
+// KM markers
+var kmGroup = L.layerGroup();
+var kmVisible = false;
+
+function createKmMarkers() {
+  kmGroup.clearLayers();
+  kmMarkers.forEach(function(m) {
+    var cumulativeKm = (activeLap - 1) * lapLength + m.km;
+    var markerLabel = activeLap === 1 ? String(m.km) : cumulativeKm.toFixed(1);
+    var is5 = m.is_5km;
+    var sz = is5 ? 28 : 20;
+    var icon = L.divIcon({
+      className: 'km-icon',
+      html: '<div style="background:' + (is5 ? '#f39c12' : '#95a5a6') + ';color:white;font-size:' + (activeLap === 1 ? '9' : '8') + 'px;font-weight:700;border-radius:50%;width:' + sz + 'px;height:' + sz + 'px;display:flex;align-items:center;justify-content:center;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);">' + markerLabel + '</div>',
+      iconSize: [sz, sz], iconAnchor: [sz/2, sz/2]
+    });
+    kmGroup.addLayer(L.marker([m.lat, m.lng], { icon: icon }).bindPopup('<div class="popup-title">Lap ' + activeLap + ': ' + cumulativeKm.toFixed(3) + ' km</div><div class="popup-detail">Cumulative marathon distance</div>'));
+  });
+}
+createKmMarkers();
+
+function toggleKmMarkers() {
+  if (kmVisible) {
+    kmGroup.removeFrom(map); kmVisible = false;
+    document.getElementById('kmBtn').classList.remove('active');
+  } else {
+    kmGroup.addTo(map); kmVisible = true;
+    document.getElementById('kmBtn').classList.add('active');
+  }
+}
+
+// Water kiosk markers
+function createWaterIcon() {
+  return L.divIcon({
+    className: 'water-kiosk-icon',
+    html: '<div class="water-kiosk-marker"><div class="water-kiosk-roof"></div><div class="water-kiosk-body">💧</div></div>',
+    iconSize: [42, 46], iconAnchor: [21, 43], popupAnchor: [0, -42]
+  });
+}
+
+var waterMarkers = [];
+waterPoints.forEach(function(wp, i) {
+  var marker = L.marker([wp.lat, wp.lng], { icon: createWaterIcon() }).addTo(map)
+    .bindTooltip('W' + (i+1) + ' · ' + wp.name, { permanent: false, sticky: true, direction: 'right', offset: [16, -23], className: 'water-label' })
+    .bindPopup('');
+  waterMarkers.push(marker);
+});
+
+// Start/Finish markers
+function createMarkerIcon(label, bg) {
+  return L.divIcon({
+    className: 'start-icon',
+    html: '<div style="background:' + bg + ';color:white;font-size:11px;font-weight:800;border-radius:50%;width:42px;height:42px;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 3px 12px rgba(0,0,0,0.3);">' + label + '</div>',
+    iconSize: [42, 42], iconAnchor: [21, 21], popupAnchor: [0, -22]
+  });
+}
+
+L.marker(startPos, { icon: createMarkerIcon('START', '#27ae60') }).addTo(map)
+  .bindTooltip('START · NBS Bank, Ginnery Corner', { permanent: false, sticky: true, direction: 'left', offset: [-22, 0] })
+  .bindPopup('<div class="popup-title">🏁 Start: NBS Bank</div><div class="popup-detail">Ginnery Corner · Km 0</div>');
+
+var finishMarker = L.marker(endPos, { icon: createMarkerIcon('FINISH', '#c0392b') })
+  .bindTooltip('FINISH · Kamuzu Stadium VIP Section', { permanent: false, sticky: true, direction: 'right', offset: [22, 0] })
+  .bindPopup('<div class="popup-title">🏁 Finish: Kamuzu Stadium</div><div class="popup-detail">Running track at the VIP section · Km ' + totalKm + '</div>');
+
+function fitRoute() { map.fitBounds(L.featureGroup([routeLine, finalApproachLine]).getBounds(), { padding: [55, 55] }); }
+fitRoute();
+
+// Water point cards
+var wpGrid = document.getElementById('wpGrid');
+function updateWaterPoints() {
+  wpGrid.innerHTML = '';
+  waterPoints.forEach(function(wp, i) {
+    var cumulativeKm = Math.min(totalKm, (activeLap - 1) * lapLength + wp.route_km);
+    waterMarkers[i].bindPopup('<div class="popup-title">💧 ' + wp.name + '</div><div class="popup-detail">Water Kiosk Station #' + (i+1) + '</div><div class="popup-detail">Lap ' + activeLap + ' · cumulative distance ' + cumulativeKm.toFixed(3) + ' km</div>');
+    var card = document.createElement('div');
+    card.className = 'water-point-card';
+    card.innerHTML = '<span class="wp-icon">💧</span><span class="wp-name">W' + (i+1) + ' · ' + wp.name + '</span><br><span class="wp-km">Lap ' + activeLap + ': ' + cumulativeKm.toFixed(3) + ' km cumulative</span>';
+    card.addEventListener('click', function() { map.setView([wp.lat, wp.lng], 16); waterMarkers[i].openPopup(); });
+    wpGrid.appendChild(card);
+  });
+}
+
+function setLap(lap) {
+  activeLap = lap;
+  [1,2,3].forEach(function(n) { document.getElementById('lapBtn' + n).classList.toggle('active', n === lap); });
+  createKmMarkers();
+  updateWaterPoints();
+  if (lap === 3) {
+    finalApproachLine.addTo(map);
+    finalTurnMarker.addTo(map);
+    finishMarker.addTo(map);
+    if (arrowsVisible) finalArrowGroup.addTo(map);
+  } else {
+    finalApproachLine.removeFrom(map);
+    finalTurnMarker.removeFrom(map);
+    finishMarker.removeFrom(map);
+    finalArrowGroup.removeFrom(map);
+  }
+  fitRoute();
+}
+
+setLap(1);
+</script>
+</body>
+</html>

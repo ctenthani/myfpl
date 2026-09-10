@@ -143,3 +143,21 @@ If you prefer Blobs only:
 3. Redeploy  
 
 The function passes `siteID` + `token` into `getStore()` automatically when those env vars exist.
+
+## Email (Resend) — production domain `btrace.nsanja.app`
+
+1. Resend → Domains → Add Domain → `btrace.nsanja.app`
+2. Copy DNS records into Porkbun DNS for `nsanja.app`
+3. Verify domain in Resend
+4. Netlify env:
+   - `EMAIL_API_KEY` = Resend API key (`re_...`)
+   - `EMAIL_FROM` = `BT42.195km Race <entries@btrace.nsanja.app>`
+5. Trigger deploy
+
+Automated emails:
+- Registration confirmation (if email on form)
+- Payment verified (Chair verifies)
+- Bib assigned
+- Certificates (when issued)
+
+Until the domain is Verified, Resend will return 403 for non-test recipients.

@@ -2,7 +2,7 @@
 
 Mobile-first public website **and** interactive OC Control Room for the **BT42.195 km Race**.
 
-**Race day:** Saturday, 19 September 2026 · Blantyre, Malawi  
+**Race day:** Sunday, 27 September 2026 · Blantyre, Malawi  
 Organised under the Malawi National Council of Sports.
 
 ---
@@ -95,7 +95,7 @@ It is **not** strong security. Do not put highly sensitive personal data or fina
 ---
 
 **Chair:** Chifundo Tenthani  
-**Event:** BT42.195 km Race · 19 September 2026
+**Event:** BT42.195 km Race · 27 September 2026
 
 ## Netlify environment variables
 

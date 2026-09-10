@@ -1466,3 +1466,108 @@ img { max-width: 100%; display: block; }
   font-family: inherit;
   font-size: 0.85rem;
 }
+
+.live-sync-status {
+  font-size: 0.78rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.live-sync-status.ok {
+  background: #d5f5e3;
+  color: #1e8449;
+}
+.live-sync-status.wait {
+  background: #fef9e7;
+  color: #b7950b;
+}
+
+
+/* Team member row: name | race | DOB | remove — one row */
+.team-member-row {
+  margin-bottom: 0.5rem;
+}
+.team-member-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 0.9fr) auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+.team-member-grid input,
+.team-member-grid select {
+  width: 100%;
+  min-width: 0;
+  font-size: 16px; /* reduces iOS zoom-on-focus */
+  padding: 0.5rem 0.4rem;
+  box-sizing: border-box;
+}
+.team-member-grid .team-member-remove {
+  min-width: 2.25rem;
+  height: 2.5rem;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+@media (max-width: 420px) {
+  .team-member-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 0.95fr) auto;
+    gap: 0.25rem;
+  }
+  .team-member-grid input,
+  .team-member-grid select {
+    font-size: 15px;
+    padding: 0.45rem 0.3rem;
+  }
+}
+
+
+/* Partnership pitch */
+.pitch-hero { background: linear-gradient(135deg,#0E2A44,#1B4F72); color:#fff; border-radius:16px; padding:1.5rem 1.35rem; margin-bottom:1.25rem; }
+.pitch-kicker { letter-spacing:.12em; text-transform:uppercase; font-size:.72rem; opacity:.85; margin:0 0 .5rem; }
+.pitch-hero h2 { margin:0 0 .6rem; font-size:1.45rem; line-height:1.25; }
+.pitch-hero p { margin:0; opacity:.95; }
+.pitch-glance { display:grid; grid-template-columns:repeat(4,1fr); gap:.6rem; margin:1rem 0 1.5rem; }
+.pitch-glance div { background:#f4f7fb; border:1px solid var(--border,#d5dde6); border-radius:12px; padding:.75rem; text-align:center; }
+.pitch-glance strong { display:block; color:#1B4F72; font-size:1.05rem; }
+.pitch-glance span { font-size:.78rem; color:#556; }
+.pitch-h { margin:1.4rem 0 .7rem; color:#1B4F72; }
+.pitch-grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; }
+.pitch-grid4 article { border:1px solid var(--border,#d5dde6); border-radius:12px; padding:.9rem; background:#fff; }
+.pitch-grid4 span { display:block; font-weight:700; color:#27AE60; margin-bottom:.35rem; }
+.pitch-grid4 h4 { margin:0 0 .35rem; }
+.pitch-grid4 p { margin:0; font-size:.88rem; color:#444; }
+.pitch-tiers { display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; }
+.ptier { border-radius:14px; padding:1rem; color:#fff; min-height:100%; }
+.ptier h4 { margin:0; letter-spacing:.04em; text-transform:uppercase; }
+.ptier-price { font-size:1.2rem; font-weight:700; margin:.35rem 0 .5rem; }
+.ptier p { margin:0; font-size:.82rem; line-height:1.4; opacity:.95; }
+.ptier.platinum { background:linear-gradient(160deg,#2c3e50,#1B4F72); }
+.ptier.gold { background:linear-gradient(160deg,#B7950B,#7D6608); }
+.ptier.silver { background:linear-gradient(160deg,#5D6D7E,#34495E); }
+.ptier.bronze { background:linear-gradient(160deg,#A04000,#6E2C00); }
+.pitch-cta .pitch-contact { margin: .75rem 0 1rem; }
+@media (max-width:900px) {
+  .pitch-glance, .pitch-grid4, .pitch-tiers { grid-template-columns:1fr 1fr; }
+}
+@media (max-width:560px) {
+  .pitch-glance, .pitch-grid4, .pitch-tiers { grid-template-columns:1fr; }
+}
+
+/* Hide verify/reject once payment is decided */
+.pay-status.pay-ok + .actions-cell .pay-verify,
+.pay-status.pay-ok + .actions-cell .pay-reject,
+.pay-status.pay-no + .actions-cell .pay-verify,
+.pay-status.pay-no + .actions-cell .pay-reject {
+  display: none !important;
+}
+
+.route-map-wrap { background:#fff; border:1px solid var(--border,#d5dde6); border-radius:16px; overflow:auto; margin-bottom:1.25rem; }
+.route-map { width:100%; height:auto; display:block; min-width:640px; }
+.route-steps { padding-left:1.15rem; }
+.route-steps li { margin:0.35rem 0; }
+
+.gis-map { height: min(72vh, 560px); width:100%; border-radius:14px; border:1px solid #1B4F72; z-index:1; }
+.gis-toolbar { display:flex; justify-content:space-between; gap:.75rem; flex-wrap:wrap; font-size:.82rem; margin:0 0 .4rem; }
+.kiosk-icon { background:#0b6bd3; color:#fff; border:2px solid #fff; border-radius:4px; width:28px; height:28px; text-align:center; line-height:24px; font-size:14px; box-shadow:0 1px 4px rgba(0,0,0,.4); }
+
+.course-embed { width:100%; height:min(85vh, 920px); min-height:640px; border:0; border-radius:14px; background:#eef4f8; }

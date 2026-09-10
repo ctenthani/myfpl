@@ -1,8 +1,8 @@
-/* BT42.195 km Race 2026 — Control Room data (from Project Planner) */
+/* BT42.195km Race 2026 — Control Room data (from Project Planner) */
 
 window.BT42_DATA = {
-  raceDate: '2026-09-19T06:30:00+02:00',
-  eventName: 'BT42.195 km Race 2026',
+  raceDate: '2026-09-27T06:30:00+02:00',
+  eventName: 'BT42.195km Race 2026',
   chair: 'Chifundo Tenthani',
   meetLink: 'https://meet.google.com/ixu-kyfn-pvc',
   chairOnlyNote: 'Chair-only Control Room. Do not share the PIN outside Organising Committee leadership.',
@@ -34,7 +34,7 @@ window.BT42_DATA = {
     { id: 'dl12', when: '2026-09-16', title: 'Prize-giving & results process ready', detail: 'Script, podium protocol, verification team briefed.', critical: false },
     { id: 'dl13', when: '2026-09-17', title: 'Pre-race briefing (on-site)', detail: 'Marshals, medical, media, start lists final.', critical: true },
     { id: 'dl14', when: '2026-09-18', title: 'Packet pickup / final checks', detail: 'Equipment, water, radios, weather contingency confirmed.', critical: true },
-    { id: 'dl15', when: '2026-09-19', title: 'RACE DAY', detail: 'Execute run sheet. Safety first. Document issues for debrief.', critical: true },
+    { id: 'dl15', when: '2026-09-27', title: 'RACE DAY', detail: 'Execute run sheet. Safety first. Document issues for debrief.', critical: true },
     { id: 'dl16', when: '2026-09-24', title: 'Post-race debrief', detail: 'Feedback, finance, sponsor reports, 2027 recommendations.', critical: true }
   ],
 
@@ -43,7 +43,7 @@ window.BT42_DATA = {
       meetingId: 1, date: '2026-08-13', title: 'Kick-off — Chair briefing notes',
       notes: [
         'Open by confirming your formal appointment with MNCS and thanking the room.',
-        'State the non-negotiables: safety/medical cover, clear route approvals, registration open by 18 Aug (race is 19 Sep).',
+        'State the non-negotiables: safety/medical cover, clear route approvals, registration open by 18 Aug (race is 27 Sep).',
         'Ask each lead to own one workstream: Technical, Medical, Logistics, Marketing, Sponsorship, Finance, Volunteers, Digital.',
         'Agree a single source of truth: this Control Room + one shared OC WhatsApp group.',
         'Decision needed today: registration platform (Netlify Forms + mobile money) and indicative fees.',
@@ -207,7 +207,7 @@ window.BT42_DATA = {
   ],
 
   meetings: [
-    { id: 1, date: '2026-08-13', time: '14:00–16:00', type: 'In-person / Hybrid', focus: 'Kick-off & Structure', agenda: ['Formal confirmation of Chair & OC roles', 'Review of previous edition learnings', 'Draft budget & prize structure', 'Route & date confirmation (19 Sep)', 'Sponsorship strategy & target list', 'Registration platform decision', 'Immediate action items & owners'], attendees: 'Chair, MNCS reps, Technical Lead, Marketing, Finance, Medical lead' },
+    { id: 1, date: '2026-08-13', time: '14:00–16:00', type: 'In-person / Hybrid', focus: 'Kick-off & Structure', agenda: ['Formal confirmation of Chair & OC roles', 'Review of previous edition learnings', 'Draft budget & prize structure', 'Route & date confirmation (27 Sep)', 'Sponsorship strategy & target list', 'Registration platform decision', 'Immediate action items & owners'], attendees: 'Chair, MNCS reps, Technical Lead, Marketing, Finance, Medical lead' },
     { id: 2, date: '2026-08-19', time: '14:00–15:30', type: 'Virtual or Hybrid', focus: 'Registration & Marketing Launch', agenda: ['Registration system live status', 'Marketing calendar & first campaign assets', 'Sponsor outreach progress report', 'Volunteer recruitment plan', 'Medical & safety preliminary plan', 'App / website review'], attendees: 'Full OC + digital/tech lead' },
     { id: 3, date: '2026-08-27', time: '14:00–16:00', type: 'In-person', focus: 'Sponsorship Deep Dive', agenda: ['Sponsor pipeline & signed letters of intent', 'Benefits packages finalisation', 'Prize money confirmation vs budget', 'Course & logistics detailed plan', 'Timing system & chip supplier', 'Risk register review'], attendees: 'Chair, Finance, Marketing, Technical, MNCS' },
     { id: 4, date: '2026-09-02', time: '14:00–15:30', type: 'Hybrid', focus: 'Operations Mid-Point', agenda: ['Registration numbers & marketing performance', 'Final course map & police/traffic plan', 'Medical deployment plan', 'Water stations & logistics', 'Bibs, medals, T-shirts production status', 'Packet pickup plan'], attendees: 'Full OC' },
@@ -232,24 +232,27 @@ window.BT42_DATA = {
   ],
 
   budget: {
+    currency: 'MWK',
+    note: 'Figures from 2026 BT42.195km Race budget worksheet (adapted for 27 Sep 2026). Tentative until Chair/Finance confirm.',
     expenditure: [
-      { cat: 'Prizes', item: 'Marathon overall + top 10 + veterans', est: 8000000 },
-      { cat: 'Prizes', item: '10 km & 5 km prizes', est: 2500000 },
-      { cat: 'Medals & Awards', item: 'Finisher medals + trophies', est: 3500000 },
-      { cat: 'Apparel', item: 'Race T-shirts / bibs', est: 4500000 },
-      { cat: 'Timing', item: 'Chip timing system & results', est: 2500000 },
-      { cat: 'Medical', item: 'Ambulances, medics, supplies', est: 3000000 },
-      { cat: 'Hydration & Logistics', item: 'Water, cups, stations, transport', est: 4000000 },
-      { cat: 'Course & Security', item: 'Marking, barriers, police support', est: 2000000 },
-      { cat: 'Marketing & Media', item: 'Design, ads, radio, content', est: 2500000 },
-      { cat: 'Digital (App/Web)', item: 'Development / hosting / SMS', est: 2500000 },
-      { cat: 'Operations', item: 'Volunteers, food, radios, misc', est: 2000000 },
-      { cat: 'Contingency (10–15%)', item: 'Unforeseen', est: 3500000 }
+      { cat: 'Protocol', item: 'Medals, ceremony, DC, supplies', est: 1246000 },
+      { cat: 'Marketing', item: 'Branding, media, T-shirts, streaming, PA, events', est: 13336986 },
+      { cat: 'Security', item: 'Police, vehicles, service charges', est: 2055000 },
+      { cat: 'Technical', item: 'Officials, water, route, equipment', est: 3227000 },
+      { cat: 'Transport', item: 'Fuel and drivers', est: 1511000 },
+      { cat: 'Volunteers (ops)', item: 'Fuel, facilitators, recruitment', est: 530000 },
+      { cat: 'Catering', item: 'Volunteers, VIP, athletes, water', est: 1550000 },
+      { cat: 'Medical', item: 'Personnel, equipment, toilets', est: 819000 },
+      { cat: 'AM Executive Officials', item: 'Travel / accommodation (TBC)', est: 0 },
+      { cat: 'Venue & permits', item: 'City clearance, Kamuzu Stadium, staff', est: 595000 },
+      { cat: 'Volunteer allowances', item: 'Race-day volunteer allowances', est: 2000000 },
+      { cat: 'Organising Committee', item: 'Meetings, airtime, tokens, postmortem', est: 8330000 },
+      { cat: 'Prize money', item: 'Main race, 10 km, 5 km, veterans', est: 18350000 }
     ],
     income: [
-      { item: 'Sponsorship (cash + valued in-kind)', target: 30000000 },
-      { item: 'Registration fees (net)', target: 8000000 },
-      { item: 'Other (grants, merchandise, etc.)', target: 2000000 }
+      { source: 'Sponsorship (target)', target: 40000000 },
+      { source: 'Entry fees (estimate)', target: 8000000 },
+      { source: 'Other / in-kind', target: 5550000 }
     ]
   },
 
@@ -272,18 +275,29 @@ window.BT42_DATA = {
   ],
 
   roles: [
-    { role: 'Chair of Organising Committee', name: 'Chifundo Tenthani', responsibilities: 'Overall leadership, MNCS liaison, sponsor high-level, final decisions' },
-    { role: 'Vice Chairperson', name: '', responsibilities: 'Support the Chair; stand in when Chair is unavailable; coordinate cross-workstreams and follow-up on actions' },
-    { role: 'Technical / Course Lead', name: '', responsibilities: 'Route, timing, course marking, results' },
-    { role: 'Medical Lead', name: '', responsibilities: 'Ambulances, first aid, medical protocol' },
-    { role: 'Protocol', name: '', responsibilities: 'Official programmes, guest/VIP hosting, ceremonies, seating, flags and formal event order' },
-    { role: 'Security', name: '', responsibilities: 'Crowd control, access points, coordination with police, venue and course security' },
-    { role: 'Catering', name: '', responsibilities: 'Officials/volunteer meals, athlete refreshments, hospitality for guests and sponsors' },
-    { role: 'Transport', name: '', responsibilities: 'Vehicle roster, athlete/official transfers, water/equipment logistics movements' },
-    { role: 'Marketing & Communications', name: '', responsibilities: 'Brand, social, media, content, app messaging' },
-    { role: 'Sponsorship Lead', name: '', responsibilities: 'Packages, outreach, contracts, activation' },
-    { role: 'Finance & Registration Admin', name: '', responsibilities: 'Budget, payments, registration data, reconciliation' },
-    { role: 'Volunteer Coordinator', name: '', responsibilities: 'Recruitment, briefing, race-day deployment' },
+    { role: 'Chair of Organising Committee', name: 'Chifundo Tenthani', responsibilities: 'Overall leadership, MNCS liaison, final decisions' },
+    { role: 'Vice Chairperson', name: 'Kenneth Dzekedzeke', responsibilities: 'Support Chair; stand in when unavailable; cross-workstream follow-up' },
+    { role: 'Coordinator', name: 'Ruth Mzengo', responsibilities: 'OC coordination and follow-through on actions' },
+    { role: 'Technical / Course Lead', name: 'Kenneth Dzekedzeke', responsibilities: 'Route, timing, course marking, results (with Francis Muthali)' },
+    { role: 'Technical member', name: 'Francis Muthali', responsibilities: 'Support Technical Chair on course and race operations' },
+    { role: 'Transport Lead', name: 'Charity Kayauni', responsibilities: 'Vehicle roster, transfers, fuel logistics (with Chiumia Limbikani)' },
+    { role: 'Transport member', name: 'Chiumia Limbikani', responsibilities: 'Support transport operations' },
+    { role: 'Protocol Lead', name: 'Ireen Luka', responsibilities: 'Ceremonies, VIP/guest hosting, programmes (with Chiletso Chigwenembe, Susan)' },
+    { role: 'Protocol member', name: 'Chiletso Chigwenembe', responsibilities: 'Support protocol and ceremonies' },
+    { role: 'Marketing & Publicity Lead', name: 'Mzee Makawa', responsibilities: 'Brand, media, content (with Edgar Ntulumbwa, Faith Mlauzi, Limbani Matola)' },
+    { role: 'Marketing member', name: 'Edgar Ntulumbwa', responsibilities: 'Publicity and media support' },
+    { role: 'Marketing member', name: 'Faith Mlauzi', responsibilities: 'Publicity and media support' },
+    { role: 'Marketing member', name: 'Limbani Matola', responsibilities: 'Publicity; medals liaison' },
+    { role: 'Medical Lead', name: 'Isaac Chapweteka', responsibilities: 'Medical protocol, ambulances, first aid' },
+    { role: 'Security Lead', name: 'George Luhanga', responsibilities: 'Crowd control, police liaison, course security (with Theresiwe Hara)' },
+    { role: 'Security member', name: 'Theresiwe Hara', responsibilities: 'Support security operations' },
+    { role: 'Catering Lead', name: 'Charity Chirwa', responsibilities: 'Officials/volunteer meals, athlete refreshments, hospitality' },
+    { role: 'Volunteer Coordinator', name: 'Gracian Mkandawire', responsibilities: 'Recruitment, briefing, race-day deployment' },
+    { role: 'Secretariat', name: 'Jessie Ganizan', responsibilities: 'OC administration and documentation' },
+    { role: 'Secretariat', name: 'Nicholas Kanyenda', responsibilities: 'OC administration and documentation' },
+    { role: 'Finance & Registration', name: 'Ardron Msowoya', responsibilities: 'Budget, payments, registration data' },
+    { role: 'Finance & Registration', name: 'Bertha Limbani', responsibilities: 'Budget, payments, registration support' },
+    { role: 'Finance & Registration', name: 'Chisomo Massa', responsibilities: 'Registration and finance support' },
     { role: 'MNCS Link / Official', name: '', responsibilities: 'Institutional support, approvals, continuity' },
     { role: 'Digital / App Lead', name: '', responsibilities: 'Website, app, live updates, results publishing' }
   ],
