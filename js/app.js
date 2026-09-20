@@ -390,6 +390,8 @@ function updatePlanUI() {
 
   const ownNav = $("ownerNavBtn");
   if (ownNav) ownNav.classList.toggle("hidden", !isOwnerSession());
+  const om = $("ownerMoreBtn");
+  if (om) om.classList.toggle("hidden", !isOwnerSession());
   const hideTrial = isPaidMember() || isOwnerSession() || isFreePeriod();
   ["settingsStartTrialBtn", "startTrialPro", "startTrialUltra"].forEach(id => {
     const el = $(id);
@@ -1918,6 +1920,7 @@ function renderPitch() {
     });
   });
   paintSubHighlights();
+  try { renderWeeklyStrip(); } catch (_) {}
 }
 
 function populateTeamFilter() {
@@ -2154,6 +2157,25 @@ function populateClubFilter() {
   });
 }
 
+function transferWhyLine(sug) {
+  if (!sug || !sug.moves || !sug.moves.length) {
+    return "Hold — no upgrade beats doing nothing under your style and bank.";
+  }
+  const m = sug.moves[0];
+  const bits = [];
+  bits.push(m.out.web_name + " → " + m.inn.web_name);
+  const ownIn = Number(m.inn.selected_by_percent) || 0;
+  const ownOut = Number(m.out.selected_by_percent) || 0;
+  if (ownIn + 8 < ownOut) bits.push("lower owned than the player leaving");
+  else if (ownIn > 25) bits.push("template-friendly");
+  const fixt = (typeof playerFixtureChip === "function") ? playerFixtureChip(m.inn, planningGw()) : "";
+  if (fixt) bits.push("fixture " + fixt);
+  if (sug.gain != null) bits.push("model +" + sug.gain.toFixed(1) + " vs hold");
+  const st = (typeof transferStyle === "function") ? transferStyle() : "optimised";
+  bits.push(st + " style");
+  return bits.join(" · ") + ". Suggestions only — confirm on official FPL.";
+}
+
 function showTransferResults(res) {
   const box = $("transferResults");
   if (!box) return;
@@ -2177,6 +2199,7 @@ function showTransferResults(res) {
         <div>
           <h3 style="margin:0 0 4px">AI recommendations</h3>
           <p class="muted" style="margin:0;font-size:0.8rem">Best ${res.targetN}-transfer package · ${hzLabel} horizon · squad XP ≈ ${res.currentXp.toFixed(1)}</p>
+          <p class="tr-why">${transferWhyLine(res.suggestions[0])}</p>
         </div>
       </div>
       ${ftLabel}
@@ -4081,12 +4104,33 @@ async function renderRankLeagueTable(myTeamId, entry) {
 }
 
 // Nav
-document.querySelectorAll(".nav-btn").forEach(btn => {
+function goView(view) {
+  const btn = document.querySelector('.nav-btn[data-view="' + view + '"]');
+  if (btn) btn.click();
+}
+const moreBtn = $("moreNavBtn");
+const moreSheet = $("moreSheet");
+if (moreBtn && moreSheet) {
+  moreBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    moreSheet.classList.toggle("hidden");
+  });
+  moreSheet.querySelectorAll(".more-link").forEach(b => {
+    b.addEventListener("click", () => {
+      moreSheet.classList.add("hidden");
+      goView(b.dataset.view);
+    });
+  });
+}
+
+document.querySelectorAll(".nav-btn[data-view]").forEach(btn => {
   btn.addEventListener("click", () => {
+    if (moreSheet) moreSheet.classList.add("hidden");
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
     btn.classList.add("active");
-    $("view-" + btn.dataset.view).classList.add("active");
+    const pane = $("view-" + btn.dataset.view);
+    if (pane) pane.classList.add("active");
     if (btn.dataset.view === "transfers") renderTransfersUI();
     if (btn.dataset.view === "teams") { /* wait for button */ }
     if (btn.dataset.view === "matchday") renderMatchday();
@@ -4603,3 +4647,59 @@ window.addEventListener("error", (ev) => {
   try { setStatus("JS error: " + (ev.message || ev.error)); } catch(_) {}
 });
 init();
+
+
+function renderWeeklyStrip() {
+  const title = $("wsTitle");
+  if (!title) return;
+  const gw = planningGw();
+  if (!squad || squad.length < 11) {
+    title.textContent = "Enter a Team ID, then Refresh";
+    $("wsWhy").textContent = "Suggestions only. You still enter picks on official FPL.";
+    $("wsTransfer").textContent = "Transfer: —";
+    $("wsCap").textContent = "Captain: —";
+    $("wsChip").textContent = "Chip: none";
+    return;
+  }
+  let sug = null;
+  try {
+    const res = findTransfers(1, 0, null);
+    sug = res && res.suggestions && res.suggestions[0];
+    if (sug && (sug.gain == null || sug.gain < 0.35 || !sug.moves.length)) sug = null;
+  } catch (_) { sug = null; }
+  const cap = squad.find(p => p.id === captainId) || squad.filter(p => startingIds.includes(p.id)).sort((a,b)=>xpOf(b)-xpOf(a))[0];
+  let chipTxt = "Chip: none";
+  try {
+    const s = typeof suggestedChipsThisGw === "function" ? suggestedChipsThisGw() : null;
+    if (s && s.chips && s.chips.length) chipTxt = "Chip: " + s.chips.map(c => c.name).join(" / ");
+  } catch (_) {}
+  window.__weekSug = sug;
+  if (!sug) {
+    title.textContent = "GW " + gw + " · Hold";
+    $("wsWhy").textContent = "No transfer beats holding under your style and bank. Suggestions only — confirm on official FPL.";
+    $("wsTransfer").textContent = "Transfer: hold";
+  } else {
+    const m = sug.moves[0];
+    title.textContent = "GW " + gw + " · " + m.out.web_name + " → " + m.inn.web_name;
+    $("wsWhy").textContent = transferWhyLine(sug);
+    $("wsTransfer").textContent = "Transfer: " + m.out.web_name + " → " + m.inn.web_name + (sug.moves.length > 1 ? " +" + (sug.moves.length-1) : "");
+  }
+  $("wsCap").textContent = "Captain: " + (cap ? cap.web_name : "—");
+  $("wsChip").textContent = chipTxt;
+}
+
+on("wsHoldBtn", "click", () => {
+  window.__weekSug = null;
+  setStatus("Hold this week — no local transfer applied");
+  const why = $("wsWhy");
+  if (why) why.textContent = "Hold selected. Suggestions only — confirm on official FPL.";
+});
+on("wsApplyBtn", "click", () => {
+  const sug = window.__weekSug;
+  if (!sug) { setStatus("Nothing to apply — hold"); return; }
+  if (typeof applyTransferSuggestion === "function") {
+    applyTransferSuggestion(sug);
+    if (typeof logTransferEvent === "function") logTransferEvent("applied", sug, "weekly strip");
+  }
+  renderWeeklyStrip();
+});

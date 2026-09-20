@@ -62,15 +62,24 @@
 
   <nav class="main-nav">
     <button class="nav-btn active" data-view="pick">Pick</button>
-    <button class="nav-btn" data-view="transfers">AI Transfers</button>
-    <button class="nav-btn" data-view="teams">AI Teams</button>
-    <button class="nav-btn" data-view="matchday">Matchday</button>
-    <button class="nav-btn" data-view="rank">Live Rank</button>
-    <button class="nav-btn" data-view="chips">Chips</button>
-    <button class="nav-btn" data-view="terms">Terms</button>
-    <button class="nav-btn" data-view="settings">Settings</button>
-    <button class="nav-btn hidden" data-view="owner" id="ownerNavBtn">Owner</button>
+    <button class="nav-btn" data-view="transfers">Transfers</button>
+    <button class="nav-btn" data-view="rank">Live</button>
+    <button class="nav-btn" type="button" id="moreNavBtn">More</button>
+    <button class="nav-btn nav-extra" data-view="teams">AI Teams</button>
+    <button class="nav-btn nav-extra" data-view="matchday">Matchday</button>
+    <button class="nav-btn nav-extra" data-view="chips">Chips</button>
+    <button class="nav-btn nav-extra" data-view="settings">Settings</button>
+    <button class="nav-btn nav-extra" data-view="terms">Terms</button>
+    <button class="nav-btn nav-extra hidden" data-view="owner" id="ownerNavBtn">Owner</button>
   </nav>
+  <div id="moreSheet" class="more-sheet hidden">
+    <button type="button" class="more-link" data-view="teams">AI Teams</button>
+    <button type="button" class="more-link" data-view="matchday">Matchday</button>
+    <button type="button" class="more-link" data-view="chips">Chips</button>
+    <button type="button" class="more-link" data-view="settings">Settings</button>
+    <button type="button" class="more-link" data-view="terms">Terms</button>
+    <button type="button" class="more-link hidden" data-view="owner" id="ownerMoreBtn">Owner</button>
+  </div>
 
   <div class="status-line" id="statusBar">Loading FPL data…</div>
   <div class="edit-banner hidden" id="editBanner">
@@ -83,6 +92,24 @@
   <div id="view-pick" class="view active">
     <div class="layout">
       <section class="pitch-area">
+        <div id="weeklyStrip" class="weekly-strip">
+          <div class="ws-row">
+            <div>
+              <div class="ws-kicker">This week</div>
+              <div class="ws-title" id="wsTitle">Load a Team ID to plan GW</div>
+              <p class="ws-why" id="wsWhy">Suggestions only. You still enter picks on official FPL.</p>
+            </div>
+            <div class="ws-actions">
+              <button type="button" class="btn btn-blue" id="wsApplyBtn">Apply suggestion</button>
+              <button type="button" class="btn btn-outline" id="wsHoldBtn">Hold</button>
+            </div>
+          </div>
+          <div class="ws-pills">
+            <span class="ws-pill" id="wsTransfer">Transfer: —</span>
+            <span class="ws-pill" id="wsCap">Captain: —</span>
+            <span class="ws-pill" id="wsChip">Chip: none</span>
+          </div>
+        </div>
         <div class="horizon-toggle">
           <button class="hz active" data-hz="1">Next GW</button>
           <button class="hz" data-hz="3">Next 3 GWs</button>

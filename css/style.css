@@ -1396,3 +1396,22 @@ body.hide-promo .upgrade-card { display: none !important; }
 
 .focus-label{font-size:.8rem;display:flex;align-items:center;gap:6px}
 .focus-label select{max-width:200px}
+
+.weekly-strip { background:#0f172a; color:#e2e8f0; border-radius:14px; padding:12px 14px; margin-bottom:10px; }
+.ws-row { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+.ws-kicker { font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:#94a3b8; }
+.ws-title { font-weight:800; font-size:1.05rem; margin:2px 0 6px; }
+.ws-why { margin:0; font-size:.8rem; color:#cbd5e1; max-width:52rem; }
+.ws-pills { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.ws-pill { background:#1e293b; border-radius:999px; padding:4px 10px; font-size:.75rem; }
+.tr-why { margin:8px 0 0; font-size:.85rem; color:#334155; }
+.more-sheet { position:sticky; top:0; z-index:40; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; flex-wrap:wrap; gap:8px; padding:8px 12px; }
+.more-sheet.hidden { display:none; }
+.more-link { border:1px solid #e2e8f0; background:#f8fafc; border-radius:999px; padding:6px 12px; font-size:.85rem; }
+@media (max-width: 800px) {
+  .nav-extra { display:none !important; }
+}
+@media (min-width: 801px) {
+  #moreNavBtn { display:none; }
+  .more-sheet { display:none !important; }
+}
