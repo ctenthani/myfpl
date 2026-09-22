@@ -14,6 +14,9 @@ const emptyState = () => ({
   attendance: {},
   signatures: {},
   staffUsers: [],
+  volunteers: [],
+  approvals: [],
+  surveyResponses: [],
   siteContent: null,
   suppressedKeys: [],
   updatedAt: null,
@@ -107,6 +110,17 @@ async function blobsWrite(state) {
     store = getStore({ name: STORE_NAME, consistency: 'strong' });
   }
   await store.setJSON(STATE_KEY, state);
+  if (state && state.signatures && typeof state.signatures === 'object') {
+    const slim = {};
+    ['kalua', 'chamwala', 'tenthani', 'chinangwa'].forEach((k) => {
+      if (typeof state.signatures[k] === 'string' && state.signatures[k].indexOf('data:image') === 0) {
+        slim[k] = state.signatures[k];
+      }
+    });
+    if (Object.keys(slim).length) {
+      await store.setJSON('signatures', slim);
+    }
+  }
 }
 
 function jsonbinConfigured() {
@@ -259,8 +273,20 @@ function mergeRegistrationLists(primary, secondary) {
   (primary || []).forEach((r) => map.set(keyOf(r), r));
   (secondary || []).forEach((r) => {
     const k = keyOf(r);
-    if (!map.has(k)) map.set(k, r);
-    else map.set(k, Object.assign({}, r, map.get(k))); // prefer primary fields
+    if (map.has(k)) {
+      map.set(k, Object.assign({}, r, map.get(k)));
+      return;
+    }
+    const phone = String(r.phone || '').replace(/\s+/g, '').toLowerCase();
+    const formName = String(r.fullName || '').trim().toLowerCase();
+    const alreadyCorrected = Array.from(map.values()).some((p) => {
+      const pPhone = String(p.phone || '').replace(/\s+/g, '').toLowerCase();
+      if (!phone || pPhone !== phone) return false;
+      const prev = String(p.previousFullName || '').trim().toLowerCase();
+      return prev && prev === formName;
+    });
+    if (alreadyCorrected) return;
+    map.set(k, r);
   });
   return Array.from(map.values()).sort((a, b) =>
     String(b.submittedAt || '').localeCompare(String(a.submittedAt || ''))
@@ -384,6 +410,51 @@ function mergeState(current, body, role) {
     }
     next.siteContent = body.siteContent;
   }
+  if (body.approvals && Array.isArray(body.approvals)) {
+    if (role !== 'chair') {
+      const e = new Error('Only Chair can replace the approvals register');
+      e.statusCode = 403;
+      throw e;
+    }
+    next.approvals = body.approvals;
+  }
+  if (body.newApprovals && Array.isArray(body.newApprovals) && body.newApprovals.length) {
+    const cur = Array.isArray(next.approvals) ? next.approvals.slice() : [];
+    const ids = new Set(cur.map((r) => r && r.id));
+    body.newApprovals.forEach((r) => {
+      if (!r || !r.id || ids.has(r.id)) return;
+      const copy = Object.assign({}, r, { status: 'pending' });
+      cur.unshift(copy);
+      ids.add(r.id);
+    });
+    next.approvals = cur;
+  }
+  if (body.volunteers && Array.isArray(body.volunteers)) {
+    if (body.replaceVolunteers) {
+      next.volunteers = body.volunteers;
+    } else {
+      const rank = (v) => {
+        const s = String((v && v.status) || 'applied');
+        if (s === 'served' || v && v.certIssued) return 4;
+        if (s === 'selected') return 3;
+        if (s === 'declined') return 2;
+        return 1;
+      };
+      const keyOf = (v) => String((v && (v.id || v.email || v.fullName)) || '').trim().toLowerCase();
+      const map = new Map();
+      (current.volunteers || []).forEach((v) => {
+        const k = keyOf(v);
+        if (k) map.set(k, v);
+      });
+      body.volunteers.forEach((v) => {
+        const k = keyOf(v);
+        if (!k) return;
+        const cur = map.get(k);
+        if (!cur || rank(v) >= rank(cur)) map.set(k, Object.assign({}, cur || {}, v));
+      });
+      next.volunteers = Array.from(map.values());
+    }
+  }
   if (body.staffUsers && Array.isArray(body.staffUsers)) {
     if (role !== 'chair') {
       const e = new Error('Only Chair can update staff users');
@@ -411,10 +482,8 @@ function mergeState(current, body, role) {
     };
   }
   if (Array.isArray(body.suppressedKeys)) {
-    if (role !== 'chair') {
-      const e = new Error('Only Chair can update suppressed keys');
-      e.status = 403;
-      throw e;
+    if (role !== 'chair' && !(body.replaceRegistrations && body.registrations)) {
+      // Ops may append suppress keys when correcting a name; cannot wipe the list
     }
     const set = new Set([...(current.suppressedKeys || []), ...body.suppressedKeys]);
     if (body.replaceSuppressed) {
@@ -510,10 +579,19 @@ exports.handler = async (event) => {
       try {
         next = mergeState(current, body, role);
       } catch (e) {
-        return json(e.status || 400, { ok: false, error: e.message });
+        return json(e.status || e.statusCode || 400, { ok: false, error: e.message });
       }
       const backend = await writeState(next);
-      return json(200, { ok: true, backend, state: next });
+      const publicState = Object.assign({}, next);
+      if (role !== 'chair' && publicState.signatures) {
+        publicState.signatures = {
+          kalua: !!(next.signatures && next.signatures.kalua && String(next.signatures.kalua).indexOf('data:image') === 0),
+          chamwala: !!(next.signatures && next.signatures.chamwala && String(next.signatures.chamwala).indexOf('data:image') === 0),
+          tenthani: !!(next.signatures && next.signatures.tenthani && String(next.signatures.tenthani).indexOf('data:image') === 0),
+          _presentOnly: true
+        };
+      }
+      return json(200, { ok: true, backend, state: publicState, signaturesStored: !!(next.signatures && (next.signatures.kalua || next.signatures.chamwala || next.signatures.tenthani)) });
     }
 
     return json(405, { ok: false, error: 'Method Not Allowed' });

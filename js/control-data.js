@@ -1,7 +1,7 @@
 /* BT42.195km Race 2026 — Control Room data (from Project Planner) */
 
 window.BT42_DATA = {
-  raceDate: '2026-09-27T06:30:00+02:00',
+  raceDate: '2026-09-27T06:00:00+02:00',
   eventName: 'BT42.195km Race 2026',
   chair: 'Chifundo Tenthani',
   meetLink: 'https://meet.google.com/ixu-kyfn-pvc',
@@ -257,20 +257,20 @@ window.BT42_DATA = {
   },
 
   runsheet: [
-    { time: '04:30', activity: 'Core team arrive, set-up begins', location: 'Kamuzu Stadium', lead: 'Logistics + Technical' },
-    { time: '05:00', activity: 'Water stations & course marking teams deploy', location: 'Full course', lead: 'Technical / Logistics' },
-    { time: '05:30', activity: 'Medical team & ambulances in position', location: 'Key points + stadium', lead: 'Medical Lead' },
-    { time: '05:45', activity: 'Volunteer marshals briefing', location: 'Stadium', lead: 'Volunteer Coord' },
-    { time: '06:00', activity: 'Packet pickup / late registration closes', location: 'Stadium registration area', lead: 'Registration Lead' },
-    { time: '06:15', activity: 'Elite / seeded athletes call room', location: 'Near start', lead: 'Technical' },
-    { time: '06:30', activity: 'Marathon start (target)', location: 'Start line', lead: 'Starter / Technical' },
-    { time: '06:45–07:00', activity: '10 km start (staggered)', location: 'Start line', lead: 'Starter' },
-    { time: '07:15–07:30', activity: '5 km Fun Run start', location: 'Start line', lead: 'Starter' },
-    { time: '07:30 onwards', activity: 'Live updates, lead vehicle, media', location: 'Course', lead: 'Marketing / Technical' },
-    { time: '~08:45–09:30', activity: 'First marathon finishers expected', location: 'Finish line', lead: 'Timing + Announcer' },
+    { time: '04:00', activity: 'Core team arrive, set-up begins', location: 'Kamuzu Stadium', lead: 'Logistics + Technical' },
+    { time: '04:30', activity: 'Water stations & course marking teams deploy', location: 'Full course', lead: 'Technical / Logistics' },
+    { time: '05:00', activity: 'Medical team & ambulances in position', location: 'Key points + stadium', lead: 'Medical Lead' },
+    { time: '05:15', activity: 'Volunteer marshals briefing', location: 'Stadium', lead: 'Volunteer Coord' },
+    { time: '05:30', activity: 'Packet pickup / late registration closes', location: 'Stadium registration area', lead: 'Registration Lead' },
+    { time: '05:45', activity: 'Elite / seeded athletes call room', location: 'Near start', lead: 'Technical' },
+    { time: '06:00', activity: '42.195 km main race start', location: 'Start line', lead: 'Starter / Technical' },
+    { time: '06:10', activity: '10 km start', location: 'Start line', lead: 'Starter' },
+    { time: '06:20', activity: '5 km Fun Run start', location: 'Start line', lead: 'Starter' },
+    { time: '07:00 onwards', activity: 'Live updates, lead vehicle, media', location: 'Course', lead: 'Marketing / Technical' },
+    { time: '~08:15–09:00', activity: 'First marathon finishers expected', location: 'Finish line', lead: 'Timing + Announcer' },
     { time: 'Ongoing', activity: '5 km & 10 km finishers, medals, recovery', location: 'Finish area', lead: 'Logistics + Medical' },
-    { time: '10:30–11:30', activity: 'Prize-giving ceremony', location: 'Stadium podium / stage', lead: 'Chair + MC' },
-    { time: '12:00', activity: 'Course clear & equipment recovery begins', location: 'Full course', lead: 'Logistics' },
+    { time: '10:00–11:00', activity: 'Prize-giving ceremony', location: 'Stadium podium / stage', lead: 'Chair + MC' },
+    { time: '12:00', activity: 'Feedback survey opens · course clear & equipment recovery', location: 'Full course / online', lead: 'Logistics + Chair' },
     { time: '13:00+', activity: 'Core team debrief hot-wash (quick)', location: 'Stadium', lead: 'Chair' }
   ],
 

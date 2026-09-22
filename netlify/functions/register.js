@@ -3,6 +3,16 @@
  * POST /.netlify/functions/register
  */
 
+function isValidRaceEmail(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}$/.test(s)) return false;
+  if (s.indexOf('..') >= 0) return false;
+  const bad = ['gamil.com','gmial.com','gnail.com','gmal.com','gmail.co','gmail.con','gmail.cm','yahooo.com','yaho.com','hotmial.com'];
+  const domain = s.split('@')[1] || '';
+  if (bad.indexOf(domain) >= 0) return false;
+  return true;
+}
+
 const STORE_NAME = 'bt42-oc-sync';
 const STATE_KEY = 'state';
 
@@ -197,7 +207,7 @@ async function writeState(state) {
 
 async function sendConfirmationEmail(reg) {
   const to = (reg.email || '').trim();
-  if (!to) return;
+  if (!to || !isValidRaceEmail(to)) return;
   const apiKey = process.env.EMAIL_API_KEY || process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM || 'BT42.195km Race <onboarding@resend.dev>';
   if (!apiKey) return;
@@ -222,7 +232,7 @@ async function sendConfirmationEmail(reg) {
 ${roster}${fee}${pop}
 <p>Your place is confirmed once payment is received:</p>
 <ul>
-<li>Bank transfer to account <strong>782637</strong></li>
+<li>Bank transfer to National Bank of Malawi account <strong>782637</strong></li>
 <li>Reference: <strong>your full name + mobile number</strong> (one transfer can cover a whole team)</li>
 </ul>
 <p>You will receive <strong>one email per stage</strong> (payment verified, bibs) for the whole team. Certificates are issued per athlete after the race.</p>
@@ -344,8 +354,8 @@ exports.handler = async (event) => {
   if (!body.distance && !hasTeamDetails) {
     return json(400, { ok: false, error: 'phone and distance are required' });
   }
-  if (!(body.email && String(body.email).trim() && String(body.email).indexOf('@') > 0)) {
-    return json(400, { ok: false, error: 'Email is required so entrants receive confirmation, bib and certificate emails' });
+  if (!isValidRaceEmail(body.email)) {
+    return json(400, { ok: false, error: 'Enter a valid email address (for example name@gmail.com). Race emails will not send to a mistyped inbox.' });
   }
   if (body.regType !== 'team') {
     const nm = String(body.fullName || '').trim();
@@ -437,6 +447,11 @@ exports.handler = async (event) => {
 
     // One confirmation email (team = full roster in a single message)
     try {
+      const mailKey = String(body.email || '').trim().toLowerCase() + '|' + String(body.fullName || body.teamName || '').trim().toLowerCase();
+      const sent = Array.isArray(state.confirmationSent) ? state.confirmationSent : [];
+      if (sent.includes(mailKey)) {
+        // already mailed this entry
+      } else {
       await sendConfirmationEmail({
         fullName: isTeam
           ? (body.teamName ? String(body.teamName) + ' (team contact)' : 'Team contact')
@@ -450,6 +465,10 @@ exports.handler = async (event) => {
           name: r.fullName, distance: r.distance, feeMwk: r.feeMwk
         }))) : null
       });
+      sent.push(mailKey);
+      state.confirmationSent = sent.slice(-400);
+      try { await writeState(state); } catch (e2) {}
+      }
     } catch (e) {}
 
     return json(200, {

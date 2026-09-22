@@ -8,54 +8,57 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Inter', sans-serif; background: #f8f9fa; color: #2c3e50; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font-family: 'Inter', sans-serif; background: #f8f9fa; color: #2c3e50; display: flex; flex-direction: column; }
   .header {
-    background: linear-gradient(135deg, #1a5276 0%, #2980b9 50%, #3498db 100%);
-    color: white; padding: 24px 32px; text-align: center;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    background: linear-gradient(135deg, #1a5276 0%, #2980b9 100%);
+    color: white; padding: 8px 14px; text-align: left;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
   }
-  .header h1 { font-size: 28px; font-weight: 800; margin-bottom: 6px; text-shadow: 1px 1px 3px rgba(0,0,0,0.3); }
-  .header .subtitle { font-size: 14px; font-weight: 400; opacity: 0.9; }
+  .header h1 { font-size: 16px; font-weight: 800; margin: 0; }
+  .header .subtitle { font-size: 12px; font-weight: 400; opacity: 0.92; }
   .header .distance-badge {
     display: inline-block; background: rgba(255,255,255,0.2);
-    border: 2px solid rgba(255,255,255,0.6); border-radius: 20px;
-    padding: 4px 16px; font-size: 15px; font-weight: 700; margin-top: 10px;
+    border: 1px solid rgba(255,255,255,0.55); border-radius: 16px;
+    padding: 3px 10px; font-size: 12px; font-weight: 700;
   }
-  .map-container { position: relative; width: 100%; height: 65vh; min-height: 400px; }
+  .board { flex: 1; display: grid; grid-template-columns: 1fr 280px; min-height: 0; }
+  .map-container { position: relative; width: 100%; height: auto; min-height: 0; }
   #map { width: 100%; height: 100%; }
   .info-panel {
-    background: white; border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.08); margin: 16px; padding: 20px;
+    background: white; border-radius: 0;
+    box-shadow: none; margin: 0; padding: 10px 12px;
+    overflow: auto; border-left: 1px solid #d6e3ec;
   }
-  .info-panel h2 { font-size: 18px; font-weight: 700; margin-bottom: 12px; color: #1a5276; }
+  .info-panel h2 { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #1a5276; }
   .water-points-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;
+    display: grid; grid-template-columns: 1fr; gap: 6px;
   }
   .water-point-card {
     background: linear-gradient(135deg, #eaf4fc 0%, #d6eaf8 100%);
     border-left: 4px solid #2980b9; border-radius: 8px;
-    padding: 14px; transition: transform 0.2s; cursor: pointer;
+    padding: 8px 10px; transition: transform 0.2s; cursor: pointer;
   }
   .water-point-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-  .water-point-card .wp-name { font-weight: 700; font-size: 15px; color: #1a5276; }
-  .water-point-card .wp-km { font-size: 13px; color: #5d6d7e; margin-top: 4px; }
-  .water-point-card .wp-icon { font-size: 22px; margin-right: 8px; }
-  .runner-notice { margin: 16px 16px 0; padding: 14px 18px; border-radius: 10px; background: #fff8e1; border-left: 5px solid #f39c12; color: #784c00; font-size: 14px; font-weight: 600; }
+  .water-point-card .wp-name { font-weight: 700; font-size: 13px; color: #1a5276; }
+  .water-point-card .wp-km { font-size: 11px; color: #5d6d7e; margin-top: 2px; }
+  .water-point-card .wp-icon { font-size: 16px; margin-right: 6px; }
+  .runner-notice { margin: 0; padding: 8px 10px; border-radius: 8px; background: #fff8e1; border-left: 4px solid #f39c12; color: #784c00; font-size: 11px; font-weight: 600; }
   .water-kiosk-marker { position: relative; width: 42px; height: 46px; }
   .water-kiosk-roof { position: absolute; left: 2px; top: 0; width: 38px; height: 12px; background: #f39c12; border: 3px solid white; border-radius: 6px 6px 1px 1px; box-shadow: 0 2px 7px rgba(0,0,0,.28); }
   .water-kiosk-body { position: absolute; left: 6px; top: 11px; width: 30px; height: 31px; display: flex; align-items: center; justify-content: center; background: #087f8c; color: white; font-size: 17px; font-weight: 800; border: 3px solid white; border-radius: 2px 2px 5px 5px; box-shadow: 0 3px 9px rgba(0,0,0,.3); }
   .water-label { font: 700 12px 'Inter', sans-serif; color: #074f57; }
-  .legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 0; align-items: center; }
-  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .legend { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; }
   .legend-line { width: 30px; height: 4px; border-radius: 2px; }
   .legend-circle { width: 14px; height: 14px; border-radius: 50%; border: 2px solid; }
   .controls {
     position: absolute; top: 12px; right: 12px; z-index: 1000;
     display: flex; flex-direction: column; gap: 6px;
   }
-  .lap-toolbar { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 10px 12px; background: #edf6fb; border-bottom: 1px solid #c8dce8; }
-  .lap-toolbar span { font-size: 13px; font-weight: 700; color: #1a5276; margin-right: 4px; }
-  .lap-btn { border: 1px solid #2980b9; background: white; color: #1a5276; border-radius: 18px; padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .lap-toolbar { display: flex; justify-content: flex-start; align-items: center; gap: 6px; padding: 6px 10px; background: #edf6fb; border-bottom: 1px solid #c8dce8; flex-wrap: wrap; }
+  .lap-toolbar span { font-size: 11px; font-weight: 700; color: #1a5276; margin-right: 4px; }
+  .lap-btn { border: 1px solid #2980b9; background: white; color: #1a5276; border-radius: 18px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
   .lap-btn.active { background: #2980b9; color: white; box-shadow: 0 2px 7px rgba(41,128,185,.28); }
   .ctrl-btn {
     background: white; border: none; border-radius: 8px;
@@ -65,11 +68,11 @@
   .ctrl-btn:hover { background: #ecf0f1; transform: scale(1.05); }
   .ctrl-btn.active { background: #2980b9; color: white; }
   .route-stats {
-    display: flex; justify-content: space-around; padding: 12px 0;
-    border-top: 1px solid #ecf0f1; margin-top: 12px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 0 0;
+    border-top: 1px solid #ecf0f1; margin-top: 8px;
   }
   .stat { text-align: center; }
-  .stat .stat-value { font-size: 20px; font-weight: 800; color: #1a5276; }
+  .stat .stat-value { font-size: 15px; font-weight: 800; color: #1a5276; }
   .stat .stat-label { font-size: 11px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
   .leaflet-popup-content-wrapper { border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
   .leaflet-popup-content { margin: 12px 16px; font-family: 'Inter', sans-serif; }
@@ -79,18 +82,40 @@
     .header { padding: 12px; } .header h1 { font-size: 20px; }
     .info-panel { box-shadow: none; border: 1px solid #ddd; } .controls { display: none; }
   }
-  @media (max-width: 600px) {
-    .header h1 { font-size: 20px; } .map-container { height: 55vh; }
+  @media (max-width: 800px) {
+    html, body { overflow: hidden; height: 100%; height: 100dvh; }
+    .header { display:flex; padding:8px 10px; }
+    .lap-toolbar { padding: 6px 8px; }
+    .board {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      height: 100dvh;
+    }
+    .map-container {
+      flex: 1 1 auto;
+      height: 62vh !important;
+      min-height: 320px;
+    }
+    #map { min-height: 320px; }
+    .info-panel {
+      flex: 0 0 auto;
+      max-height: 28vh;
+      border-left: 0;
+      border-top: 1px solid #c8dce8;
+    }
     .water-points-grid { grid-template-columns: 1fr 1fr; }
+    .legend { flex-direction: row; flex-wrap: wrap; }
+    .route-stats { display: none; }
   }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>🏃 BT42.195km Race 2026 Route</h1>
-  <div class="subtitle">Blantyre, Malawi • Three-lap athlete route with stadium finish</div>
-  <div class="distance-badge">📏 Official race distance: 42.195 km</div>
+  <a href="index.html#home" style="color:#fff;text-decoration:none;font-weight:700;font-size:13px">← Site</a>
+  <h1>BT42.195km Race route</h1>
+  <div class="distance-badge">42.195 km</div>
 </div>
 
 <div class="lap-toolbar" aria-label="Select race lap">
@@ -100,6 +125,7 @@
   <button class="lap-btn" id="lapBtn3" onclick="setLap(3)">Lap 3 + Finish</button>
 </div>
 
+<div class="board">
 <div class="map-container">
   <div id="map"></div>
   <div class="controls">
@@ -109,10 +135,9 @@
   </div>
 </div>
 
-<div class="runner-notice">💧 Four water kiosks are positioned along each lap. Runners should hydrate as needed and follow race-marshal directions. On the final lap, turn at Shoprite Roundabout onto Kamuzu Stadium Road and proceed into Kamuzu Stadium for the VIP-section finish.</div>
-
 <div class="info-panel">
-  <h2>💧 Water Kiosk Stations</h2>
+  <div class="runner-notice">Four water kiosks each lap. Final lap: ShopRite R/A → Kamuzu Stadium Road → VIP finish.</div>
+  <h2 style="margin-top:10px">💧 Water kiosks</h2>
   <div class="water-points-grid" id="wpGrid"></div>
   <div style="margin-top: 16px;">
     <h2>📋 Route Legend</h2>
@@ -131,6 +156,7 @@
     <div class="stat"><div class="stat-value">3 laps</div><div class="stat-label">Course format</div></div>
     <div class="stat"><div class="stat-value">🏟️</div><div class="stat-label">Stadium finish</div></div>
   </div>
+</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -339,6 +365,7 @@ function setLap(lap) {
 }
 
 setLap(1);
+setTimeout(function () { map.invalidateSize(); fitRoute(); }, 250);
 </script>
 </body>
 </html>

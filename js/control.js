@@ -23,6 +23,122 @@
   const BIB_KEY = 'bt42_bib_numbers';
   const SYNC_TOKEN_KEY = 'bt42_oc_sync_token';
   const SYNC_META_KEY = 'bt42_oc_sync_meta';
+  const VOL_KEY = 'bt42_volunteers';
+  const APPROVALS_KEY = 'bt42_chair_approvals';
+  const APPROVALS_SEED = [
+    {
+      id: 'ap-tents-145',
+      requested: '2026-09-18',
+      approvedOn: '2026-09-19',
+      requestedBy: 'Marketing Organizing Subcommittee (Makawa)',
+      payee: 'KC Investments / clinic & tents',
+      bank: '',
+      account: '',
+      items: 'Tent + 200 chairs; tent clinic (mobile toilet / transport / attendants as quoted)',
+      amount: 145000,
+      vat: 0,
+      mode: 'Cash',
+      status: 'approved',
+      comment: 'Approved by Chair — Chifundo Tenthani',
+      ref: 'As per quotations'
+    },
+    {
+      id: 'ap-toilet-640',
+      requested: '2026-09-18',
+      approvedOn: '2026-09-19',
+      requestedBy: 'Marketing Organizing Subcommittee (Makawa)',
+      payee: 'Toilet hire (Paws Printing and Allied Works)',
+      bank: 'National Bank of Malawi',
+      account: '1000841494',
+      items: 'Mobile toilet hire MK450,000; transport hire MK100,000; attendants allowance MK90,000',
+      amount: 640000,
+      vat: 0,
+      mode: 'Cash',
+      status: 'approved',
+      comment: 'Approved by Chair — Chifundo Tenthani',
+      ref: 'As per quotations'
+    },
+    {
+      id: 'ap-omega-340750',
+      requested: '2026-09-16',
+      approvedOn: '2026-09-19',
+      requestedBy: 'Marketing Organizing Subcommittee (Makawa)',
+      payee: 'Omega Signs and Graphics',
+      bank: 'National Bank of Malawi',
+      account: '1006551347',
+      items: 'Hanging banners — 5 m × 2 @ MK145,000',
+      amount: 290000,
+      vat: 50750,
+      mode: 'Cash',
+      status: 'approved',
+      comment: 'Approved by Chair — Chifundo Tenthani',
+      ref: 'As per quotations'
+    },
+    {
+      id: 'ap-mphatso-590',
+      requested: '2026-09-16',
+      approvedOn: '2026-09-19',
+      requestedBy: 'Marketing Organizing Subcommittee (Makawa)',
+      payee: 'Mphatso Chakhadza',
+      bank: 'National Bank of Malawi',
+      account: '100035106',
+      items: '20 promotion posters MK15,000; victory stand MK20,000; main poster MK30,000; 2 start/finish arches MK50,000; 3 dummy cheques MK60,000; direction arrow MK20,000; 3 T-shirt chest numbers MK60,000; backdrop banner MK50,000',
+      amount: 590000,
+      vat: 0,
+      mode: 'Cash',
+      status: 'approved',
+      comment: 'Approved by Chair — Chifundo Tenthani',
+      ref: 'As per quotations'
+    },
+    {
+      id: 'ap-medals-456',
+      requested: '2026-09-18',
+      approvedOn: '2026-09-19',
+      requestedBy: 'Marketing Organizing Subcommittee (Makawa)',
+      payee: 'Phatafuli medals',
+      bank: '',
+      account: '',
+      items: '18 winning medals (6 gold, 6 silver, 6 bronze) @ MK9,500 = MK171,000; 30 participation medals (42.195 km) MK285,000',
+      amount: 456000,
+      vat: 0,
+      mode: 'Cash',
+      status: 'approved',
+      comment: 'Approved by Chair — Chifundo Tenthani',
+      ref: 'As per quotations'
+    },
+    {
+      id: 'ap-paws-810',
+      requested: '2026-09-16',
+      approvedOn: '2026-09-19',
+      requestedBy: 'Marketing Organizing Subcommittee (Makawa)',
+      payee: 'Paws Printing and Allied Works',
+      bank: 'National Bank of Malawi',
+      account: '1000841494',
+      items: '600 vinyl chest numbers @ MK750 = MK450,000; 9 dummy cheques (3 races) @ MK40,000 = MK360,000',
+      amount: 810000,
+      vat: 0,
+      mode: 'Cash',
+      status: 'approved',
+      comment: 'Approved by Chair — Chifundo Tenthani',
+      ref: 'As per quotations'
+    },
+    {
+      id: 'ap-gazette-5500',
+      requested: '2026-09-16',
+      approvedOn: '',
+      requestedBy: 'Marketing Organizing Subcommittee (Makawa)',
+      payee: 'Gazette Media',
+      bank: 'National Bank of Malawi',
+      account: '1687514',
+      items: '250 branded pilot T-shirts @ MK22,000',
+      amount: 5500000,
+      vat: 0,
+      mode: 'Cash',
+      status: 'pending',
+      comment: 'Requisition received — Chair signature line on the form was blank',
+      ref: 'As per quotations'
+    }
+  ];
 
   let unlocked = sessionStorage.getItem('bt42_control_unlocked') === '1';
   let isChair = sessionStorage.getItem('bt42_control_role') === 'chair';
@@ -31,11 +147,13 @@
     payment: sessionStorage.getItem('bt42_perm_payment') === '1',
     bibs: sessionStorage.getItem('bt42_perm_bibs') === '1',
     finish: sessionStorage.getItem('bt42_perm_finish') === '1',
-    manageStaff: sessionStorage.getItem('bt42_perm_staff') === '1'
+    volunteers: sessionStorage.getItem('bt42_perm_volunteers') === '1',
+    manageStaff: sessionStorage.getItem('bt42_perm_staff') === '1',
+    requisitions: sessionStorage.getItem('bt42_perm_requisitions') === '1'
   };
   // Chair always has all perms
   if (isChair) {
-    perms = { payment: true, bibs: true, finish: true, manageStaff: true };
+    perms = { payment: true, bibs: true, finish: true, volunteers: true, manageStaff: true, requisitions: true };
   }
 
   async function sha256(text) {
@@ -65,6 +183,8 @@
   function canBibs() { return isChair || !!perms.bibs; }
   function canFinish() { return isChair || !!perms.finish; }
   function canManageStaff() { return isChair || !!perms.manageStaff; }
+  function canVolunteers() { return isChair || !!perms.volunteers; }
+  function canRequisitions() { return isChair || !!perms.requisitions; }
 
   function $(sel, ctx) { return (ctx || document).querySelector(sel); }
   function $$(sel, ctx) { return Array.from((ctx || document).querySelectorAll(sel)); }
@@ -77,13 +197,19 @@
     if (room) room.classList.add('hidden');
   }
 
+  function staffCanSee(panel) {
+    if (isChair) return true;
+    if (panel === 'staff' || panel === 'site' || panel === 'chair') return canManageStaff();
+    if (panel === 'approvals') return canRequisitions();
+    const openToOc = [
+      'dash', 'deadlines', 'survey', 'results', 'participants', 'volunteers',
+      'checklist', 'meetings', 'budget', 'runsheet', 'roles', 'notes'
+    ];
+    if (openToOc.indexOf(panel) >= 0) return true;
+    return false;
+  }
+
   function applyRoleUI() {
-    // Chair notes tab & panel: chair only
-    $$('.ctrl-tab[data-panel="chair"], #panel-chair').forEach(el => {
-      if (isChair) el.classList.remove('chair-only-hidden');
-      else el.classList.add('chair-only-hidden');
-    });
-    // Chair-editable metrics block
     const dashEdit = $('#ctrl-dash-edit');
     if (dashEdit) {
       if (isChair) dashEdit.classList.remove('chair-only-hidden');
@@ -94,11 +220,13 @@
       let label = 'Committee (view)';
       let cls = 'role-badge committee';
       if (isChair) { label = 'Chair' + (currentUser ? ' · ' + currentUser : ''); cls = 'role-badge chair'; }
-      else if (canPayment() || canBibs() || canFinish()) {
+      else if (canPayment() || canBibs() || canFinish() || canVolunteers()) {
         const bits = [];
         if (canPayment()) bits.push('pay');
         if (canBibs()) bits.push('bibs');
         if (canFinish()) bits.push('finish');
+        if (canVolunteers()) bits.push('volunteers');
+        if (canRequisitions()) bits.push('requisitions');
         label = (currentUser || 'Ops') + ' · ' + bits.join('/');
         cls = 'role-badge chair';
       } else if (currentUser) {
@@ -107,26 +235,22 @@
       badge.textContent = 'Signed in as ' + label;
       badge.className = cls;
     }
-    // Staff tab: chair only
-    $$('.ctrl-tab[data-panel="staff"], #panel-staff').forEach((el) => {
-      if (canManageStaff()) el.classList.remove('chair-only-hidden');
+    $$('.ctrl-tab[data-panel], .ctrl-panel[id^="panel-"]').forEach((el) => {
+      const panel = el.getAttribute('data-panel') || String(el.id || '').replace(/^panel-/, '');
+      if (!panel) return;
+      if (staffCanSee(panel)) el.classList.remove('chair-only-hidden');
       else el.classList.add('chair-only-hidden');
     });
-    $$('.ctrl-tab[data-panel="site"], #panel-site').forEach((el) => {
-      if (isChair) el.classList.remove('chair-only-hidden');
-      else el.classList.add('chair-only-hidden');
-    });
-    // If non-chair is on chair panel, switch to dashboard
-    if (!isChair) {
-      const chairPanel = $('#panel-chair');
-      if (chairPanel && chairPanel.classList.contains('active')) {
-        $$('.ctrl-tab').forEach(t => t.classList.remove('active'));
-        $$('.ctrl-panel').forEach(p => p.classList.remove('active'));
-        const dashTab = $('.ctrl-tab[data-panel="dash"]');
-        const dashPanel = $('#panel-dash');
-        if (dashTab) dashTab.classList.add('active');
-        if (dashPanel) dashPanel.classList.add('active');
-      }
+    const activeTab = $('.ctrl-tab.active');
+    const activePanel = activeTab && activeTab.getAttribute('data-panel');
+    if (activePanel && !staffCanSee(activePanel)) {
+      $$('.ctrl-tab').forEach((t) => t.classList.remove('active'));
+      $$('.ctrl-panel').forEach((p) => p.classList.remove('active'));
+      const first = ['dash', 'participants', 'volunteers', 'staff'].find(staffCanSee);
+      const tab = first && $('.ctrl-tab[data-panel="' + first + '"]');
+      const panel = first && $('#panel-' + first);
+      if (tab) tab.classList.add('active');
+      if (panel) panel.classList.add('active');
     }
   }
 
@@ -135,16 +259,18 @@
     isChair = role === 'chair';
     currentUser = user || (isChair ? 'chair' : 'committee');
     if (isChair) {
-      perms = { payment: true, bibs: true, finish: true, manageStaff: true };
+      perms = { payment: true, bibs: true, finish: true, volunteers: true, manageStaff: true, requisitions: true };
     } else if (userPerms) {
       perms = {
         payment: !!userPerms.payment,
         bibs: !!userPerms.bibs,
         finish: !!userPerms.finish,
-        manageStaff: !!userPerms.manageStaff
+        volunteers: !!userPerms.volunteers,
+        manageStaff: !!userPerms.manageStaff,
+        requisitions: !!userPerms.requisitions
       };
     } else {
-      perms = { payment: false, bibs: false, finish: false, manageStaff: false };
+      perms = { payment: false, bibs: false, finish: false, volunteers: false, manageStaff: false, requisitions: false };
     }
     sessionStorage.setItem('bt42_control_unlocked', '1');
     sessionStorage.setItem('bt42_control_role', isChair ? 'chair' : 'committee');
@@ -152,7 +278,9 @@
     sessionStorage.setItem('bt42_perm_payment', perms.payment ? '1' : '0');
     sessionStorage.setItem('bt42_perm_bibs', perms.bibs ? '1' : '0');
     sessionStorage.setItem('bt42_perm_finish', perms.finish ? '1' : '0');
+    sessionStorage.setItem('bt42_perm_volunteers', perms.volunteers ? '1' : '0');
     sessionStorage.setItem('bt42_perm_staff', perms.manageStaff ? '1' : '0');
+    sessionStorage.setItem('bt42_perm_requisitions', perms.requisitions ? '1' : '0');
     const gate = $('#control-gate');
     const room = $('#control-room');
     if (gate) gate.classList.add('hidden');
@@ -265,6 +393,8 @@
         payment: !!acc.canPayment,
         bibs: !!acc.canBibs,
         finish: !!acc.canFinish,
+        volunteers: !!acc.canVolunteers,
+        requisitions: !!acc.canRequisitions,
         manageStaff: false
       });
     }
@@ -277,11 +407,13 @@
     sessionStorage.removeItem('bt42_perm_payment');
     sessionStorage.removeItem('bt42_perm_bibs');
     sessionStorage.removeItem('bt42_perm_finish');
+    sessionStorage.removeItem('bt42_perm_volunteers');
     sessionStorage.removeItem('bt42_perm_staff');
+    sessionStorage.removeItem('bt42_perm_requisitions');
     unlocked = false;
     isChair = false;
     currentUser = '';
-    perms = { payment: false, bibs: false, finish: false, manageStaff: false };
+    perms = { payment: false, bibs: false, finish: false, volunteers: false, manageStaff: false, requisitions: false };
     showGate();
     const input = $('#control-pin');
     if (input) input.value = '';
@@ -933,6 +1065,94 @@
     return normalizeSigMap(loadSigs());
   }
 
+  async function signaturesForEmail() {
+    const src = certSignaturesPayload();
+    const out = { kalua: '', chamwala: '', tenthani: '' };
+    for (const k of Object.keys(out)) {
+      if (!src[k]) continue;
+      try {
+        out[k] = await compressSigImage(src[k], 220, 0.52);
+      } catch (e) {
+        out[k] = src[k];
+      }
+    }
+    return out;
+  }
+
+  function buildClientCertificatePdf(opts) {
+    const jsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (!jsPDF) return '';
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    doc.setDrawColor(27, 79, 114);
+    doc.setLineWidth(14);
+    doc.rect(10, 10, W - 20, H - 20);
+    doc.setDrawColor(212, 175, 55);
+    doc.setLineWidth(2);
+    doc.rect(22, 22, W - 44, H - 44);
+    doc.setTextColor(27, 79, 114);
+    doc.setFont('times', 'bold');
+    doc.setFontSize(11);
+    doc.text('MALAWI NATIONAL COUNCIL OF SPORTS  ·  ATHLETICS MALAWI', W / 2, 58, { align: 'center' });
+    doc.setFontSize(16);
+    doc.text('BT42.195km Race 2026', W / 2, 78, { align: 'center' });
+    doc.setFont('times', 'normal');
+    doc.setFontSize(10);
+    doc.text('Blantyre · Sunday, 27 September 2026', W / 2, 94, { align: 'center' });
+    const title = opts.volunteer
+      ? 'CERTIFICATE OF VOLUNTEER SERVICE'
+      : (opts.isCompletion ? 'CERTIFICATE OF COMPLETION' : 'CERTIFICATE OF PARTICIPATION');
+    doc.setFont('times', 'bold');
+    doc.setFontSize(22);
+    doc.setTextColor(184, 148, 31);
+    doc.text(title, W / 2, 140, { align: 'center' });
+    doc.setTextColor(30, 30, 30);
+    doc.setFont('times', 'normal');
+    doc.setFontSize(12);
+    doc.text(opts.volunteer ? 'This is to certify that' : 'This is to certify that', W / 2, 175, { align: 'center' });
+    doc.setFont('times', 'bold');
+    doc.setFontSize(26);
+    doc.text(String(opts.fullName || 'Name'), W / 2, 210, { align: 'center' });
+    doc.setFont('times', 'normal');
+    doc.setFontSize(12);
+    const body = opts.volunteer
+      ? ('served as a volunteer (' + (opts.distance || opts.role || 'Race volunteer') + ') at the BT42.195km Race 2026, organised under the auspices of the Malawi National Council of Sports.')
+      : (opts.isCompletion
+        ? ('has successfully completed the ' + (opts.distance || '') + ' of the BT42.195km Race 2026.')
+        : ('was a registered participant in the ' + (opts.distance || '') + ' of the BT42.195km Race 2026.'));
+    const lines = doc.splitTextToSize(body, 620);
+    doc.text(lines, W / 2, 250, { align: 'center' });
+    const sigs = opts.signatures || {};
+    const people = [
+      { k: 'kalua', n: 'Jim Kalua', t: 'Chairman of the Council' },
+      { k: 'chamwala', n: 'Kondwani Chamwala', t: 'President of Athletics Malawi' },
+      { k: 'tenthani', n: 'Chifundo Tenthani', t: 'Chair, Organising Committee' }
+    ];
+    const col = [90, 310, 530];
+    people.forEach((p, i) => {
+      const x = col[i];
+      const data = sigs[p.k];
+      if (data && data.indexOf('data:image') === 0) {
+        try {
+          const fmt = data.indexOf('png') >= 0 ? 'PNG' : 'JPEG';
+          doc.addImage(data, fmt, x + 10, 360, 150, 42);
+        } catch (e) { /* skip */ }
+      }
+      doc.setDrawColor(30, 30, 30);
+      doc.setLineWidth(0.8);
+      doc.line(x, 412, x + 170, 412);
+      doc.setFont('times', 'bold');
+      doc.setFontSize(10);
+      doc.text(p.n, x + 85, 428, { align: 'center' });
+      doc.setFont('times', 'normal');
+      doc.setFontSize(8);
+      doc.text(p.t, x + 85, 440, { align: 'center' });
+    });
+    const raw = doc.output('datauristring');
+    return raw.split(',')[1] || '';
+  }
+
   function compressSigImage(dataUrl, maxW, quality) {
     return new Promise((resolve) => {
       try {
@@ -1084,6 +1304,7 @@
       try {
         localStorage.setItem('bt42_registrations', JSON.stringify(s.registrations));
       } catch (e) {}
+      try { ensureRestoredAthletes(); } catch (e) {}
     }
     if (s.payments && typeof s.payments === 'object') {
       const localPay = loadPayments();
@@ -1110,6 +1331,15 @@
     }
     if (Array.isArray(s.staffUsers)) {
       try { localStorage.setItem(STAFF_KEY, JSON.stringify(s.staffUsers)); } catch (e) {}
+    }
+    if (Array.isArray(s.volunteers)) {
+      try { localStorage.setItem(VOL_KEY, JSON.stringify(s.volunteers)); } catch (e) {}
+    }
+    if ((isChair || canRequisitions()) && Array.isArray(s.approvals)) {
+      try { localStorage.setItem(APPROVALS_KEY, JSON.stringify(s.approvals)); } catch (e) {}
+    }
+    if (Array.isArray(s.surveyResponses)) {
+      try { localStorage.setItem('bt42_survey_responses', JSON.stringify(s.surveyResponses)); } catch (e) {}
     }
     if (s.siteContent && typeof s.siteContent === 'object') {
       try {
@@ -1154,7 +1384,7 @@
       updatedAt: data.state && data.state.updatedAt,
       updatedBy: data.state && data.state.updatedBy
     }));
-    return { ok: true, state: data.state };
+    return { ok: true, state: data.state, signaturesStored: data.signaturesStored };
   }
 
   async function pushAllLocal() {
@@ -1170,11 +1400,15 @@
     if (canPayment()) {
       payload.payments = loadPayments();
     }
+    if (canVolunteers()) {
+      payload.volunteers = loadVolunteers();
+    }
     if (isChair) {
       payload.replacePayments = true;
       payload.signatures = loadSigs();
       payload.staffUsers = loadStaffUsers();
       payload.siteContent = loadSiteContent();
+      payload.approvals = loadApprovals();
     }
     return pushSharedState(payload);
   }
@@ -1268,11 +1502,13 @@
         if (at && at !== lastKnownUpdatedAt) {
           lastKnownUpdatedAt = at;
           renderParticipants();
+          renderVolunteersAdmin();
           renderAttendance();
           renderDashboard();
           renderSyncBar();
           setLiveStatus('Live · updated ' + new Date(at).toLocaleTimeString(), true);
         } else {
+          renderVolunteersAdmin();
           setLiveStatus('Live · in sync', true);
         }
         // Restore normal poll after recovery
@@ -1325,10 +1561,102 @@
   }
 
 
+  const RESTORED_ATHLETES = [
+    {
+      fullName: 'Maggie Chitseko',
+      aliases: ['maggei chitseko', 'maggie chitseko', 'maggie  chitseko'],
+      distance: '10',
+      email: '',
+      phone: '',
+      source: 'netlify-forms-restore'
+    },
+    {
+      fullName: 'Mussa Maundala',
+      aliases: ['mussa maundala', 'musa maundala'],
+      distance: '42.195',
+      email: '',
+      phone: '',
+      source: 'netlify-forms-restore'
+    }
+  ];
+
+  function namesMatchAthlete(r, spec) {
+    const n = String(r.fullName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (n === spec.fullName.toLowerCase()) return true;
+    return (spec.aliases || []).some((a) => a === n);
+  }
+
+  function ensureRestoredAthletes() {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem('bt42_registrations') || '[]'); } catch { list = []; }
+    const pays = loadPayments();
+    let changed = false;
+    RESTORED_ATHLETES.forEach((spec) => {
+      let idx = list.findIndex((r) => namesMatchAthlete(r, spec));
+      if (idx < 0) {
+        list.push({
+          fullName: spec.fullName,
+          phone: spec.phone || '',
+          email: spec.email || '',
+          distance: spec.distance,
+          submittedAt: new Date().toISOString(),
+          source: spec.source,
+          restored: true,
+          paymentRef: 'Netlify Forms — restored by Chair'
+        });
+        idx = list.length - 1;
+        changed = true;
+      } else if (String(list[idx].fullName || '').trim() !== spec.fullName) {
+        list[idx].previousFullName = list[idx].fullName;
+        list[idx].fullName = spec.fullName;
+        list[idx].distance = list[idx].distance || spec.distance;
+        list[idx].restored = true;
+        changed = true;
+      }
+      const r = list[idx];
+      const rec = { status: 'verified', note: 'Restored from Netlify Forms — verified by Chair', verifiedAt: new Date().toISOString(), verifiedBy: 'chair-restore' };
+      paymentKeysFor(r, idx).concat([participantKey(r, idx)]).forEach((k) => {
+        if (!k) return;
+        if (!pays[k] || pays[k].status !== 'verified') {
+          pays[k] = Object.assign({}, rec);
+          changed = true;
+        }
+      });
+    });
+    if (changed) {
+      localStorage.setItem('bt42_registrations', JSON.stringify(list));
+      savePayments(pays);
+      if (getSyncToken()) {
+        livePush({
+          registrations: list,
+          replaceRegistrations: false,
+          payments: pays
+        }).catch(() => {});
+      }
+    }
+    return list;
+  }
+
+  function entryStamp(r) {
+    const raw = r && (r.submittedAt || r.createdAt || r.registeredAt || '');
+    if (!raw) return '—';
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return String(raw).replace('T', ' ').slice(0, 16);
+    return d.toLocaleString('en-GB', {
+      timeZone: 'Africa/Blantyre',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
   function renderParticipants() {
     const container = $('#ctrl-participants');
     if (!container) return;
     let rows = [];
+    try { ensureRestoredAthletes(); } catch (e) {}
     try {
       rows = JSON.parse(localStorage.getItem('bt42_registrations') || '[]');
     } catch { rows = []; }
@@ -1342,13 +1670,14 @@
       <strong>Participant list</strong> — visible to all committee members.<br>
       <strong>Payment verification (Verify / Reject)</strong> — <em>Chair only</em>.
       ${canPayment() ? '' : '<br><span class="pay-status pay-wait">Payment verify requires an Ops or Chair login.</span>'}
-      <br>Pay to bank account <code>782637</code> (reference: name + mobile).
+      <br>Pay to National Bank of Malawi account <code>782637</code> (reference: name + mobile).
       ${sigReady ? '<br><span class="pay-status pay-ok">E-signatures loaded</span>' : (isChair ? '<br><span class="pay-status pay-wait">Upload e-signatures below before issuing certificates</span>' : '')}
     </div>
 
     ${isChair ? `<div class="sig-upload-box">
       <h4 style="margin:0 0 0.5rem">Electronic signatures (Chair only)</h4>
-      <p class="form-note" style="margin-bottom:0.5rem">Upload clear PNG/JPG signature images for each official. Stored on this device only until a server store is connected.</p>
+      <p class="form-note" style="margin-bottom:0.5rem">Upload PNG/JPG for Kalua, Chamwala and Tenthani. These are embedded on athlete <strong>and volunteer</strong> certificates. After upload you should see “Signature saved and synced.” Use <strong>Push signatures</strong> if a certificate went out unsigned.</p>
+      <button type="button" class="btn-mini" id="sig-push-now">Push signatures to shared store</button>
       <div class="sig-upload-grid">
         <label>Jim Kalua (Chairman, MNCS)<input type="file" accept="image/*" data-sig="kalua" class="sig-file" /></label>
         <label>Kondwani Chamwala (President, Athletics Malawi)<input type="file" accept="image/*" data-sig="chamwala" class="sig-file" /></label>
@@ -1368,15 +1697,38 @@
     const verified = rows.filter((r, i) => paymentRecordFor(r, i, pays).status === 'verified').length;
     const finished = rows.filter((r, i) => (finishes[participantKey(r, i)] || {}).status === 'finished').length;
 
+    const raceFilter = sessionStorage.getItem('bt42_part_race') || 'all';
+    const raceMatch = (r) => {
+      const c = normalizeDistanceCode(r.distance);
+      if (raceFilter === 'all') return true;
+      if (raceFilter === '42') return c === '42.195';
+      if (raceFilter === '10') return c === '10';
+      if (raceFilter === '5') return c === '5';
+      return true;
+    };
+    const visible = [];
+    rows.forEach((r, i) => { if (raceMatch(r)) visible.push({ r, i }); });
+    const n42 = rows.filter((r) => normalizeDistanceCode(r.distance) === '42.195').length;
+    const n10 = rows.filter((r) => normalizeDistanceCode(r.distance) === '10').length;
+    const n5 = rows.filter((r) => normalizeDistanceCode(r.distance) === '5').length;
+    const chip = (id, label) =>
+      '<button type="button" class="btn-mini race-filter' + (raceFilter === id ? ' active' : '') + '" data-race="' + id + '">' + label + '</button>';
+
     html += `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.75rem;margin:0.75rem 0">
         <p style="font-size:0.85rem;margin:0"><strong>${rows.length}</strong> shared entries · <strong>${verified}</strong> paid · <strong>${finished}</strong> finished</p>
         <button type="button" class="btn-mini" id="sync-local-shared">Upload this phone's local entries to shared list</button>
         ${isChair ? '<button type="button" class="btn-mini" id="clear-all-entries" style="border-color:#C0392B;color:#C0392B">Clear all entries</button>' : ''}
       </div>
+      <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin:0 0 0.75rem">
+        ${chip('all', 'All (' + rows.length + ')')}
+        ${chip('42', '42.195 km (' + n42 + ')')}
+        ${chip('10', '10 km (' + n10 + ')')}
+        ${chip('5', '5 km (' + n5 + ')')}
+      </div>
       <div class="sponsor-table-wrap"><table class="ctrl-table">
-      <thead><tr><th>#</th><th>Name</th><th>Phone</th><th>Distance</th><th>Payment</th><th>Bib</th><th>Finish</th><th>Certificates</th>${isChair ? '<th></th>' : ''}</tr></thead><tbody>`;
+      <thead><tr><th>#</th><th>Name</th><th>Phone</th><th>Race</th><th>Entered</th><th>Payment</th><th>Bib</th><th>Finish</th><th>Certificates</th><th></th></tr></thead><tbody>`;
 
-    rows.forEach((r, i) => {
+    visible.forEach(({ r, i }) => {
       const key = participantKey(r, i);
       const pay = paymentRecordFor(r, i, pays);
       const fin = finishes[key] || { status: 'not_started' };
@@ -1394,9 +1746,10 @@
       const finTitle = !canFinish() ? 'Need Ops/Chair login' : (!hasBib ? 'Assign bib first' : '');
       html += `<tr>
         <td>${i + 1}</td>
-        <td><strong>${escapeHtml(r.fullName || '')}</strong>${r.email ? '<br><small>' + escapeHtml(r.email) + '</small>' : ''}</td>
+        <td><strong>${escapeHtml(r.fullName || '')}</strong>${r.email ? '<br><small>' + escapeHtml(r.email) + '</small>' : '<br><small class="form-note">No email</small>'}<br><button type="button" class="btn-mini entry-edit" data-i="${i}">Correct name</button> <button type="button" class="btn-mini entry-email" data-i="${i}">Correct email</button>${isChair ? ' <label class="form-note">Edit one field <select class="entry-field" data-i="'+i+'"><option value="">Choose…</option><option value="fullName">Name</option><option value="phone">Phone</option><option value="email">Email</option><option value="distance">Race</option><option value="dob">Date of birth</option><option value="gender">Gender</option><option value="club">Club / team</option><option value="emergencyName">Emergency name</option><option value="emergencyPhone">Emergency phone</option><option value="paymentRef">Payment reference</option></select></label> <button type="button" class="btn-mini entry-one" data-i="'+i+'">Save field</button>' : ''}</td>
         <td>${escapeHtml(r.phone || '')}</td>
         <td>${escapeHtml(distanceLabel(r.distance))}</td>
+        <td><small>${escapeHtml(entryStamp(r))}</small></td>
         <td>
           <span class="pay-status ${stClass}">${stLabel}</span>
           <div class="actions-cell">
@@ -1426,13 +1779,19 @@
           <button type="button" class="btn-mini fin-cert" data-i="${i}" data-type="completion" ${fst !== 'finished' ? 'disabled title="Mark finished first"' : ''}>Completion cert</button>
           <button type="button" class="btn-mini part-cert" data-i="${i}" data-type="participation" ${fst !== 'dnf' ? 'disabled title="For DNF only"' : ''}>Participation cert</button>
         </td>
-        ${isChair ? '<td class="actions-cell"><button type="button" class="btn-mini entry-delete" data-i="' + i + '" style="border-color:#C0392B;color:#C0392B">Delete</button></td>' : ''}
+        <td class="actions-cell"><button type="button" class="btn-mini entry-delete" data-i="${i}" style="border-color:#C0392B;color:#C0392B">Delete</button></td>
       </tr>`;
     });
     html += '</tbody></table></div>';
     container.innerHTML = html;
     wireSigUploads();
     renderSigPreviews();
+    container.querySelectorAll('.race-filter').forEach((btn) => {
+      btn.onclick = () => {
+        sessionStorage.setItem('bt42_part_race', btn.dataset.race || 'all');
+        renderParticipants();
+      };
+    });
 
 
 
@@ -1509,9 +1868,152 @@
       };
     }
 
+    container.querySelectorAll('.entry-one').forEach((btn) => {
+      btn.onclick = async () => {
+        if (!isChair) return;
+        const i = Number(btn.dataset.i);
+        const sel = container.querySelector('.entry-field[data-i="' + i + '"]');
+        const field = sel && sel.value;
+        const labels = {
+          fullName: 'Name', phone: 'Phone', email: 'Email', distance: 'Race (42.195 / 10 / 5)',
+          dob: 'Date of birth (YYYY-MM-DD)', gender: 'Gender', club: 'Club / team',
+          emergencyName: 'Emergency contact name', emergencyPhone: 'Emergency phone', paymentRef: 'Payment reference'
+        };
+        if (!field || !labels[field]) {
+          alert('Choose one field to edit.');
+          return;
+        }
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem('bt42_registrations') || '[]'); } catch { list = []; }
+        const r = list[i];
+        if (!r) return;
+        const current = field === 'club' ? (r.club || r.teamName || '') : (r[field] || '');
+        const typed = prompt('New ' + labels[field] + ':', current);
+        if (typed === null) return;
+        const value = String(typed).trim();
+        if (field === 'email' && value && !/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}$/i.test(value)) {
+          alert('That email is not valid.');
+          return;
+        }
+        if (field === 'distance') {
+          const c = normalizeDistanceCode(value);
+          r.distance = c === '42.195' || c === '10' || c === '5' ? c : value;
+        } else if (field === 'club') {
+          r.club = value;
+        } else {
+          r[field] = value;
+        }
+        r.editedAt = new Date().toISOString();
+        r.editedBy = currentUser || 'chair';
+        r.editedField = field;
+        list[i] = r;
+        localStorage.setItem('bt42_registrations', JSON.stringify(list));
+        if (getSyncToken()) await livePush({ registrations: list, replaceRegistrations: true }).catch(() => {});
+        renderParticipants();
+        alert(labels[field] + ' updated.');
+      };
+    });
+
+    container.querySelectorAll('.entry-email').forEach((btn) => {
+      btn.onclick = async () => {
+        if (!(isChair || canPayment() || canBibs() || canFinish())) {
+          alert('Sign in as staff to correct an email.');
+          return;
+        }
+        const i = Number(btn.dataset.i);
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem('bt42_registrations') || '[]'); } catch { list = []; }
+        const r = list[i];
+        if (!r) return;
+        const nextEmail = window.prompt('Correct email for ' + (r.fullName || 'athlete') + ' (race emails go here):', r.email || r.teamContactEmail || '');
+        if (nextEmail === null) return;
+        const cleaned = String(nextEmail).trim().toLowerCase();
+        if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}$/.test(cleaned) || /gamil\.com|gmial\.com|gnail\.com|gmail\.con|gmail\.cm$/.test(cleaned)) {
+          alert('That is not a valid email. Use a real inbox such as name@gmail.com.');
+          return;
+        }
+        r.email = cleaned;
+        if (r.teamContactEmail) r.teamContactEmail = cleaned;
+        r.emailCorrectedAt = new Date().toISOString();
+        r.emailCorrectedBy = currentUser || (isChair ? 'chair' : 'staff');
+        list[i] = r;
+        localStorage.setItem('bt42_registrations', JSON.stringify(list));
+        if (getSyncToken()) {
+          await livePush({ registrations: list, replaceRegistrations: true }).catch(() => {});
+        }
+        renderParticipants();
+        alert('Email updated to ' + cleaned + '.');
+      };
+    });
+
+    container.querySelectorAll('.entry-edit').forEach((btn) => {
+      btn.onclick = async () => {
+        if (!(isChair || canPayment() || canBibs() || canFinish())) {
+          alert('Sign in as staff to correct a name.');
+          return;
+        }
+        const i = Number(btn.dataset.i);
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem('bt42_registrations') || '[]'); } catch { list = []; }
+        const r = list[i];
+        if (!r) return;
+        const nextName = window.prompt('Correct the name as it should appear on the bib and certificate:\n\nCurrent: ' + (r.fullName || ''), r.fullName || '');
+        if (nextName === null) return;
+        const cleaned = String(nextName).trim().replace(/\s+/g, ' ');
+        if (cleaned.length < 3) {
+          alert('Enter the full name (at least 3 characters).');
+          return;
+        }
+        if (cleaned === String(r.fullName || '').trim()) return;
+        const oldKeys = paymentKeysFor(r, i);
+        const oldKey = participantKey(r, i);
+        const previousFullName = String(r.fullName || '').trim();
+        r.previousFullName = previousFullName;
+        r.fullName = cleaned;
+        r.nameCorrectedAt = new Date().toISOString();
+        r.nameCorrectedBy = currentUser || (isChair ? 'chair' : 'staff');
+        list[i] = r;
+        localStorage.setItem('bt42_registrations', JSON.stringify(list));
+        const newKeys = paymentKeysFor(r, i);
+        const newKey = participantKey(r, i);
+        function remap(map) {
+          const out = Object.assign({}, map);
+          oldKeys.concat([oldKey]).forEach((ok, idx) => {
+            const nk = (newKeys[idx] != null ? newKeys[idx] : newKey);
+            if (ok && nk && ok !== nk && out[ok] && !out[nk]) {
+              out[nk] = Object.assign({}, out[ok], { name: cleaned });
+            }
+          });
+          if (out[oldKey] && !out[newKey]) out[newKey] = Object.assign({}, out[oldKey], { name: cleaned });
+          return out;
+        }
+        const pays = remap(loadPayments()); savePayments(pays);
+        const bibsMap = remap(loadBibs()); saveBibs(bibsMap);
+        const fins = remap(loadFinishes()); saveFinishes(fins);
+        const oldIdentity = String(r.phone || '').replace(/\s+/g, '').toLowerCase() + '|' + String((oldKeys[0] || '').split('|').pop() || '');
+        const suppressOld = String((r.phone || '')).replace(/\s+/g, '').toLowerCase() + '|' + String(oldKey.split('|').slice(1).join('|') || '');
+        // oldKey is phone|oldname — rebuild from values before we overwrote name
+        const oldNameKey = oldKey;
+        if (getSyncToken()) {
+          const pushed = await livePush({
+            registrations: list,
+            replaceRegistrations: true,
+            payments: pays,
+            bibs: bibsMap,
+            finishes: fins
+          }).catch((e) => ({ ok: false, error: String(e && e.message ? e.message : e) }));
+          if (!pushed || pushed.ok === false) {
+            alert('Name changed on this phone, but the shared list failed: ' + ((pushed && pushed.error) || 'sync') + '. Use Push/Upload this phone’s local entries.');
+          }
+        }
+        renderParticipants();
+        alert('Name updated to “' + cleaned + '”. The old spelling is removed.');
+      };
+    });
+
     container.querySelectorAll('.entry-delete').forEach(btn => {
       btn.onclick = async () => {
-        if (!isChair) { alert('Only the Chair can delete entries.'); return; }
+        if (!(isChair || canPayment() || canBibs())) { alert('Sign in as Chair or Ops to delete an entry.'); return; }
         const i = Number(btn.dataset.i);
         let list = [];
         try { list = JSON.parse(localStorage.getItem('bt42_registrations') || '[]'); } catch { list = []; }
@@ -1519,24 +2021,29 @@
         if (!r) return;
         if (!confirm('Delete entry for ' + (r.fullName || 'this athlete') + '?')) return;
         const key = participantKey(r, i);
+        const delKey = String(r.phone || '').replace(/\s+/g, '').toLowerCase() + '|' + String(r.fullName || '').trim().toLowerCase();
         const next = list.filter((_, idx) => idx !== i);
         localStorage.setItem('bt42_registrations', JSON.stringify(next));
         const pays = loadPayments(); delete pays[key]; savePayments(pays);
         const bibsMap = loadBibs(); delete bibsMap[key]; saveBibs(bibsMap);
         const fins = loadFinishes(); delete fins[key]; saveFinishes(fins);
         if (getSyncToken()) {
-          const delKey = String(row.phone || '').replace(/\s+/g, '').toLowerCase() + '|' + String(row.fullName || '').trim().toLowerCase();
-          await livePush({
-            registrations: next,
-            replaceRegistrations: true,
-            payments: pays,
-            replacePayments: true,
-            bibs: bibsMap,
-            replaceBibs: true,
-            finishes: fins,
-            replaceFinishes: true,
-            suppressedKeys: delKey ? [delKey] : []
-          }).catch(() => {});
+          try {
+            const pushed = await livePush({
+              registrations: next,
+              replaceRegistrations: true,
+              payments: pays,
+              replacePayments: true,
+              bibs: bibsMap,
+              replaceBibs: true,
+              finishes: fins,
+              replaceFinishes: true,
+              suppressedKeys: delKey ? [delKey] : []
+            });
+            if (pushed && pushed.ok === false) alert('Deleted here but shared list failed: ' + (pushed.error || ''));
+          } catch (e) {
+            alert('Deleted here but shared list failed: ' + (e.message || e));
+          }
         }
         renderParticipants();
         renderDashboard();
@@ -1732,7 +2239,7 @@
         map[payKey] = Object.assign({}, rec);
         savePayments(map);
         if (getSyncToken()) {
-          livePush({ payments: map }).catch(() => {});
+          livePush({ payments: map }).catch((e) => console.warn('payment sync', e));
         }
         renderParticipants();
         try {
@@ -1833,6 +2340,7 @@
           }
         }
         renderParticipants();
+        renderLiveResults();
       };
     });
     container.querySelectorAll('.fin-dnf').forEach(btn => {
@@ -1868,38 +2376,57 @@
 
   function wireSigUploads() {
     $$('.sig-file').forEach(input => {
+      input.setAttribute('accept', 'image/*,.heic,.heif');
       input.onchange = async () => {
         if (!isChair) { alert('Only the Chair can upload e-signatures.'); return; }
         const file = input.files && input.files[0];
         if (!file) return;
-        if (file.size > 8 * 1024 * 1024) {
-          alert('File is too large. Use a PNG/JPG under 8 MB.');
+        if (file.size > 12 * 1024 * 1024) {
+          alert('Photo is too large. Choose a smaller PNG/JPG (crop to the ink only).');
           return;
         }
-        const reader = new FileReader();
-        reader.onerror = () => alert('Could not read that file.');
-        reader.onload = async () => {
-          try {
-            const compressed = await compressSigImage(reader.result, 400, 0.75);
-            const map = loadSigs();
-            map[input.dataset.sig] = compressed;
-            map[input.dataset.sig + '_updated'] = new Date().toISOString();
-            const ok = saveSigs(map);
-            renderSigPreviews();
-            if (!ok) return;
-            const push = await pushSignaturesToServer(map);
-            if (push && push.ok) {
-              alert('Signature saved and synced.');
-            } else {
-              alert('Signature saved on this device. Sync to server failed — keep this browser until sync works. ' + ((push && push.error) || ''));
-            }
-          } catch (e) {
-            alert('Signature upload failed: ' + (e.message || e));
+        try {
+          const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = () => reject(new Error('Could not read that photo'));
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(file);
+          });
+          const compressed = await compressSigImage(dataUrl, 280, 0.55);
+          if (!compressed || compressed.indexOf('data:image') !== 0) {
+            alert('This phone could not convert that photo. Save it as JPG in Photos, then choose the JPG.');
+            return;
           }
-        };
-        reader.readAsDataURL(file);
+          const map = loadSigs();
+          map[input.dataset.sig] = compressed;
+          map[input.dataset.sig + '_updated'] = new Date().toISOString();
+          const ok = saveSigs(map);
+          renderSigPreviews();
+          if (!ok) return;
+          const push = await pushSignaturesToServer(map);
+          if (push && push.ok) {
+            alert('Signature saved from this phone and synced.');
+          } else {
+            alert('Saved on this phone only. Sync failed: ' + ((push && push.error) || 'network') + '. Try Wi‑Fi, then Push signatures.');
+          }
+        } catch (e) {
+          alert('Signature upload failed on this phone: ' + (e.message || e));
+        }
       };
     });
+    const pushBtn = $('#sig-push-now');
+    if (pushBtn) {
+      pushBtn.onclick = async () => {
+        if (!isChair) return;
+        const map = loadSigs();
+        if (!map.kalua && !map.chamwala && !map.tenthani) {
+          alert('Upload the three signature images first.');
+          return;
+        }
+        const push = await pushSignaturesToServer(map);
+        alert((push && push.ok) ? 'Signatures synced. Volunteer and athlete certificates will include them.' : ('Sync failed: ' + ((push && push.error) || 'unknown')));
+      };
+    }
   }
 
   function renderSigPreviews() {
@@ -1947,6 +2474,9 @@
     if (!payload) return Promise.resolve({ ok: false, skipped: true });
     const to = (payload.to || payload.email || '').trim();
     if (!to) return Promise.resolve({ ok: false, skipped: true, error: 'No recipient' });
+    if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}$/i.test(to) || /gamil\.com|gmial\.com|gnail\.com|gmail\.con|gmail\.cm$/i.test(to)) {
+      return Promise.resolve({ ok: false, skipped: true, error: 'Invalid email — not sent' });
+    }
     const dedupeKey = [payload.type || '', to.toLowerCase(), payload.bib || '', payload.subject || '', payload.fullName || ''].join('|');
     const now = Date.now();
     if (recentEmail[dedupeKey] && now - recentEmail[dedupeKey] < 20000) {
@@ -1955,15 +2485,19 @@
     }
     recentEmail[dedupeKey] = now;
     const body = Object.assign({}, payload, { to: to, email: to });
-    return fetch('/.netlify/functions/send-certificate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    }).then(async (res) => {
-      const j = await res.json().catch(() => ({}));
-      if (!j.ok) console.warn('Email send failed', j.error || j, body.type, to);
-      return j;
-    }).catch((e) => ({ ok: false, error: String(e) }));
+    function once() {
+      return fetch('/.netlify/functions/send-certificate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }).then(async (res) => {
+        const j = await res.json().catch(() => ({}));
+        if (!j.ok) console.warn('Email send failed', j.error || j, body.type, to);
+        return j;
+      });
+    }
+    return once().catch(() => new Promise((r) => setTimeout(r, 900)).then(once))
+      .catch((e) => ({ ok: false, error: String(e && e.message ? e.message : e) }));
   }
 
 
@@ -2269,7 +2803,7 @@
           <div class="form-group"><label>5 km fee (MWK)</label>
             <input type="number" id="sc-fee5" value="${Number(c.fees5) || 5000}" min="0" step="500" /></div>
         </div>
-        <div class="form-group"><label>Bank account number</label>
+        <div class="form-group"><label>National Bank of Malawi account number</label>
           <input type="text" id="sc-bank" value="${escapeHtml(c.bankAccount || '782637')}" /></div>
         <div class="form-group"><label>Footer note</label>
           <input type="text" id="sc-footer" value="${escapeHtml(c.footerNote)}" /></div>
@@ -2320,10 +2854,19 @@
       const flags = [
         u.canPayment ? 'Payment' : '',
         u.canBibs ? 'Bibs' : '',
-        u.canFinish ? 'Finish' : ''
+        u.canFinish ? 'Finish' : '',
+        u.canVolunteers ? 'Volunteers + certificates' : '',
+        u.canRequisitions ? 'GS requisitions' : ''
       ].filter(Boolean).join(', ') || 'View only';
+      const toggles = [
+        ['canPayment', 'Pay', !!u.canPayment],
+        ['canBibs', 'Bibs', !!u.canBibs],
+        ['canFinish', 'Finish', !!u.canFinish],
+        ['canVolunteers', 'Volunteers', !!u.canVolunteers],
+        ['canRequisitions', 'GS / requisitions', !!u.canRequisitions]
+      ].map((x) => '<label style="margin-right:8px;white-space:nowrap"><input type="checkbox" class="staff-perm" data-i="' + i + '" data-perm="' + x[0] + '"' + (x[2] ? ' checked' : '') + ' /> ' + x[1] + '</label>').join('');
       return '<tr><td>' + escapeHtml(u.username) + '</td><td>' + escapeHtml(u.displayName || '') + '</td><td>' +
-        escapeHtml(flags) + '</td><td>' + (u.disabled ? 'Disabled' : 'Active') +
+        toggles + '<div class="form-note">' + escapeHtml(flags) + '</div></td><td>' + (u.disabled ? 'Disabled' : 'Active') +
         '</td><td><button type="button" class="btn-mini staff-disable" data-i="' + i + '">' +
         (u.disabled ? 'Enable' : 'Disable') + '</button> ' +
         '<button type="button" class="btn-mini staff-reset" data-i="' + i + '">Reset password</button> ' +
@@ -2332,8 +2875,8 @@
     if (!rows) rows = '<tr><td colspan="5">No staff accounts yet — create one below and share username/password.</td></tr>';
     box.innerHTML = `
       <div class="card" style="margin-bottom:1rem;padding:0.75rem">
-        <h4 style="margin-top:0">Create Ops login</h4>
-        <p class="form-note">Give this to committee members who should verify payments, assign bibs, or enter finish times.</p>
+        <h4 style="margin-top:0">Create staff login</h4>
+        <p class="form-note">Tick every task this person may do. Volunteers Coordinator must have <strong>Volunteers</strong> ticked so they can select crew and issue e-certificates. Chair always has every permission.</p>
         <div class="form-row">
           <div class="form-group"><label>Username *</label><input type="text" id="staff-new-user" placeholder="e.g. grace.pay" /></div>
           <div class="form-group"><label>Display name</label><input type="text" id="staff-new-name" placeholder="e.g. Grace" /></div>
@@ -2344,6 +2887,8 @@
         <label style="display:block;margin:0.35rem 0"><input type="checkbox" id="staff-can-pay" checked /> Can verify / reject payments</label>
         <label style="display:block;margin:0.35rem 0"><input type="checkbox" id="staff-can-bibs" checked /> Can assign bibs</label>
         <label style="display:block;margin:0.35rem 0"><input type="checkbox" id="staff-can-finish" checked /> Can enter Finish / DNF</label>
+        <label style="display:block;margin:0.35rem 0"><input type="checkbox" id="staff-can-volunteers" checked /> Volunteers: select crew and issue / email certificates</label>
+        <label style="display:block;margin:0.35rem 0"><input type="checkbox" id="staff-can-req" /> GS: upload requisitions for Chair approval</label>
         <button type="button" class="btn btn-primary" id="staff-create-btn">Create login</button>
       </div>
       <div class="table-wrap"><table class="data-table">
@@ -2376,6 +2921,8 @@
         canPayment: !!($('#staff-can-pay') || {}).checked,
         canBibs: !!($('#staff-can-bibs') || {}).checked,
         canFinish: !!($('#staff-can-finish') || {}).checked,
+        canVolunteers: !!($('#staff-can-volunteers') || {}).checked,
+        canRequisitions: !!($('#staff-can-req') || {}).checked,
         disabled: false,
         createdAt: new Date().toISOString()
       });
@@ -2384,6 +2931,18 @@
       alert('Created login for "' + username + '". Share username and password with them securely.');
       renderStaffAdmin();
     };
+    box.querySelectorAll('.staff-perm').forEach((cb) => {
+      cb.onchange = () => {
+        const list = loadStaffUsers();
+        const i = Number(cb.dataset.i);
+        const perm = cb.dataset.perm;
+        if (!list[i] || !perm) return;
+        list[i][perm] = !!cb.checked;
+        saveStaffUsers(list);
+        if (getSyncToken()) livePush({ staffUsers: list }).catch(() => {});
+        renderStaffAdmin();
+      };
+    });
     box.querySelectorAll('.staff-disable').forEach((btn) => {
       btn.onclick = () => {
         const list = loadStaffUsers();
@@ -2488,6 +3047,673 @@
     });
   }
 
+  function loadVolunteers() {
+    try {
+      const list = JSON.parse(localStorage.getItem(VOL_KEY) || '[]');
+      return Array.isArray(list) ? list : [];
+    } catch { return []; }
+  }
+  function saveVolunteers(list) {
+    localStorage.setItem(VOL_KEY, JSON.stringify(list || []));
+  }
+  async function syncVolunteers(list) {
+    saveVolunteers(list);
+    if (!getSyncToken()) {
+      console.warn('No sync token — volunteer list is only on this device');
+      return { ok: false, error: 'No sync token' };
+    }
+    try {
+      const r = await livePush({ volunteers: list, replaceVolunteers: true });
+      if (!r || !r.ok) {
+        console.warn('Volunteer sync failed', r && r.error);
+        return r || { ok: false };
+      }
+      if (r.state && Array.isArray(r.state.volunteers)) {
+        try { localStorage.setItem(VOL_KEY, JSON.stringify(r.state.volunteers)); } catch (e) {}
+      }
+      return r;
+    } catch (e) {
+      console.warn('Volunteer sync error', e);
+      return { ok: false, error: String(e) };
+    }
+  }
+  function volunteerId() {
+    return 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+  function parseVolunteerCsv(text) {
+    const lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return [];
+    const split = (line) => {
+      const out = [];
+      let cur = '';
+      let q = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { q = !q; continue; }
+        if ((c === ',' || c === ';' || c === '\t') && !q) { out.push(cur.trim()); cur = ''; continue; }
+        cur += c;
+      }
+      out.push(cur.trim());
+      return out;
+    };
+    const header = split(lines[0]).map((h) => h.toLowerCase().replace(/\s+/g, ''));
+    const idx = (names) => {
+      for (const n of names) {
+        const i = header.indexOf(n);
+        if (i >= 0) return i;
+      }
+      return -1;
+    };
+    const iName = idx(['fullname', 'name', 'volunteer', 'volunteername']);
+    const iEmail = idx(['email', 'e-mail', 'mail']);
+    const iPhone = idx(['phone', 'mobile', 'tel', 'cellphone']);
+    const iRole = idx(['role', 'area', 'duty', 'station']);
+    const iStatus = idx(['status', 'selected', 'state']);
+    const start = (iName >= 0 || iEmail >= 0) ? 1 : 0;
+    const rows = [];
+    for (let r = start; r < lines.length; r++) {
+      const cols = split(lines[r]);
+      const fullName = (iName >= 0 ? cols[iName] : cols[0] || '').trim();
+      const email = (iEmail >= 0 ? cols[iEmail] : cols[1] || '').trim();
+      if (!fullName) continue;
+      let status = (iStatus >= 0 ? cols[iStatus] : 'selected') || 'selected';
+      status = String(status).toLowerCase();
+      if (status === 'yes' || status === 'true' || status === '1') status = 'selected';
+      if (!['applied', 'selected', 'served', 'declined'].includes(status)) status = 'selected';
+      rows.push({
+        id: volunteerId() + r,
+        fullName,
+        email,
+        phone: (iPhone >= 0 ? cols[iPhone] : cols[2] || '').trim(),
+        role: (iRole >= 0 ? cols[iRole] : cols[3] || '').trim() || 'Race volunteer',
+        status,
+        certIssued: false,
+        createdAt: new Date().toISOString()
+      });
+    }
+    return rows;
+  }
+  function openVolunteerCertificate(v) {
+    const name = String(v.fullName || '').trim() || 'Volunteer';
+    const role = String(v.role || 'Race volunteer').trim();
+    const sigs = loadSigs();
+    const sigCell = (src, label, sub) => {
+      const img = (src && src.indexOf('data:image') === 0)
+        ? '<img src="' + src + '" alt="" style="height:48px;max-width:180px;object-fit:contain;display:block;margin:0 auto 6px" />'
+        : '<div style="height:48px"></div>';
+      return '<div style="text-align:center;min-width:180px">' + img +
+        '<div style="border-top:1px solid #1B4F72;padding-top:6px;font-size:12px"><strong>' + label + '</strong><br>' + sub + '</div></div>';
+    };
+    const w = window.open('', '_blank', 'width=900,height=650');
+    if (!w) { alert('Allow pop-ups to view the certificate.'); return; }
+    w.document.write(`<!DOCTYPE html><html><head><title>Volunteer certificate — ${name.replace(/[<>]/g,'')}</title>
+<style>
+@page { size: A4 landscape; margin: 12mm; }
+body { font-family: Georgia, serif; margin:0; background:#f4f7fb; color:#1B4F72; }
+.sheet { background:#fff; margin:12px auto; width:min(920px,96vw); min-height:540px; padding:32px 40px; box-sizing:border-box; border:8px solid #1B4F72; }
+h1 { margin:0; font-size:26px; letter-spacing:.04em; }
+h2 { margin:8px 0 0; font-size:15px; color:#2980b9; }
+.who { font-size:30px; margin:22px 0 8px; }
+.sig { display:flex; justify-content:space-between; gap:12px; margin-top:40px; }
+</style></head><body>
+<div class="sheet">
+  <h1>CERTIFICATE OF VOLUNTEER SERVICE</h1>
+  <h2>BT42.195km Race 2026 · Blantyre · 27 September 2026</h2>
+  <p>This certifies that</p>
+  <div class="who">${name.replace(/[<>]/g,'')}</div>
+  <p>served as <strong>${role.replace(/[<>]/g,'')}</strong></p>
+  <div class="sig">
+    ${sigCell(sigs.kalua, 'Jim Kalua', 'Chairman, MNCS')}
+    ${sigCell(sigs.chamwala, 'Kondwani Chamwala', 'President, Athletics Malawi')}
+    ${sigCell(sigs.tenthani, 'Chifundo Tenthani', 'Chair, OC')}
+  </div>
+</div>
+<script>setTimeout(function(){ window.print(); }, 400);<\/script>
+</body></html>`);
+w.document.close();
+  }
+  function renderVolunteersAdmin() {
+    const box = $('#ctrl-volunteers');
+    if (!box) return;
+    const list = loadVolunteers();
+    const canEdit = canVolunteers();
+    const rows = list.map((v, i) => {
+      const st = String(v.status || 'applied');
+      const cert = v.certIssued
+        ? ('Issued ' + String(v.issuedAt || '').slice(0, 10) + (v.issuedBy ? ' by ' + v.issuedBy : ''))
+        : '—';
+      const actions = canEdit ? (
+        '<button type="button" class="btn-mini vol-select" data-i="' + i + '">' + (st === 'selected' || st === 'served' ? 'Selected' : 'Select') + '</button> ' +
+        '<button type="button" class="btn-mini vol-decline" data-i="' + i + '">Decline</button> ' +
+        '<button type="button" class="btn-mini vol-cert" data-i="' + i + '"' + (st === 'selected' || st === 'served' ? '' : ' disabled title="Select first"') + '>Issue certificate</button> ' +
+        '<button type="button" class="btn-mini vol-del" data-i="' + i + '" style="color:#C0392B">Remove</button>'
+      ) : (st + (v.certIssued ? ' · certificate issued' : ''));
+      return '<tr><td>' + escapeHtml(v.fullName || '') + '</td><td>' + escapeHtml(v.email || '') +
+        '</td><td>' + escapeHtml(v.phone || '') + '</td><td>' + escapeHtml(v.role || '') +
+        '</td><td>' + escapeHtml(st) + '</td><td>' + escapeHtml(cert) +
+        '</td><td>' + escapeHtml(String(v.createdAt || '').slice(0, 10)) + '</td><td>' + actions + '</td></tr>';
+    }).join('') || '<tr><td colspan="7">No volunteers on this list yet. Add names from the Google Form.</td></tr>';
+    box.innerHTML = (canEdit ? `
+      <div class="card" style="padding:0.75rem;margin-bottom:1rem">
+        <h4 style="margin-top:0">Add volunteer from the form</h4>
+        <div class="form-row">
+          <div class="form-group"><label>Full name *</label><input id="vol-name" type="text" /></div>
+          <div class="form-group"><label>Email *</label><input id="vol-email" type="email" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Phone</label><input id="vol-phone" type="tel" /></div>
+          <div class="form-group"><label>Role / area</label><input id="vol-role" type="text" placeholder="Water kiosk, marshal…" /></div>
+        </div>
+        <button type="button" class="btn btn-primary" id="vol-add">Add to list</button>
+        <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid #e6eef4">
+          <h4 style="margin:0 0 0.35rem">Upload selected list</h4>
+          <p class="form-note">CSV with headers: <code>fullName,email,phone,role,status</code>. Status may be applied, selected or served. One volunteer per row.</p>
+          <input type="file" id="vol-csv" accept=".csv,text/csv,text/plain" />
+          <button type="button" class="btn-mini" id="vol-mark-selected">Mark all listed as Selected</button>
+        </div>
+      </div>` : '<p class="form-note">View only. Chair or Volunteers Coordinator can select and issue certificates.</p>') +
+      '<p class="form-note"><button type="button" class="btn-mini" id="vol-refresh">Refresh shared list</button> Volunteer records sync to every signed-in gadget.</p>' +
+      '<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Status</th><th>Certificate</th><th>Added</th><th></th></tr></thead><tbody>' +
+      rows + '</tbody></table></div>';
+    const refresh = $('#vol-refresh');
+    if (refresh) refresh.onclick = async () => {
+      refresh.disabled = true;
+      await pullSharedState().catch(() => {});
+      renderVolunteersAdmin();
+    };
+    const add = $('#vol-add');
+    if (add) add.onclick = () => {
+      if (!canVolunteers()) return;
+      const fullName = (($('#vol-name') || {}).value || '').trim();
+      const email = (($('#vol-email') || {}).value || '').trim();
+      if (!fullName || !email) { alert('Name and email required (certificate + send).'); return; }
+      const next = loadVolunteers();
+      next.push({
+        id: volunteerId(),
+        fullName,
+        email,
+        phone: (($('#vol-phone') || {}).value || '').trim(),
+        role: (($('#vol-role') || {}).value || '').trim() || 'Race volunteer',
+        status: 'applied',
+        certIssued: false,
+        createdAt: new Date().toISOString()
+      });
+      saveVolunteers(next);
+      syncVolunteers(next);
+      renderVolunteersAdmin();
+    };
+    const csvInput = $('#vol-csv');
+    if (csvInput) csvInput.onchange = () => {
+      const file = csvInput.files && csvInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const incoming = parseVolunteerCsv(reader.result);
+        if (!incoming.length) {
+          alert('No rows found. Use headers fullName,email,phone,role,status');
+          return;
+        }
+        const next = loadVolunteers();
+        const keyOf = (v) => String(v.email || v.fullName || '').trim().toLowerCase();
+        const map = new Map();
+        next.forEach((v) => map.set(keyOf(v), v));
+        incoming.forEach((v) => {
+          const k = keyOf(v);
+          const cur = map.get(k);
+          map.set(k, Object.assign({}, cur || {}, v, { id: (cur && cur.id) || v.id }));
+        });
+        const merged = Array.from(map.values());
+        saveVolunteers(merged);
+        syncVolunteers(merged);
+        alert('Loaded ' + incoming.length + ' volunteers from the file. They are on the shared list.');
+        renderVolunteersAdmin();
+      };
+      reader.readAsText(file);
+    };
+    const markAll = $('#vol-mark-selected');
+    if (markAll) markAll.onclick = () => {
+      const next = loadVolunteers().map((v) => {
+        if (v.status === 'declined') return v;
+        return Object.assign({}, v, { status: v.status === 'served' ? 'served' : 'selected' });
+      });
+      saveVolunteers(next);
+      syncVolunteers(next);
+      renderVolunteersAdmin();
+    };
+    box.querySelectorAll('.vol-select').forEach((btn) => {
+      btn.onclick = () => {
+        if (!canVolunteers()) return;
+        const next = loadVolunteers();
+        const i = Number(btn.dataset.i);
+        if (!next[i]) return;
+        next[i].status = 'selected';
+        saveVolunteers(next);
+        syncVolunteers(next);
+        renderVolunteersAdmin();
+      };
+    });
+    box.querySelectorAll('.vol-decline').forEach((btn) => {
+      btn.onclick = () => {
+        if (!canVolunteers()) return;
+        const next = loadVolunteers();
+        const i = Number(btn.dataset.i);
+        if (!next[i]) return;
+        next[i].status = 'declined';
+        saveVolunteers(next);
+        syncVolunteers(next);
+        renderVolunteersAdmin();
+      };
+    });
+    box.querySelectorAll('.vol-cert').forEach((btn) => {
+      btn.onclick = async () => {
+        if (!canVolunteers()) return;
+        const next = loadVolunteers();
+        const i = Number(btn.dataset.i);
+        const v = next[i];
+        if (!v) return;
+        if (v.status !== 'selected' && v.status !== 'served') {
+          alert('Mark as Selected before issuing a certificate.');
+          return;
+        }
+        const to = String(v.email || '').trim();
+        if (!to || to.indexOf('@') < 0) {
+          alert('Add a valid email before issuing. The certificate is emailed to the volunteer.');
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        let mailed = false;
+        let mailErr = '';
+        try {
+          const sigs = await signaturesForEmail();
+          const pdfBase64 = buildClientCertificatePdf({
+            volunteer: true,
+            fullName: v.fullName,
+            distance: v.role || 'Race volunteer',
+            role: v.role || 'Race volunteer',
+            signatures: sigs
+          });
+          const j = await sendAthleteEmail({
+            type: 'volunteer',
+            to: to,
+            email: to,
+            fullName: v.fullName,
+            role: v.role || 'Race volunteer',
+            distance: v.role || 'Race volunteer',
+            phone: v.phone || '',
+            subject: 'Certificate of Volunteer Service — BT42.195km Race 2026',
+            raceDate: '27 September 2026',
+            certId: 'BT42-VOL-' + String(v.id || '').slice(-8),
+            issued: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+            signatures: sigs,
+            pdfBase64: pdfBase64
+          });
+          mailed = !!(j && j.ok);
+          mailErr = (j && (j.error || j.detail && j.detail.message)) || '';
+        } catch (e) {
+          mailErr = String(e);
+        }
+        v.status = 'served';
+        v.certIssued = mailed;
+        v.issuedAt = new Date().toISOString();
+        v.issuedBy = currentUser || 'coordinator';
+        v.emailResult = mailed ? 'sent' : ('failed: ' + mailErr);
+        saveVolunteers(next);
+        await syncVolunteers(next);
+        openVolunteerCertificate(v);
+        if (mailed) alert('Certificate emailed to ' + to);
+        else alert('Print window opened, but email failed: ' + (mailErr || 'unknown') + '. Check EMAIL_API_KEY / RESEND_API_KEY on Netlify.');
+        renderVolunteersAdmin();
+      };
+    });
+    box.querySelectorAll('.vol-del').forEach((btn) => {
+      btn.onclick = async () => {
+        if (!canVolunteers()) return;
+        if (!confirm('Remove this volunteer from the shared list?')) return;
+        const next = loadVolunteers();
+        next.splice(Number(btn.dataset.i), 1);
+        saveVolunteers(next);
+        const r = await syncVolunteers(next);
+        if (r && r.ok === false) alert('Removed on this phone, but shared list failed: ' + (r.error || 'sync'));
+        renderVolunteersAdmin();
+      };
+    });
+  }
+
+  function mk(n) {
+    const v = Number(n) || 0;
+    return 'MK' + v.toLocaleString('en-MW');
+  }
+  function loadApprovals() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(APPROVALS_KEY) || 'null');
+      if (Array.isArray(raw) && raw.length) return raw;
+    } catch (e) {}
+    return APPROVALS_SEED.slice();
+  }
+  function saveApprovals(list, opts) {
+    localStorage.setItem(APPROVALS_KEY, JSON.stringify(list || []));
+    if (!getSyncToken()) return;
+    if (isChair) livePush({ approvals: list }).catch(() => {});
+    else if (opts && opts.added) livePush({ newApprovals: opts.added }).catch(() => {});
+  }
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) return resolve(null);
+      if (file.size > 2.5 * 1024 * 1024) return reject(new Error('File must be under 2.5 MB'));
+      const r = new FileReader();
+      r.onerror = () => reject(new Error('Could not read file'));
+      r.onload = () => resolve({ name: file.name, type: file.type || 'application/octet-stream', data: r.result });
+      r.readAsDataURL(file);
+    });
+  }
+  function renderApprovals() {
+    const box = $('#ctrl-approvals');
+    if (!box || !canRequisitions()) return;
+    const rows = loadApprovals();
+    const approved = rows.filter((r) => r.status === 'approved');
+    const pending = rows.filter((r) => r.status !== 'approved');
+    const sum = (list) => list.reduce((a, r) => a + Number(r.amount || 0) + Number(r.vat || 0), 0);
+    const line = (r, i) => {
+      const total = Number(r.amount || 0) + Number(r.vat || 0);
+      const st = r.status === 'approved' ? 'pay-ok' : (r.status === 'rejected' ? 'pay-no' : 'pay-wait');
+      const fileLink = (r.fileData && r.fileName)
+        ? '<a href="' + r.fileData + '" download="' + escapeHtml(r.fileName) + '">' + escapeHtml(r.fileName) + '</a>'
+        : '—';
+      const actions = isChair
+        ? ('<button type="button" class="btn-mini ap-toggle" data-i="' + i + '">' + (r.status === 'approved' ? 'Mark pending' : 'Approve') + '</button> ' +
+           (r.status === 'pending' ? '<button type="button" class="btn-mini ap-reject" data-i="' + i + '">Reject</button> ' : '') +
+           '<button type="button" class="btn-mini ap-del" data-i="' + i + '" style="color:#C0392B">Remove</button>')
+        : '<span class="form-note">Waiting on Chair</span>';
+      return '<tr>' +
+        '<td>' + escapeHtml(r.approvedOn || r.requested || '') + '</td>' +
+        '<td><strong>' + escapeHtml(r.payee || '') + '</strong><br><span class="form-note">' + escapeHtml(r.items || '') + '</span><br>' + fileLink + '</td>' +
+        '<td>' + escapeHtml([r.bank, r.account].filter(Boolean).join(' · ') || '—') + '</td>' +
+        '<td>' + mk(r.amount) + (r.vat ? '<br><span class="form-note">VAT ' + mk(r.vat) + '</span>' : '') + '</td>' +
+        '<td><strong>' + mk(total) + '</strong></td>' +
+        '<td><span class="pay-status ' + st + '">' + escapeHtml(r.status || '') + '</span></td>' +
+        '<td>' + escapeHtml(r.comment || r.requestedBy || '') + '</td>' +
+        '<td>' + actions + '</td></tr>';
+    };
+    box.innerHTML =
+      '<div class="notice"><strong>' + approved.length + '</strong> approved · <strong>' + pending.length + '</strong> pending · ' +
+      'Approved total <strong>' + mk(sum(approved)) + '</strong> · All listed <strong>' + mk(sum(rows)) + '</strong></div>' +
+      '<div class="table-wrap"><table class="ctrl-table"><thead><tr>' +
+      '<th>Date</th><th>Payee / file</th><th>Bank</th><th>Amount</th><th>Total</th><th>Status</th><th>Note</th><th></th>' +
+      '</tr></thead><tbody>' + rows.map(line).join('') + '</tbody></table></div>' +
+      '<h4 style="margin:1.2rem 0 0.4rem">' + (isChair ? 'Add or capture an approval' : 'Submit a requisition for Chair approval') + '</h4>' +
+      '<div class="form-row"><div class="form-group"><label>Payee</label><input id="ap-payee" /></div>' +
+      '<div class="form-group"><label>Amount MK</label><input id="ap-amount" type="number" min="0" step="1" /></div></div>' +
+      '<div class="form-row"><div class="form-group"><label>Items</label><input id="ap-items" /></div>' +
+      '<div class="form-group"><label>Bank / account</label><input id="ap-bank" placeholder="Bank · account number" /></div></div>' +
+      '<div class="form-row"><div class="form-group"><label>VAT MK</label><input id="ap-vat" type="number" min="0" value="0" /></div>' +
+      '<div class="form-group"><label>Requisition file (pdf/doc/jpg, under 2.5 MB)</label><input id="ap-file" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx" /></div></div>' +
+      (isChair ? '<div class="form-group"><label>Note</label><input id="ap-note" value="Approved by Chair — Chifundo Tenthani" /></div>' : '') +
+      '<button type="button" class="btn btn-primary" id="ap-add">' + (isChair ? 'Save as approved' : 'Send to Chair') + '</button>';
+    const add = $('#ap-add');
+    if (add) add.onclick = async () => {
+      const payee = (($('#ap-payee') || {}).value || '').trim();
+      const amount = Number((($('#ap-amount') || {}).value) || 0);
+      if (!payee || !amount) { alert('Payee and amount required.'); return; }
+      let fileMeta = null;
+      try {
+        const inp = $('#ap-file');
+        fileMeta = await fileToDataUrl(inp && inp.files && inp.files[0]);
+      } catch (e) {
+        alert(e.message || e);
+        return;
+      }
+      const bankLine = (($('#ap-bank') || {}).value || '').trim();
+      const parts = bankLine.split('·').map((s) => s.trim());
+      const rec = {
+        id: 'ap-' + Date.now().toString(36),
+        requested: new Date().toISOString().slice(0, 10),
+        approvedOn: isChair ? new Date().toISOString().slice(0, 10) : '',
+        requestedBy: currentUser || (isChair ? 'Chair entry' : 'GS'),
+        payee,
+        bank: parts[0] || bankLine,
+        account: parts[1] || '',
+        items: (($('#ap-items') || {}).value || '').trim(),
+        amount,
+        vat: Number((($('#ap-vat') || {}).value) || 0),
+        mode: 'Cash',
+        status: isChair ? 'approved' : 'pending',
+        comment: isChair ? ((($('#ap-note') || {}).value || '').trim()) : 'Submitted for Chair approval',
+        ref: isChair ? 'Chair capture' : 'GS upload',
+        fileName: fileMeta && fileMeta.name || '',
+        fileType: fileMeta && fileMeta.type || '',
+        fileData: fileMeta && fileMeta.data || ''
+      };
+      const next = loadApprovals();
+      next.unshift(rec);
+      saveApprovals(next, { added: [rec] });
+      renderApprovals();
+      alert(isChair ? 'Saved as approved.' : 'Sent to the Chair. Status: pending.');
+    };
+    box.querySelectorAll('.ap-toggle').forEach((btn) => {
+      btn.onclick = () => {
+        if (!isChair) return;
+        const next = loadApprovals();
+        const r = next[Number(btn.dataset.i)];
+        if (!r) return;
+        if (r.status === 'approved') {
+          r.status = 'pending';
+          r.approvedOn = '';
+        } else {
+          r.status = 'approved';
+          r.approvedOn = new Date().toISOString().slice(0, 10);
+          r.comment = 'Approved by Chair — Chifundo Tenthani';
+        }
+        saveApprovals(next);
+        renderApprovals();
+      };
+    });
+    box.querySelectorAll('.ap-reject').forEach((btn) => {
+      btn.onclick = () => {
+        if (!isChair) return;
+        const next = loadApprovals();
+        const r = next[Number(btn.dataset.i)];
+        if (!r) return;
+        r.status = 'rejected';
+        r.comment = 'Rejected by Chair';
+        saveApprovals(next);
+        renderApprovals();
+      };
+    });
+    box.querySelectorAll('.ap-del').forEach((btn) => {
+      btn.onclick = () => {
+        if (!isChair) return;
+        if (!confirm('Remove this requisition from the Chair list?')) return;
+        const next = loadApprovals();
+        next.splice(Number(btn.dataset.i), 1);
+        saveApprovals(next);
+        renderApprovals();
+      };
+    });
+  }
+
+  const SURVEY_PREVIEW = {
+    Participants: [
+      'Which race did you take part in?',
+      'How easy was online registration and payment?',
+      'How clear was pre-race information?',
+      'How was bib collection and the start area?',
+      'How well was the course marked and marshalled?',
+      'How adequate were water stations?',
+      'Medical and safety support',
+      'Finish, results and medals/certificates',
+      'Would you enter again?',
+      'What should we improve next year?'
+    ],
+    Volunteers: [
+      'Main duty',
+      'Briefing before race day',
+      'Kit and supplies at post',
+      'Morning coordination',
+      'Safety at your post',
+      'Length of shift',
+      'Committee support',
+      'Would you volunteer again?',
+      'Overall volunteer experience',
+      'What should change for volunteers?'
+    ],
+    Committee: [
+      'Main OC role',
+      'Planning meetings',
+      'Website / Control Room',
+      'Money and approvals',
+      'Race-morning command',
+      'Partners (MNCS / AM)',
+      'Handling problems on the day',
+      'Serve on the OC again?',
+      'Overall committee experience',
+      'Priority fix next edition'
+    ],
+    Media: [
+      'Outlet type',
+      'Accreditation / access',
+      'Information pack',
+      'Start / finish / course access',
+      'OC spokespersons',
+      'Facilities',
+      'Results and name spellings',
+      'Cover the race again?',
+      'Overall media experience',
+      'What would help coverage?'
+    ],
+    Public: [
+      'How did you follow the race?',
+      'How did you hear about it?',
+      'Atmosphere on the route',
+      'Road closures and diversions',
+      'Welcome for spectators',
+      'Where-to-watch information',
+      'Impact on movement in Blantyre',
+      'Recommend watching?',
+      'Overall public impression',
+      'One thing to do differently'
+    ]
+  };
+
+  function parseRaceTime(t) {
+    const s = String(t || '').trim();
+    const p = s.split(':').map(Number);
+    if (p.some((n) => isNaN(n))) return 9e15;
+    if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+    if (p.length === 2) return p[0] * 60 + p[1];
+    return 9e15;
+  }
+
+  function buildResultRows() {
+    let regs = [];
+    try { regs = JSON.parse(localStorage.getItem('bt42_registrations') || '[]'); } catch { regs = []; }
+    const fins = loadFinishes();
+    const bibs = loadBibs();
+    return regs.map((r, i) => {
+      const k = participantKey(r, i);
+      const fin = fins[k] || {};
+      return {
+        name: r.fullName || '',
+        distance: normalizeDistanceCode(r.distance),
+        bib: (bibs[k] && bibs[k].number) || '',
+        status: fin.status || 'on_course',
+        time: fin.time || '',
+        sort: fin.status === 'finished' ? parseRaceTime(fin.time) : (fin.status === 'dnf' ? 8e15 : 9e15)
+      };
+    });
+  }
+
+  function renderLiveResults() {
+    const box = $('#ctrl-live-results');
+    if (!box) return;
+    const rows = buildResultRows();
+    const groups = [
+      { id: '42.195', title: '42.195 km Marathon' },
+      { id: '10', title: '10 km' },
+      { id: '5', title: '5 km Fun Run' }
+    ];
+    let html = '<p class="form-note">Board refreshes when you mark Finish. Public view updates from the shared list.</p>';
+    groups.forEach((g) => {
+      const list = rows.filter((r) => r.distance === g.id).sort((a, b) => a.sort - b.sort);
+      const fin = list.filter((r) => r.status === 'finished').length;
+      html += '<h4>' + g.title + ' — ' + fin + ' finished / ' + list.length + ' entered</h4>';
+      html += '<div class="table-wrap"><table class="ctrl-table"><thead><tr><th>Pos</th><th>Bib</th><th>Name</th><th>Time</th><th>Status</th></tr></thead><tbody>';
+      let pos = 0;
+      list.forEach((r) => {
+        if (r.status === 'finished') pos += 1;
+        html += '<tr><td>' + (r.status === 'finished' ? pos : '—') + '</td><td>' + escapeHtml(String(r.bib || '—')) + '</td><td>' + escapeHtml(r.name) + '</td><td>' + escapeHtml(r.time || '—') + '</td><td>' + escapeHtml(r.status) + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    });
+    box.innerHTML = html;
+  }
+
+  function renderSurveyPreview() {
+    const box = $('#ctrl-survey-preview');
+    if (!box) return;
+    if (!isChair) {
+      box.innerHTML = '<p class="form-note">Survey questions and live totals. Pretest form is Chair only.</p>';
+      return;
+    }
+    box.innerHTML = '<p><a class="btn btn-primary" href="#survey">Open public survey page (respondent view)</a></p><div id="chair-survey-pretest"></div>';
+    const mount = $('#chair-survey-pretest');
+    if (window.BT42_renderSurvey && mount) {
+      window.BT42_renderSurvey(mount, {
+        pretest: true,
+        formId: 'chairSurveyForm',
+        thanksId: 'chairSurveyThanks',
+        audId: 'chairSurveyAudience',
+        fieldsId: 'chairSurveyFields'
+      });
+    }
+  }
+
+  function renderSurveyResults() {
+    const box = $('#ctrl-survey-results');
+    if (!box) return;
+    let rows = [];
+    try { rows = JSON.parse(localStorage.getItem('bt42_survey_responses') || '[]'); } catch { rows = []; }
+    const labels = { participant: 'Participants', volunteer: 'Volunteers', committee: 'Committee', media: 'Media', public: 'Public' };
+    const live = rows.filter((r) => !r.pretest);
+    const pre = rows.filter((r) => r.pretest);
+    const groups = {};
+    Object.keys(labels).forEach((k) => { groups[k] = live.filter((r) => r.audience === k); });
+    let html = '<p><strong>' + live.length + '</strong> race-day responses · <strong>' + pre.length + '</strong> chair pretests (not counted in averages below).</p>';
+    Object.keys(labels).forEach((k) => {
+      const list = groups[k];
+      html += '<h4 style="margin:1rem 0 0.35rem">' + labels[k] + ' — ' + list.length + '</h4>';
+      if (!list.length) {
+        html += '<p class="form-note">No responses yet.</p>';
+        return;
+      }
+      const keys = {};
+      list.forEach((r) => {
+        Object.keys(r.answers || {}).forEach((qid) => {
+          const val = String((r.answers || {})[qid] || '').trim();
+          if (!val) return;
+          if (!keys[qid]) keys[qid] = {};
+          keys[qid][val] = (keys[qid][val] || 0) + 1;
+        });
+      });
+      html += '<div class="table-wrap"><table class="ctrl-table"><thead><tr><th>Question</th><th>Summary</th></tr></thead><tbody>';
+      Object.keys(keys).forEach((qid) => {
+        const counts = keys[qid];
+        const nums = Object.keys(counts).filter((v) => /^\d+$/.test(v)).map(Number);
+        let summary;
+        if (nums.length) {
+          let tot = 0, n = 0;
+          nums.forEach((v) => { tot += v * counts[String(v)]; n += counts[String(v)]; });
+          summary = 'Average ' + (n ? (tot / n).toFixed(1) : '—') + ' / 5 · ' + Object.keys(counts).map((v) => v + ': ' + counts[v]).join(', ');
+        } else {
+          summary = Object.keys(counts).map((v) => escapeHtml(v.slice(0, 80)) + ' (' + counts[v] + ')').join('<br>');
+        }
+        html += '<tr><td>' + escapeHtml(qid) + '</td><td>' + summary + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    });
+    box.innerHTML = html;
+  }
+
   function renderAll() {
     renderDashboard();
     renderChecklist();
@@ -2499,9 +3725,14 @@
     renderTargets();
     renderSyncBar();
     renderParticipants();
+    renderVolunteersAdmin();
     renderAttendance();
     renderDeadlines();
     if (isChair) renderChairNotes();
+    if (canRequisitions()) renderApprovals();
+    renderSurveyPreview();
+    renderSurveyResults();
+    renderLiveResults();
     if (canManageStaff()) renderStaffAdmin();
     if (isChair) renderSiteContentAdmin();
     applySiteContentToPublic();
@@ -2516,6 +3747,7 @@
       pullSharedState().then(r => {
         if (r.ok) {
           renderParticipants();
+          renderVolunteersAdmin();
           renderAttendance();
           renderDashboard();
         }
