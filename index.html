@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#37003c" />
-  <meta name="description" content="FPL Assistant – pitch view, AI transfers, AI teams & chip strategy" />
+  <meta name="description" content="Your weekly FPL plan: compare transfers after hits, choose a captain and close the gap to your mini-league rival." />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -14,8 +14,9 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png" />
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png" />
-  <title>FPL Assistant 2026/27</title>
+  <title>MyFPL · Your mini-league mission</title>
   <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/mission.css" />
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
@@ -27,7 +28,7 @@
 <body>
   <header class="topbar">
     <div class="topbar-left">
-      <span class="logo">⚽ FPL Assistant</span>
+      <span class="logo">⚽ MyFPL</span>
       <span class="season">2026/27</span>
     </div>
     <div class="topbar-metrics" id="topMetrics">
@@ -60,10 +61,12 @@
     </div>
   </div>
 
-  <nav class="main-nav">
-    <button class="nav-btn active" data-view="pick">Pick</button>
+  <a class="skip-link" href="#view-mission">Skip to weekly plan</a>
+  <nav class="main-nav" aria-label="Main navigation">
+    <button class="nav-btn active" data-view="mission">Weekly plan</button>
+    <button class="nav-btn" data-view="pick">Squad</button>
     <button class="nav-btn" data-view="transfers">Transfers</button>
-    <button class="nav-btn" data-view="rank">Live</button>
+    <button class="nav-btn" data-view="rank">Leagues</button>
     <button class="nav-btn" type="button" id="moreNavBtn">More</button>
     <button class="nav-btn nav-extra" data-view="teams">AI Teams</button>
     <button class="nav-btn nav-extra" data-view="matchday">Matchday</button>
@@ -88,8 +91,16 @@
     <button id="doneEditBtn" class="btn btn-pink" style="margin-left:12px">Done editing</button>
   </div>
 
+<main id="view-mission" class="view active" aria-labelledby="missionTitle">
+  <div class="mission-wrap">
+    <section class="mission-hero"><div class="mission-eyebrow">YOUR MINI-LEAGUE MISSION</div><h1 id="missionTitle">A clear plan.<br>Every gameweek.</h1><p>Know when to hold, who to captain, and how to close the gap. Make the decision with the evidence in front of you.</p><div class="mission-hero-tags"><span>Official FPL data</span><span>Points hits included</span><span>Free preview through November</span></div></section>
+    <section class="card mission-controls" aria-labelledby="missionSetup"><h2 id="missionSetup">Set your target</h2><p class="muted">Load your Team ID above, then choose the league and rival you want to beat. You never need to share your FPL password.</p><form id="missionForm"><div class="mission-form-grid"><label>Classic league<select id="missionLeague"><option value="">Start with my team</option></select></label><label>Rival Team ID (optional)<input id="missionRival" type="number" min="1" step="1" placeholder="Nearest rival by default"></label><label>Free transfers<input id="missionFt" type="number" min="0" max="5" value="1" required></label><label>Current bank (£m)<input id="missionBank" type="number" min="0" max="100" step="0.1" placeholder="From your last published team"></label></div><details id="missionSelling"><summary>Confirm selling prices</summary><p class="muted">Copy selling prices from official FPL Transfers. Current market prices can overstate your budget. Confirmations expire after 24 hours.</p><div id="sellingPriceFields" class="mission-form-grid"><p>Load your team on Squad to enter selling prices.</p></div><button id="saveSellingPrices" class="btn btn-outline" type="button">Save confirmed prices</button></details><div class="mission-actions"><button id="missionBuild" class="btn btn-blue" type="submit">Build my weekly plan</button><button id="missionSquad" class="btn btn-outline" type="button">Review my squad</button></div><p id="missionStatus" class="muted" role="status" aria-live="polite">Start with your public FPL Team ID. Find it in the URL of your Points page.</p></form></section>
+    <section id="missionReport" aria-live="polite"><div class="mission-empty"><span class="mission-empty-icon">↗</span><h2>Your next decision belongs here</h2><p>Get a legal starting XI, captain and vice-captain shortlist, and hold / steady / chase comparison. Add a mini-league to see the points gap.</p></div></section>
+    <section class="mission-bottom"><div><h2>Built to help you climb.</h2><p>Track your rival, compare the trade-offs and keep control of your team. Predictions are estimates; league wins cannot be guaranteed.</p></div><button id="missionPricing" class="btn btn-blue" type="button">December plans · from $2.49/month</button></section>
+  </div>
+</main>
   <!-- ========== PICK VIEW ========== -->
-  <div id="view-pick" class="view active">
+  <div id="view-pick" class="view">
     <div class="layout">
       <section class="pitch-area">
         <div id="weeklyStrip" class="weekly-strip">
@@ -417,7 +428,7 @@
         <p class="trial-note" style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px 12px;font-size:0.9rem">
           <strong>Free until 30 November 2026:</strong> All Pro and Ultra features are unlocked for everyone until this date. Paid plans apply after that.
         </p>
-        <p class="muted">Prices in USD. Yearly = 20% off. Local Malawi payments use merchant Till codes only (no personal numbers on this site).</p>
+        <p class="muted">Choose a plan for your weekly FPL decisions. Monthly subscriptions below are in USD. Free access runs through 30 November 2026.</p>
         <div class="price-grid">
           <div class="price-card">
             <h3>Starter</h3>
@@ -431,43 +442,50 @@
             <button type="button" class="btn btn-ghost" disabled>Always free</button>
           </div>
           <div class="price-card featured">
-            <div class="badge">Most popular</div>
+            <div class="badge">Weekly planning</div>
             <h3>Pro</h3>
             <div class="price">$2.49<span>/mo</span></div>
-            <div class="price" style="font-size:1rem;margin-top:-6px;color:var(--muted)">or <strong>$23.90/yr</strong> <span style="color:#16a34a;font-size:0.8rem">save 20%</span></div>
             <ul>
-              <li>Unlimited AI Transfers</li>
-              <li>Unlimited AI Teams</li>
-              <li>Improved projections (xG + FDR)</li>
+              <li>Server-generated weekly decision report</li>
+              <li>Hold / steady / chase comparisons</li>
+              <li>Legal XI and captain shortlist</li>
               <li>Live Rank tab</li>
               <li>Mini-league rival diffs</li>
             </ul>
-            <a id="upgradeProBtn" class="btn btn-blue" href="https://www.paypal.com/ncp/payment/J6DP32LZ7ZMZA" target="_blank" rel="noopener">PayPal · Pro monthly</a>
-            <button type="button" id="startTrialPro" class="btn btn-outline" style="margin-top:6px">Start 14-day Pro trial</button>
-            <a id="upgradeProYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/6BS7Z7XPV4FFL" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Pro yearly $23.90</a>
+            <button id="upgradeProBtn" class="btn btn-blue" type="button" data-subscribe="pro">Subscribe · Pro $2.49/month</button>
           </div>
           <div class="price-card">
             <h3>Ultra</h3>
             <div class="price">$4.99<span>/mo</span></div>
-            <div class="price" style="font-size:1rem;margin-top:-6px;color:var(--muted)">or <strong>$47.90/yr</strong> <span style="color:#16a34a;font-size:0.8rem">save 20%</span></div>
             <ul>
               <li><strong>Everything in Pro</strong></li>
-              <li>Multi-week transfer planner</li>
-              <li>Draft + Challenge trackers</li>
-              <li>Priority data refresh</li>
-              <li>Early access to new tools</li>
+              
+              <li>Three-gameweek planning tools</li>
+              <li>Advanced squad exploration</li>
+              
             </ul>
-            <a id="upgradeUltraBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ZXB3XQA3BJG9A" target="_blank" rel="noopener">PayPal · Ultra monthly</a>
-            <button type="button" id="startTrialUltra" class="btn btn-outline" style="margin-top:6px">Start 14-day Ultra trial</button>
-            <a id="upgradeUltraYearlyBtn" class="btn btn-outline" href="https://www.paypal.com/ncp/payment/ELGD2S687MS7Q" target="_blank" rel="noopener" style="margin-top:6px">PayPal · Ultra yearly $47.90</a>
+            <button id="upgradeUltraBtn" class="btn btn-outline" type="button" data-subscribe="ultra">Subscribe · Ultra $4.99/month</button>
           </div>
         </div>
 
 
-        <p class="muted" style="margin-top:14px;font-size:0.85rem">
-          Testing: AI Transfers / AI Teams → <strong>Demo unlock</strong>.<br>
-          Reset plan: console → <code>localStorage.removeItem('fpl_plan_v1')</code> then Refresh.
-        </p>
+        <p id="billingStatus" role="status" class="muted">Subscriptions open on 1 December 2026 after payment verification.</p><button id="cancelSubscription" type="button" class="btn btn-outline hidden">Cancel subscription renewal</button>
+        <section aria-labelledby="paymentOptionsTitle" style="margin-top:24px">
+          <h3 id="paymentOptionsTitle">Payment options</h3>
+          <div class="price-grid">
+            <div class="price-card">
+              <h4>International managers</h4>
+              <p>Recurring monthly payments use PayPal after billing verification. Review the amount and renewal terms on PayPal before subscribing.</p>
+              <p class="muted">Access activates only after PayPal confirms the payment. Returning from checkout is not proof of payment.</p>
+            </div>
+            <div class="price-card">
+              <h4>Managers in Malawi</h4>
+              <p>Airtel Money and TNM Mpamba payment instructions are being prepared.</p>
+              <p class="muted">Local payment is not available yet. A confirmed MWK price and merchant till will appear here when ready.</p>
+            </div>
+          </div>
+          <p class="muted" style="margin-top:14px">Your plan helps you assess transfers, captains and rivals. Points and mini-league wins cannot be guaranteed.</p>
+        </section>
       </div>
     </div>
   </div>
@@ -497,17 +515,17 @@
       <div id="installGuideBody"></div>
     </div>
   </div>
-  <div id="loginModal" class="chip-modal hidden">
+  <div id="loginModal" class="chip-modal hidden" role="dialog" aria-modal="true" aria-label="Verify your email">
     <div class="chip-modal-box" style="max-width:420px">
       <h3>Sign in</h3>
-      <p class="muted" style="font-size:0.9rem">Pro / Ultra is bound to your <strong>email + Team ID</strong> after payment. Enter both to unlock AI features for that team only.</p>
+      <p class="muted" style="font-size:0.9rem">Verify your email with a one-time code. Paid access is checked on the server and linked to your Team ID. We never ask for your official FPL password.</p>
       <label style="display:block">Email
         <input type="email" id="loginEmail" placeholder="you@email.com" required style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border)" />
       </label>
       <label style="display:block;margin-top:10px">Team ID
         <input type="number" id="loginTeamId" placeholder="e.g. 3748215" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border)" />
       </label>
-      <input type="hidden" id="loginCode" value="" />
+      <label id="loginCodeLabel" class="hidden" style="display:block;margin-top:10px">Email verification code<input id="loginCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="Six-digit code" /></label>
       <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.9rem">
         <input type="checkbox" id="loginMatchdayEmail" />
         Email me Matchday digests (captain poll, chip tip, fixtures)
@@ -515,7 +533,7 @@
       <p id="loginMsg" style="margin-top:10px;font-size:0.85rem"></p>
       <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
         <button type="button" class="btn btn-ghost" id="loginCancelBtn">Cancel</button>
-        <button type="button" class="btn btn-blue" id="loginSubmitBtn">Sign in</button>
+        <button type="button" class="btn btn-blue" id="loginSubmitBtn">Send sign-in code</button>
       </div>
     </div>
   </div>
@@ -605,7 +623,7 @@
           <div class="controls-row" style="margin-top:12px">
             <button type="button" id="settingsSignInBtn" class="btn btn-cyan">Sign in</button>
             <button type="button" id="settingsSignOutBtn" class="btn btn-ghost">Sign out</button>
-            <button type="button" id="settingsStartTrialBtn" class="btn btn-outline">Start 14-day Pro trial</button>
+            <button type="button" id="settingsStartTrialBtn" class="btn btn-outline">View December plans</button>
           </div>
         </div>
 
@@ -779,7 +797,7 @@
             <a class="btn btn-outline" href="/privacy.html">Privacy policy</a>
             <button type="button" id="settingsOpenTermsBtn" class="btn btn-outline">Terms of use</button>
           </div>
-          <p class="muted" style="font-size:0.75rem;margin-top:8px">Clearing local data removes saved squad, Team ID memory, trial session, and UI preferences on this device only.</p>
+          <p class="muted" style="font-size:0.75rem;margin-top:8px">Clearing local data removes saved squad, Team ID memory, planning history, and UI preferences on this device only.</p>
         </div>
       </div>
     </div>
@@ -794,5 +812,6 @@
     <span id="lastUpdated"></span>
   </footer>
   <script src="js/app.js"></script>
+  <script src="js/mission.js"></script>
 </body>
 </html>

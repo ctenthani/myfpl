@@ -1,0 +1,10 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const target = path.join(root, 'site');
+fs.mkdirSync(target, { recursive: true });
+for (const name of ['index.html','privacy.html','manifest.json','robots.txt','sw.js','_redirects','assets','css','icons','js']) fs.cpSync(path.join(root, name), path.join(target, name), { recursive: true });
+const functions = path.join(root, 'deploy-functions');
+fs.mkdirSync(functions, { recursive: true });
+for (const name of ['fpl.js','votes.js','subscribe.js','members.js','matchday-digest.js','account.js','billing.js','paypal-webhook.js','coach.js','lib']) fs.cpSync(path.join(root,'netlify','functions',name),path.join(functions,name),{recursive:true});
+console.log('Public app built in site; server source, tests and configuration excluded.');

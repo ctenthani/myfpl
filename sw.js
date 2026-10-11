@@ -1,8 +1,9 @@
-const CACHE = "fpl-assistant-v61";
+const CACHE = "myfpl-mission-v63";
 const ASSETS = [
   "/",
   "/index.html",
   "/css/style.css",
+  "/css/mission.css",
   "/manifest.json",
   "/privacy.html",
   "/icons/icon-192.png",

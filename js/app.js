@@ -9,7 +9,7 @@ const BUDGET = 100.0; // Starting budget only (£100.0m). Team *value* can rise 
 // Annual = monthly × 12 × 0.80  (20% discount)
 // ============================================================
 /** All Pro/Ultra features free until end of 30 Nov 2026 (CAT). */
-const FREE_UNTIL = new Date("2026-11-30T23:59:59+02:00");
+const FREE_UNTIL = new Date("2026-11-30T23:59:59.999Z");
 function isFreePeriod() {
   return Date.now() <= FREE_UNTIL.getTime();
 }
@@ -19,10 +19,10 @@ const PRICING = {
   ultra: { monthly: 4.99, yearly: +(4.99 * 12 * 0.8).toFixed(2) },   // $4.99 / $47.90
 };
 
-const PAYPAL_PRO_MONTHLY   = "https://www.paypal.com/ncp/payment/J6DP32LZ7ZMZA";
-const PAYPAL_ULTRA_MONTHLY = "https://www.paypal.com/ncp/payment/ZXB3XQA3BJG9A";
-const PAYPAL_PRO_YEARLY    = "https://www.paypal.com/ncp/payment/6BS7Z7XPV4FFL";
-const PAYPAL_ULTRA_YEARLY  = "https://www.paypal.com/ncp/payment/ELGD2S687MS7Q";
+const PAYPAL_PRO_MONTHLY = "#view-chips";
+const PAYPAL_ULTRA_MONTHLY = "#view-chips";
+const PAYPAL_PRO_YEARLY = "#view-chips";
+const PAYPAL_ULTRA_YEARLY = "#view-chips";
 
 const CHECKOUT_PRO_LINK   = PAYPAL_PRO_MONTHLY;
 const CHECKOUT_ULTRA_LINK = PAYPAL_ULTRA_MONTHLY;
@@ -137,36 +137,7 @@ function xpOf(p) { return horizon === 3 ? p.xp3 : p.xp; }
 
 let authSession = null; // { teamId, plan, email }
 
-function loadAuthSession() {
-  try {
-    const raw = localStorage.getItem("fpl_auth_v1");
-    if (raw) authSession = JSON.parse(raw);
-  } catch (_) { authSession = null; }
-  if (authSession && authSession.plan === "owner") {
-    const em = String(authSession.email || "").toLowerCase();
-    if (em !== OWNER_EMAIL.toLowerCase()) {
-      authSession.plan = "starter";
-      try { localStorage.setItem("fpl_auth_v1", JSON.stringify(authSession)); } catch (_) {}
-    }
-  }
-  // URL one-time login: ?login=TEAM&plan=pro&code=XXXX  or ?owner=CODE
-  try {
-    const params = new URLSearchParams(location.search);
-    // Optional deep-link activate: ?email=x&team=123&plan=pro (must match PAID_USERS)
-    const qEmail = (params.get("email") || "").toLowerCase();
-    const qTeam = parseInt(params.get("team") || params.get("login") || "", 10);
-    const qPlan = params.get("plan");
-    if (qEmail && qTeam && (qPlan === "pro" || qPlan === "ultra")) {
-      const hit = PAID_USERS.find(u => String(u.email).toLowerCase() === qEmail && Number(u.teamId) === qTeam && u.plan === qPlan);
-      if (hit || qEmail === OWNER_EMAIL.toLowerCase()) {
-        authSession = { teamId: qEmail === OWNER_EMAIL.toLowerCase() ? null : qTeam, plan: qEmail === OWNER_EMAIL.toLowerCase() ? "owner" : qPlan, email: qEmail };
-        localStorage.setItem("fpl_auth_v1", JSON.stringify(authSession));
-        history.replaceState({}, "", location.pathname);
-        if ($("teamIdInput") && qTeam) $("teamIdInput").value = qTeam;
-      }
-    }
-  } catch (_) {}
-}
+function loadAuthSession() { const a = window.myfplAccount; authSession = a?.signedIn ? { email:a.email, teamId:a.teamId, plan:a.owner ? "owner" : a.plan, paidUntil:a.paidUntil } : null; }
 
 function saveAuthSession(sess) {
   authSession = sess;
@@ -228,26 +199,17 @@ function trialStillValid(sess) {
 }
 
 function isPro() {
-  // Launch promo: everything unlocked until 30 Nov 2026
   if (isFreePeriod()) return true;
-  if (!authSession) return false;
-  if (authSession.plan === "owner") return true;
-  if (authSession.paidUntil && Number(authSession.paidUntil) < Date.now()) return false;
-  if (authSession.plan !== "pro" && authSession.plan !== "ultra" && authSession.plan !== "trial_pro" && authSession.plan !== "trial_ultra") return false;
-  if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") {
-    if (!trialStillValid(authSession)) return false;
-  }
-  if (authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") return true;
-  return Number(authSession.teamId) === Number(currentTeamId());
+  const account = window.myfplAccount;
+  return !!(account && account.signedIn && (account.owner || (["pro", "ultra"].includes(account.plan) && account.paidUntil > Date.now() && Number(account.teamId) === Number(currentTeamId()))));
 }
+
 function isUltra() {
   if (isFreePeriod()) return true;
-  if (!authSession) return false;
-  if (authSession.plan === "owner") return true;
-  if (authSession.plan === "trial_ultra" && trialStillValid(authSession)) return true;
-  if (authSession.plan !== "ultra") return false;
-  return Number(authSession.teamId) === Number(currentTeamId());
+  const account = window.myfplAccount;
+  return !!(account && account.signedIn && (account.owner || (account.plan === "ultra" && account.paidUntil > Date.now() && Number(account.teamId) === Number(currentTeamId()))));
 }
+
 function isPaidMember() {
   if (!authSession) return false;
   if (authSession.plan !== "pro" && authSession.plan !== "ultra") return false;
@@ -282,19 +244,7 @@ function activePlanLabel() {
   return "Starter";
 }
 
-function startTrial(level) {
-  // level: "pro" | "ultra"
-  const ends = Date.now() + 14 * 24 * 60 * 60 * 1000;
-  saveAuthSession({
-    teamId: currentTeamId() || null,
-    plan: level === "ultra" ? "trial_ultra" : "trial_pro",
-    email: (authSession && authSession.email) || "trial@local",
-    trialEnds: ends,
-    trialStarted: Date.now(),
-  });
-  setStatus((level === "ultra" ? "Ultra" : "Pro") + " trial started — 14 days, all features unlocked");
-  updatePlanUI();
-}
+function startTrial() { setStatus("Free preview runs through 30 November. Verify your email for December subscriptions."); document.getElementById("authBtn")?.click(); }
 
 function setPlan() { /* legacy no-op – use login */ }
 
@@ -380,10 +330,7 @@ function loadPlan() {
   loadAuthSession();
 }
 
-function isOwnerSession() {
-  const em = String((authSession && authSession.email) || "").trim().toLowerCase();
-  return !!(authSession && authSession.plan === "owner" && em === OWNER_EMAIL.toLowerCase());
-}
+function isOwnerSession() { return !!(window.myfplAccount && window.myfplAccount.signedIn && window.myfplAccount.owner); }
 
 function updatePlanUI() {
   try { if (typeof paintChipNowBanner === "function") paintChipNowBanner(); } catch (_) {}
@@ -408,7 +355,7 @@ function updatePlanUI() {
   }
   const authBtn = $("authBtn");
   if (authBtn) {
-    const signed = authSession && (authSession.plan === "owner" || authSession.plan === "pro" || authSession.plan === "ultra" || ((authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") && trialStillValid(authSession)));
+    const signed = window.myfplAccount?.signedIn || authSession && (authSession.plan === "owner" || authSession.plan === "pro" || authSession.plan === "ultra" || ((authSession.plan === "trial_pro" || authSession.plan === "trial_ultra") && trialStillValid(authSession)));
     authBtn.textContent = signed ? "Sign out" : "Sign in";
   }
   document.querySelectorAll(".pro-only").forEach(el => {
@@ -811,7 +758,7 @@ function optimiseLineup() {
     if (byPos.DEF.length < f.DEF || byPos.MID.length < f.MID || byPos.FWD.length < f.FWD) continue;
     const xi = [byPos.GKP[0], ...byPos.DEF.slice(0, f.DEF), ...byPos.MID.slice(0, f.MID), ...byPos.FWD.slice(0, f.FWD)];
     if (xi.length !== 11) continue;
-    const score = xi.reduce((s, p) => s + xpOf(p) * (0.7 + 0.3 * (p.availability || 1)), 0);
+    const score = xi.reduce((s, p) => s + xpOf(p) * (0.7 + 0.3 * (p.availability ?? 1)), 0);
     if (score > bestScore) { bestScore = score; bestXI = xi; }
   }
   if (!bestXI) {
@@ -1205,8 +1152,6 @@ function huntBoost(p) {
   if (behind) b = (0.55 - owned) * 1.4;
   else if (leading) b = (owned - 0.35) * 0.5;
   else b = (0.4 - owned) * 0.6;
-  // Owner account: push harder at hunt mini-leagues
-  if (typeof isOwnerSession === "function" && isOwnerSession()) b *= 1.85;
   return b;
 }
 
@@ -1314,19 +1259,15 @@ function styleAdjustXp(p, xp) {
   return xp;
 }
 
-function transferXp(p) {
-  const hz = parseInt(($("trHorizon") && $("trHorizon").value) || "3", 10) || 3;
-  let xp = hz <= 1 ? expectedPoints(p, 1) : (hz >= 6 ? expectedPoints(p, 3) * 2 : expectedPoints(p, 3));
-  xp += huntBoost(p);
-  xp = styleAdjustXp(p, xp);
-  return xp;
-}
+function transferXp(p) { return xpOf(p); }
 
 function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
   if (!squad.length) {
     return { error: "No squad loaded. Enter Team ID and Refresh, or Edit a full 15." };
   }
   let unlimited = isUnlimitedTransferMode() || !!(filters && filters.unlimitedCustom);
+  freeTransfers = Math.max(0, Math.min(5, Math.floor(Number(freeTransfers) || 0)));
+  maxHits = Math.max(0, Math.min(3, Math.floor(Number(maxHits) || 0)));
   if (unlimited) {
     freeTransfers = Math.max(freeTransfers, 15);
     maxHits = 0;
@@ -1360,11 +1301,11 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
     if (squadIds.has(inn.id) && !usedOutIds.has(inn.id)) return false;
     if (usedInIds.has(inn.id)) return false;
     if (inn.price > budgetLeft + 0.05) return false;
-    if ((inn.availability || 1) < 0.3) return false;
+    if ((inn.availability ?? 1) < 0.3) return false;
     if (transferXp(inn) <= transferXp(out) + 0.05) return false;
     if (!(parseFloat(inn.ep_next) >= 2.0 || (inn.selected_by_percent || 0) >= 5 || (inn.minutes || 0) >= 200 || (filters && filters.playerIn))) return false;
     if (!passInFilters(inn, filters)) return false;
-    const clubCount = currentSquadLike.filter(x => x.team_id === inn.team_id && !usedOutIds.has(x.id)).length
+    const clubCount = currentSquadLike.filter(x => x.team_id === inn.team_id && x.id !== out.id && !usedOutIds.has(x.id)).length
       + [...usedInIds].filter(id => {
           const pl = players.find(pp => pp.id === id);
           return pl && pl.team_id === inn.team_id;
@@ -1392,7 +1333,7 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
       let best = null;
       for (const out of workingOuts) {
         if (usedOut.has(out.id)) continue;
-        const ins = bestInsFor(out, usedOut, usedIn, budgetLeft + out.price, squad);
+        const ins = bestInsFor(out, usedOut, usedIn, budgetLeft + getSellingPrice(out), squad);
         for (const inn of ins.slice(0, 5)) {
           const gain = transferXp(inn) - transferXp(out);
           if (!best || gain > best.gain + 0.001 || (Math.abs(gain - best.gain) < 0.05 && inn.price < best.inn.price)) {
@@ -1404,14 +1345,14 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
       moves.push(best);
       usedOut.add(best.out.id);
       usedIn.add(best.inn.id);
-      budgetLeft = budgetLeft + best.out.price - best.inn.price;
+      budgetLeft = budgetLeft + getSellingPrice(best.out) - best.inn.price;
       workingOuts = workingOuts.filter(o => o.id !== best.out.id);
     }
     if (!moves.length) return null;
     const hits = unlimited ? 0 : Math.max(0, moves.length - freeTransfers);
     if (hits > maxHits) return null;
     const gain = moves.reduce((s, m) => s + m.gain, 0);
-    const costDiff = moves.reduce((s, m) => s + m.inn.price - m.out.price, 0);
+    const costDiff = moves.reduce((s, m) => s + m.inn.price - getSellingPrice(m.out), 0);
     return {
       moves,
       gain,
@@ -1441,19 +1382,18 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
     }
   }
 
-  // If no N-pack, try smaller N
-  if (!candidates.length) {
-    for (let n = targetN - 1; n >= 1; n--) {
-      const pack = greedyPackage(n, outs);
-      if (pack) { candidates.push(pack); break; }
-    }
+  // Compare smaller packages too: spending every free transfer is not a goal.
+  for (let n = targetN - 1; n >= 1; n--) {
+    const pack = greedyPackage(n, outs);
+    if (pack) candidates.push(pack);
   }
 
-  candidates.sort((a, b) => b.netGain - a.netGain);
+  const worthwhile = candidates.filter(c => c.netGain > 0.05);
+  worthwhile.sort((a, b) => b.netGain - a.netGain || a.size - b.size);
 
   return {
     currentXp,
-    suggestions: candidates.slice(0, 3),
+    suggestions: worthwhile.slice(0, 3),
     bank: availableBudget,
     unlimited,
     freeTransfers: unlimited ? "∞" : freeTransfers,
@@ -1462,12 +1402,14 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
 }
 
 function applyTransferSuggestion(sug) {
+  if (squadLockedValue && sug.moves.some(m => !confirmedSellingPrice(m.out))) { setStatus("Confirm the outgoing selling price in Weekly plan before applying this transfer locally."); document.querySelector('[data-view="mission"]')?.click(); return false; }
+
   for (const m of sug.moves) {
     const idx = squad.findIndex(p => p.id === m.out.id);
     if (idx >= 0) {
       const old = squad[idx];
       squad[idx] = m.inn;
-      bank = bank - m.inn.price + old.price;
+      bank = bank - m.inn.price + getSellingPrice(old);
       startingIds = startingIds.map(id => id === m.out.id ? m.inn.id : id);
       benchIds = benchIds.map(id => id === m.out.id ? m.inn.id : id);
       if (captainId === m.out.id) captainId = m.inn.id;
@@ -1679,7 +1621,7 @@ function showPlayerInfo(playerId) {
 function recommendTransferFor(playerId) {
   const out = squad.find(p => p.id === playerId);
   if (!out) return;
-  const maxPrice = bank + out.price;
+  const maxPrice = bank + getSellingPrice(out);
   const ins = players
     .filter(p => p.position === out.position && !squad.some(s => s.id === p.id) && p.price <= maxPrice + 0.05 && p.availability > 0.35)
     .sort((a, b) => xpOf(b) - xpOf(a))
@@ -1695,7 +1637,7 @@ function recommendTransferFor(playerId) {
     ins.map((inn, i) => {
       const gain = xpOf(inn) - xpOf(out);
       return `<div class="transfer-card">
-        <h4>#${i + 1} · <span class="gain">${gain >= 0 ? "+" : ""}${gain.toFixed(2)} XP</span> · ${money(inn.price - out.price)}</h4>
+        <h4>#${i + 1} · <span class="gain">${gain >= 0 ? "+" : ""}${gain.toFixed(2)} XP</span> · ${money(inn.price - getSellingPrice(out))}</h4>
         <div class="transfer-row">
           <span>OUT <strong>${out.web_name}</strong></span><span>→</span>
           <span>IN <strong>${inn.web_name}</strong> (${inn.team} · ${xpOf(inn).toFixed(1)})</span>
@@ -2022,7 +1964,7 @@ function removePlayer(id) {
   benchIds = benchIds.filter(x => x !== id);
   if (captainId === id) captainId = startingIds[0] || null;
   if (viceCaptainId === id) viceCaptainId = null;
-  const freed = out && out.price != null ? Number(out.price) : 0;
+  const freed = out ? getSellingPrice(out) : 0;
   bank = Math.round((Number(bank) + freed) * 10) / 10;
   while (startingIds.length < 11 && benchIds.length) startingIds.push(benchIds.shift());
   if (out) {
@@ -2105,22 +2047,9 @@ function showUpgradePrompt(feature) {
         : "AI Teams (Wildcard / Free Hit squads) are available on <strong>Pro</strong> and <strong>Ultra</strong>."}</p>
 
       <div style="margin-top:14px;padding:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px">
-        <strong>14-day free trial</strong>
-        <p class="muted" style="margin:6px 0 10px;font-size:0.85rem">Unlock all Pro/Ultra features free for 14 days. No payment now.</p>
-        <div class="upgrade-actions" style="flex-wrap:wrap;gap:8px">
-          <button type="button" class="btn btn-blue" id="trialProBtn">Start Pro trial</button>
-          <button type="button" class="btn btn-outline" id="trialUltraBtn">Start Ultra trial</button>
-        </div>
-      </div>
-
-      <div style="margin-top:14px">
-        <strong style="font-size:0.9rem">Or pay monthly / yearly</strong>
-        <div class="upgrade-actions" style="flex-wrap:wrap;gap:8px;margin-top:6px">
-          <a class="btn btn-blue" href="${PAYPAL_PRO_MONTHLY}" target="_blank" rel="noopener">Pro $${PRICING.pro.monthly}/mo</a>
-          <a class="btn btn-outline" href="${PAYPAL_ULTRA_MONTHLY}" target="_blank" rel="noopener">Ultra $${PRICING.ultra.monthly}/mo</a>
-          <a class="btn btn-blue" href="${PAYPAL_PRO_YEARLY}" target="_blank" rel="noopener">Pro $${PRICING.pro.yearly}/yr</a>
-          <a class="btn btn-outline" href="${PAYPAL_ULTRA_YEARLY}" target="_blank" rel="noopener">Ultra $${PRICING.ultra.yearly}/yr</a>
-        </div>
+        <strong>Monthly plans from 1 December</strong>
+        <p class="muted">Free preview through November. Verify your email before checkout. Access requires a verified payment.</p>
+        <button class="btn btn-blue" type="button" data-open-pricing>View Pro $2.49/month and Ultra $4.99/month</button>
       </div>
 
 
@@ -2170,7 +2099,7 @@ function transferWhyLine(sug) {
   else if (ownIn > 25) bits.push("template-friendly");
   const fixt = (typeof playerFixtureChip === "function") ? playerFixtureChip(m.inn, planningGw()) : "";
   if (fixt) bits.push("fixture " + fixt);
-  if (sug.gain != null) bits.push("model +" + sug.gain.toFixed(1) + " vs hold");
+  if (sug.netGain != null) bits.push("model +" + sug.netGain.toFixed(1) + " vs hold after hits");
   const st = (typeof transferStyle === "function") ? transferStyle() : "optimised";
   bits.push(st + " style");
   return bits.join(" · ") + ". Suggestions only — confirm on official FPL.";
@@ -2181,7 +2110,7 @@ function showTransferResults(res) {
   if (!box) return;
   if (res.error) { box.innerHTML = `<p class="muted">${res.error}</p>`; return; }
   if (!res.suggestions.length) {
-    box.innerHTML = `<p class="muted">No upgrades found under budget (bank ${money(res.bank)}). Try unlimited mode, a longer horizon, or Custom transfers.</p>`;
+    box.innerHTML = `<div class="tr-ft-banner"><div><strong>Hold your transfers</strong><p class="muted">No package found beats holding after transfer hits over the selected horizon. Bank ${money(res.bank)}. Save the transfer and reassess before the deadline.</p></div></div>`;
     return;
   }
   if (res.suggestions[0]) logTransferEvent("suggested", res.suggestions[0]);
@@ -2645,6 +2574,7 @@ async function tryLoadUserTeam(teamId) {
 
   try {
     const entry = await fetchJson(`entry/${teamId}/`);
+    window.myfplClassicLeagues = entry?.leagues?.classic || [];
     if (entry) {
       if (entry.name) teamName = entry.name;
       playerName = [entry.player_first_name, entry.player_last_name].filter(Boolean).join(" ");
@@ -2758,6 +2688,8 @@ async function init(force = false) {
     buildPlayers();
     rememberTeamId(teamId);
     let loaded = await tryLoadUserTeam(teamId);
+    window.myfplLoadedTeam = loaded && ["api","local"].includes(loaded.source) ? teamId : null;
+    document.dispatchEvent(new Event("myfpl-team-loaded"));
     const tname = (loaded && loaded.teamName) ? loaded.teamName : ("Team " + teamId);
     if (loaded && loaded.source === "api") {
       const plan = planningGw();
@@ -3174,10 +3106,14 @@ async function membersApi(pathQuery, opts) {
   return last;
 }
 
+let ownerSecretInMemory = "";
 function ownerHeaders() {
+  if (!ownerSecretInMemory) {
+    ownerSecretInMemory = prompt("Enter the OWNER_SECRET configured in Netlify. It is held only for this page session.") || "";
+  }
   return {
     "Content-Type": "application/json",
-    "x-owner-email": OWNER_EMAIL,
+    "x-owner-secret": ownerSecretInMemory,
   };
 }
 
@@ -3445,8 +3381,6 @@ async function ownerAddMember() {
   const local = loadLocalMembers().filter(m =>
     !((email && m.email === email) || (teamId && Number(m.teamId) === teamId))
   );
-  local.unshift(row);
-  saveLocalMembers(local);
 
   try {
     const r = await membersApi("", {
@@ -3462,6 +3396,12 @@ async function ownerAddMember() {
         ownerEmail: OWNER_EMAIL,
       }),
     });
+    if (!r.ok || !r.json || r.json.ok !== true || r.json.blobs !== true) {
+      if (msg) msg.textContent = "Activation was not saved. Check OWNER_SECRET and Netlify member storage before sending a login link.";
+      return;
+    }
+    local.unshift(r.json.member || row);
+    saveLocalMembers(local);
     if (msg) {
       const link = activationLink(email, teamId, plan, row.until);
       const blobOff = r.json && r.json.blobs === false;
@@ -3472,7 +3412,7 @@ async function ownerAddMember() {
         " Link: " + link;
     }
   } catch (e) {
-    if (msg) msg.textContent = "Saved on this device only (server offline).";
+    if (msg) msg.textContent = "Activation was not saved: server offline. Try again before sending a login link.";
   }
   renderOwnerPage();
 }
@@ -3558,14 +3498,14 @@ function renderTerms() {
     <h2>4. Accounts, trials, and paid plans</h2>
     <ul>
       <li><strong>Starter</strong> features are free.</li>
-      <li><strong>Pro</strong> and <strong>Ultra</strong> may be started with a <strong>14-day free trial</strong>. During the trial, paid features are unlocked on this device/browser.</li>
-      <li>After the trial, continued access to Pro/Ultra requires payment (PayPal or approved local methods) and activation of your email + Team ID.</li>
+      <li>Pro and Ultra are free to preview through 30 November 2026. Monthly subscriptions are planned from 1 December after merchant verification.</li>
+      <li>Paid weekly reports require a verified email account and server-confirmed payment. Pro costs US$2.49/month and Ultra US$4.99/month.</li>
       <li>Paid Pro/Ultra access is bound to the Team ID registered at activation.</li>
       <li>Owner access is reserved for the operator of the App.</li>
     </ul>
 
     <h2>5. Payments</h2>
-    <p>Card and PayPal payments are processed by third parties (e.g. PayPal). Mobile-money payments use merchant till instructions you provide. We do not store full card numbers. Refunds are handled case-by-case for failed activation after confirmed payment.</p>
+    <p>Monthly payments are processed by PayPal. Review the amount and renewal terms before approving payment. Cancel future renewal through your account or PayPal; verified access continues until the paid period ends. We do not store card numbers. Contact the operator about payments, failed activation or refund requests. Mobile-money checkout is not available until an approved merchant integration is configured.</p>
 
     <h2>6. Acceptable use</h2>
     <p>You must not misuse the App, attempt to break security, scrape aggressively, resell access without permission, or use the App for unlawful purposes. Votes and community features must not be manipulated with automated bots.</p>
@@ -3577,7 +3517,7 @@ function renderTerms() {
     <p>To the fullest extent permitted by law, the operator is not liable for lost FPL points, ranking changes, payment provider outages, or damages arising from reliance on App content. The App is provided “as is”.</p>
 
     <h2>9. Privacy</h2>
-    <p>We may store email, Team ID, plan, and trial status locally in your browser and, where configured, on hosting infrastructure for activation and Matchday emails. Do not submit passwords for your official FPL account.</p>
+    <p>We store verified account and subscription records on hosting infrastructure. Planning preferences, selling prices and progress history are saved in your browser on this device. Optional Matchday emails require your opt-in. Do not submit passwords for your official FPL account.</p>
 
     <h2>10. Changes</h2>
     <p>We may update these Terms and the App features at any time. Continued use after changes constitutes acceptance.</p>
@@ -4345,39 +4285,6 @@ on("footerTermsLink", "click", (e) => {
   e.preventDefault();
   document.querySelector('[data-view="terms"]')?.click();
 });
-on("authBtn", "click", () => {
-  if (authSession && (authSession.plan === "owner" || authSession.plan === "pro" || authSession.plan === "ultra" || authSession.plan === "trial_pro" || authSession.plan === "trial_ultra")) {
-    logout();
-    const btn = $("authBtn");
-    if (btn) btn.textContent = "Sign in";
-    updatePlanUI();
-    return;
-  }
-  const modal = $("loginModal");
-  if (modal) modal.classList.remove("hidden");
-  if ($("loginTeamId")) $("loginTeamId").value = currentTeamId() || "";
-});
-on("startTrialPro", "click", () => startTrial("pro"));
-on("startTrialUltra", "click", () => startTrial("ultra"));
-
-on("loginSubmitBtn", "click", async () => {
-  const tid = $("loginTeamId") && $("loginTeamId").value;
-  const email = $("loginEmail") && $("loginEmail").value;
-  const res = await attemptLogin(tid, "", email);
-  const msg = $("loginMsg");
-  if (msg) { msg.textContent = res.msg; msg.style.color = res.ok ? "#16a34a" : "#dc2626"; }
-  if (res.ok) {
-    const wantMail = $("loginMatchdayEmail") && $("loginMatchdayEmail").checked;
-    if (email) {
-      const sub = await setMatchdaySubscription(email, tid, wantMail);
-      if (wantMail && sub && sub.ok) setStatus("Signed in · Matchday emails on");
-      else if (wantMail && sub && sub.error) setStatus("Signed in · email opt-in failed (deploy functions + Blobs)");
-    }
-    const modal = $("loginModal");
-    if (modal) modal.classList.add("hidden");
-    await init(true);
-  }
-});
 on("loginCancelBtn", "click", () => {
   const modal = $("loginModal");
   if (modal) modal.classList.add("hidden");
@@ -4663,7 +4570,7 @@ function renderWeeklyStrip() {
   }
   let sug = null;
   try {
-    const res = findTransfers(1, 0, null);
+    const res = findTransfers(Number(document.getElementById("missionFt")?.value ?? 1), 0, null);
     sug = res && res.suggestions && res.suggestions[0];
     if (sug && (sug.gain == null || sug.gain < 0.35 || !sug.moves.length)) sug = null;
   } catch (_) { sug = null; }
@@ -4698,8 +4605,12 @@ on("wsApplyBtn", "click", () => {
   const sug = window.__weekSug;
   if (!sug) { setStatus("Nothing to apply — hold"); return; }
   if (typeof applyTransferSuggestion === "function") {
-    applyTransferSuggestion(sug);
-    if (typeof logTransferEvent === "function") logTransferEvent("applied", sug, "weekly strip");
+    const applied = applyTransferSuggestion(sug);
+    if (applied !== false && typeof logTransferEvent === "function") logTransferEvent("applied", sug, "weekly strip");
   }
   renderWeeklyStrip();
 });
+
+function sellingPriceRows() { try { return JSON.parse(localStorage.getItem("fpl_selling_" + currentTeamId()) || "{}"); } catch { return {}; } }
+function confirmedSellingPrice(p) { const row = sellingPriceRows()[p.id]; return !!(row && Number.isFinite(row.price) && row.price > 0 && row.price <= p.price && row.confirmedAt > Date.now() - 86400000); }
+function getSellingPrice(p) { return confirmedSellingPrice(p) ? sellingPriceRows()[p.id].price : p.price; }

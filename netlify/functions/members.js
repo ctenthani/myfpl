@@ -25,11 +25,13 @@ function normEmail(e) {
 }
 
 function isOwnerReq(event, body) {
-  const hEmail = normEmail(event.headers["x-owner-email"] || event.headers["X-Owner-Email"]);
-  const hSecret = event.headers["x-owner-secret"] || event.headers["X-Owner-Secret"] || "";
-  const bEmail = normEmail(body && body.ownerEmail);
-  if (OWNER_SECRET && hSecret && hSecret === OWNER_SECRET) return true;
-  return hEmail === OWNER_EMAIL || bEmail === OWNER_EMAIL;
+  const headers = event.headers || {};
+  const supplied = String(headers["x-owner-secret"] || headers["X-Owner-Secret"] || "");
+  if (!OWNER_SECRET || !supplied) return false;
+  const crypto = require("node:crypto");
+  const actual = Buffer.from(supplied);
+  const expected = Buffer.from(OWNER_SECRET);
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
 function openStore() {
@@ -90,7 +92,7 @@ exports.handler = async (event) => {
       let row = null;
       if (email) row = await store.get("email:" + email, { type: "json" });
       if (!row && teamId) row = await store.get("team:" + teamId, { type: "json" });
-      if (!row) return { statusCode: 200, headers: cors, body: JSON.stringify({ found: false, blobs: true }) };
+      if (!row || !email || !teamId || row.email !== email || Number(row.teamId) !== teamId) return { statusCode: 200, headers: cors, body: JSON.stringify({ found: false, blobs: true }) };
       const until = Number(row.until) || 0;
       const active = until > Date.now() && (row.plan === "pro" || row.plan === "ultra");
       return {
@@ -115,9 +117,9 @@ exports.handler = async (event) => {
       }
       if (!store) {
         return {
-          statusCode: 200,
+          statusCode: 503,
           headers: cors,
-          body: JSON.stringify({ ok: true, blobs: false, stored: "local-only" }),
+          body: JSON.stringify({ ok: false, blobs: false, error: "Member storage unavailable; activation was not saved" }),
         };
       }
       const action = body.action || "add";
@@ -171,9 +173,9 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers: cors, body: JSON.stringify({ error: "Method Not Allowed" }) };
   } catch (err) {
     return {
-      statusCode: 200,
+      statusCode: 500,
       headers: cors,
-      body: JSON.stringify({ ok: true, blobs: false, error: String(err) }),
+      body: JSON.stringify({ ok: false, error: "Member operation failed" }),
     };
   }
 };

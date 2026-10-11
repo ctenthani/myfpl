@@ -1,7 +1,7 @@
 [build]
-  command = "npm install"
-  publish = "."
-  functions = "netlify/functions"
+  command = "npm ci && npm run build"
+  publish = "site"
+  functions = "deploy-functions"
 
 # Schedule via free external cron (cron-job.org) hitting the function URL
 # every hour — Netlify free scheduled functions can return 403 on HTTP invoke.
@@ -59,3 +59,28 @@
   [headers.values]
     Content-Type = "application/json"
     Access-Control-Allow-Origin = "*"
+
+[[redirects]]
+  from = "/api/account"
+  to = "/.netlify/functions/account"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/billing"
+  to = "/.netlify/functions/billing"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/paypal-webhook"
+  to = "/.netlify/functions/paypal-webhook"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/coach"
+  to = "/.netlify/functions/coach"
+  status = 200
+  force = true
+
