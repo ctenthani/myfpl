@@ -3,6 +3,10 @@
   publish = "site"
   functions = "deploy-functions"
 
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["@netlify/blobs"]
+
 # Schedule via free external cron (cron-job.org) hitting the function URL
 # every hour — Netlify free scheduled functions can return 403 on HTTP invoke.
 
