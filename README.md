@@ -6,4 +6,4 @@ Weekly plan combines public squad and mini-league data with a legal starting XI,
 
 Pro is US$2.49/month; Ultra US$4.99/month. Free preview runs through November 2026. Server-verified PayPal recurring billing is disabled until merchant configuration and tests are complete. Email codes verify MyFPL accounts; browser plan flags do not grant server report access.
 
-Run `npm ci`, `npm test`, `npm run build`. Netlify publishes `site` and builds functions from `netlify/functions`. See `docs/SUBSCRIPTION-LAUNCH.md` for secure configuration and payment tests. Forecasts are experimental estimates, and league wins are not guaranteed. Target preferences and progress currently stay on the manager's device.
+Run `npm ci`, `npm test`, `npm run build`. Netlify publishes `site` and deploys only MyFPL functions copied into `deploy-functions` from `netlify/functions`. See `docs/SUBSCRIPTION-LAUNCH.md` for secure configuration and payment tests. Forecasts are experimental estimates, and league wins are not guaranteed. Target preferences and progress currently stay on the manager's device.
