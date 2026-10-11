@@ -30,4 +30,4 @@ Forecasts use an experimental transparent blend of official next-event expected 
 
 ## Run and publish
 
-`npm ci`, `npm test`, `npm run build`. Public assets are copied to `site`; functions remain in `netlify/functions`. Run `node scripts/preview.cjs` for a local public-data preview without production email or payment credentials. Netlify reads `netlify.toml`, builds from Git and publishes `site`.
+`npm ci`, `npm test`, `npm run build`. Public assets are copied to `site`; only MyFPL functions are copied from `netlify/functions` into `deploy-functions`. Unrelated race-event functions remain in source and are not deployed with this app. Run `node scripts/preview.cjs` for a local public-data preview without production email or payment credentials. Netlify reads `netlify.toml`, builds from Git and publishes `site`.
