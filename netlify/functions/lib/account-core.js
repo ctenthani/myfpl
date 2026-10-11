@@ -4,11 +4,11 @@ const LAUNCH = Date.parse('2026-12-01T00:00:00Z');
 const site = () => (process.env.SITE_URL || 'https://myfpl.netlify.app').replace(/\/$/, '');
 let nativeStore;
 function configureStore(factory) { nativeStore = factory; }
-function store() {
-  if (nativeStore) return nativeStore({ name: 'myfpl-accounts', consistency: 'strong' });
+function store(name = 'myfpl-accounts') {
+  if (nativeStore) return nativeStore({ name, consistency: 'strong' });
   const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
   const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
-  return getStore({ name: 'myfpl-accounts', consistency: 'strong', ...(siteID && token ? { siteID, token } : {}) });
+  return getStore({ name, consistency: 'strong', ...(siteID && token ? { siteID, token } : {}) });
 }
 function secret() {
   const value = process.env.AUTH_SECRET || process.env.DIGEST_SECRET;

@@ -34,9 +34,7 @@ async function entitlement(user, s) {
   if (!link?.id) {
     // Existing owner-verified manual purchases remain usable after email verification.
     const account = await s.get('user:' + user, { type: 'json' });
-    const { getStore } = require('@netlify/blobs');
-    const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID, token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
-    const legacy = getStore({ name: 'fpl-members', consistency: 'strong', ...(siteID && token ? { siteID, token } : {}) });
+    const legacy = require('./account-core').store('fpl-members');
     const member = account?.email ? await legacy.get('email:' + account.email, { type: 'json' }) : null;
     return member && Number(member.teamId) === Number(account.teamId) && ['pro', 'ultra'].includes(member.plan) && Number(member.until) > Date.now() ? { plan: member.plan, until: member.until } : { plan: 'starter', until: 0 };
   }
