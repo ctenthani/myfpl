@@ -14,7 +14,10 @@ fs.mkdirSync(path.join(functions,'lib','handlers'), { recursive: true });
 for (const name of ['account','billing','paypal-webhook','coach']) {
   const source = fs.readFileSync(path.join(root,'netlify','functions',name+'.js'),'utf8').replaceAll("require('./lib/", "require('../");
   fs.writeFileSync(path.join(functions,'lib','handlers',name+'.cjs'),source);
-  fs.writeFileSync(path.join(functions,name+'.mjs'),`import legacy from './lib/handlers/${name}.cjs';
+  fs.writeFileSync(path.join(functions,name+'.mjs'),`import { getStore } from '@netlify/blobs';
+import core from './lib/account-core.js';
+import legacy from './lib/handlers/${name}.cjs';
+core.configureStore(getStore);
 export default async function(request) {
   const event = { httpMethod: request.method, headers: Object.fromEntries(request.headers), body: ['GET','HEAD'].includes(request.method) ? '' : await request.text() };
   const result = await legacy.handler(event);
