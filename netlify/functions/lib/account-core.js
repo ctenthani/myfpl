@@ -2,7 +2,10 @@ const crypto = require('node:crypto');
 const { getStore } = require('@netlify/blobs');
 const LAUNCH = Date.parse('2026-12-01T00:00:00Z');
 const site = () => (process.env.SITE_URL || 'https://myfpl.netlify.app').replace(/\/$/, '');
+let nativeStore;
+function configureStore(factory) { nativeStore = factory; }
 function store() {
+  if (nativeStore) return nativeStore({ name: 'myfpl-accounts', consistency: 'strong' });
   const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
   const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
   return getStore({ name: 'myfpl-accounts', consistency: 'strong', ...(siteID && token ? { siteID, token } : {}) });
@@ -36,4 +39,4 @@ function sameOrigin(event) {
   return !origin || origin === new URL(site()).origin;
 }
 function body(event) { if ((event.body || '').length > 25000) throw Object.assign(new Error('Request too large.'), { status: 413 }); return JSON.parse(event.body || '{}'); }
-module.exports = { LAUNCH, site, store, hash, userId, sign, token, session, cookie, response, sameOrigin, body };
+module.exports = { LAUNCH, site, store, configureStore, hash, userId, sign, token, session, cookie, response, sameOrigin, body };
