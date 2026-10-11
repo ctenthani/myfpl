@@ -23,6 +23,13 @@ exports.handler = async event => {
       const teamId = Number(b.teamId);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120 || !Number.isSafeInteger(teamId) || teamId <= 0 || teamId > 100000000) return core.response(400, { error: 'Enter a valid email and FPL Team ID.' });
       if (!process.env.RESEND_API_KEY || !process.env.FROM_EMAIL) return core.response(503, { error: 'Email sign-in is being configured. You can use the free preview meanwhile.' });
+      core.sign('sign-in-configuration-check');
+      const connection = event.headers?.['x-nf-client-connection-ip'] || 'unknown';
+      const rateKey = 'connection-rate:' + core.hash(connection) + ':' + Math.floor(Date.now() / 900000);
+      const previous = await s.getWithMetadata(rateKey, { type: 'json' });
+      if ((previous?.data?.count || 0) >= 10) return core.response(429, { error: 'Too many sign-in requests. Please wait fifteen minutes.' });
+      const claimed = await s.setJSON(rateKey, { count: (previous?.data?.count || 0) + 1 }, previous ? { onlyIfMatch: previous.etag } : { onlyIfNew: true });
+      if (!claimed.modified) return core.response(429, { error: 'Another request is being processed. Try again shortly.' });
       const bucket = Math.floor(Date.now() / 300000);
       const rate = await s.setJSON('rate:' + core.userId(email) + ':' + bucket, { requested: Date.now() }, { onlyIfNew: true });
       if (!rate.modified) return core.response(429, { error: 'Please wait five minutes before requesting another code.' });
@@ -38,7 +45,8 @@ exports.handler = async event => {
       const stored = await s.getWithMetadata('challenge:' + b.challenge, { type: 'json' });
       const row = stored?.data;
       if (!row || row.used || row.expires <= Date.now() || row.attempts >= 5) return core.response(401, { error: 'Code expired or already used. Request a new code.' });
-      const valid = core.sign(b.challenge + ':' + b.code) === row.digest;
+      const digest = core.sign(b.challenge + ':' + b.code);
+      const valid = digest.length === row.digest.length && crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(row.digest));
       const changed = await s.setJSON('challenge:' + b.challenge, { ...row, attempts: row.attempts + 1, used: valid }, { onlyIfMatch: stored.etag });
       if (!changed.modified) return core.response(409, { error: 'This code is being checked. Try again.' });
       if (!valid) return core.response(401, { error: 'Incorrect code.' });
