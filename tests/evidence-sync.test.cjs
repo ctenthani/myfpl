@@ -63,3 +63,11 @@ test('January journals retain season identity and score only final checked gamew
  await h.records.record(h.event({}),{season:'2026',teamId:1,gameweek:22,deadline:'2027-01-30',model:'test',forecast:50,xi:players.slice(0,11),bench:players.slice(11),captains:players.slice(0,2)},[]);
  assert.equal(h.rows.get(key).data.records.at(-1).season,'2026');
 });
+
+test('cloud snapshots do not carry stale bank or unconfirmed transfers into a new gameweek',()=>{
+ const source=fs.readFileSync('js/mission.js','utf8'),start=source.indexOf('  function snapshot()'),end=source.indexOf('  async function inspectCloud',start);
+ const state={gameweek:6,bank:10,freeTransfers:5,freeTransfersConfirmed:true,leagueId:123};
+ const context=vm.createContext({currentTeamId:()=>1,planningGw:()=>7,bank:0.2,prefsKey:()=> 'prefs',squadStorageKey:()=> 'squad',sellingPriceRows:()=>({}),getChipPlan:()=>({}),localStorage:{getItem:k=>k==='prefs'?JSON.stringify(state):k==='squad'?JSON.stringify({teamId:1,bank:0.2}):null}});
+ vm.runInContext(source.slice(start,end),context);const snapshot=vm.runInContext('snapshot()',context);
+ assert.equal(snapshot.preferences.gameweek,7);assert.equal(snapshot.preferences.bank,0.2);assert.equal(snapshot.preferences.freeTransfers,0);assert.equal(snapshot.preferences.freeTransfersConfirmed,false);assert.equal(snapshot.preferences.leagueId,123);
+});
