@@ -7,3 +7,7 @@
 .btn:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible { outline:3px solid #30af91; outline-offset:3px; }.btn[disabled] { opacity:.55; cursor:wait; }
 @media(max-width:750px) { .mission-wrap { padding:18px 12px 50px; }.mission-hero { padding:28px 24px; }.mission-form-grid,.mission-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }.mission-options,.mission-lineup { grid-template-columns:1fr; }.mission-bottom { display:block; }.mission-bottom .btn { margin-top:18px; }.mission-controls { padding:20px; }.topbar { padding:12px; }.main-nav { overflow-x:auto; flex-wrap:nowrap; }.mission-stat { padding:16px; }.mission-stat strong { font-size:1.5rem; } }
 @media(max-width:380px) { .mission-form-grid { grid-template-columns:1fr; } }
+dialog { width:min(560px,calc(100% - 24px)); border:1px solid #cbd7df; border-radius:16px; padding:24px; color:#132c46; background:white; }
+dialog::backdrop { background:rgba(10,25,40,.65); }
+dialog p { margin:14px 0; } dialog input,#ownerTeamsPanel input,#ownerTeamSwitch { padding:10px; border:1px solid #cbd7df; border-radius:8px; }
+#ownerTeamsPanel { margin:16px auto; max-width:1100px; padding:20px; } #ownerTeamForm { display:flex; gap:12px; flex-wrap:wrap; align-items:end; } #ownerTeamForm label { display:grid; gap:6px; } #ownerTeamsStatus { margin-top:12px; }

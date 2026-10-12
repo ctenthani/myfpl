@@ -12,12 +12,24 @@ exports.handler = async event => {
       if (!saved) return core.response(200, { signedIn: false });
       const { entitlement } = require('./lib/paypal-core');
       const access = await entitlement(account.sub, s);
-      return core.response(200, { signedIn: true, owner: !!process.env.OWNER_EMAIL && saved.email === process.env.OWNER_EMAIL.trim().toLowerCase(), email: saved.email, teamId: saved.teamId, plan: access.plan, paidUntil: access.until || null, promotion: Date.now() < core.LAUNCH });
+      return core.response(200, { signedIn: true, owner: !!process.env.OWNER_EMAIL && saved.email === process.env.OWNER_EMAIL.trim().toLowerCase(), teams: saved.teams || [], email: saved.email, teamId: saved.teamId, plan: access.plan, paidUntil: access.until || null, promotion: Date.now() < core.LAUNCH });
     }
     if (event.httpMethod !== 'POST') return core.response(405, { error: 'Method not allowed.' });
     const b = core.body(event);
     if (b.action === 'logout') return core.response(200, { ok: true }, { 'Set-Cookie': core.cookie('') });
     s = core.store();
+    if (b.action === 'saveTeams') {
+      const account = core.session(event);
+      if (!account) return core.response(401, { error: 'Sign in first.' });
+      const saved = await s.getWithMetadata('user:' + account.sub, { type: 'json' });
+      if (!process.env.OWNER_EMAIL || saved?.data?.email !== process.env.OWNER_EMAIL.trim().toLowerCase()) return core.response(403, { error: 'Only the verified owner can save multiple teams.' });
+      if (!Array.isArray(b.teams) || b.teams.length > 20) return core.response(400, { error: 'Save up to 20 teams.' });
+      const teams = b.teams.map(t => ({ teamId: Number(t.teamId), label: String(t.label || '').trim().slice(0, 80) }));
+      if (teams.some(t => !Number.isSafeInteger(t.teamId) || t.teamId <= 0 || t.teamId > 100000000) || new Set(teams.map(t => t.teamId)).size !== teams.length) return core.response(400, { error: 'Enter unique valid Team IDs.' });
+      const changed = await s.setJSON('user:' + account.sub, { ...saved.data, teams }, { onlyIfMatch: saved.etag });
+      if (!changed.modified) return core.response(409, { error: 'Team list changed. Refresh and try again.' });
+      return core.response(200, { teams });
+    }
     if (b.action === 'request') {
       const email = String(b.email || '').trim().toLowerCase();
       const teamId = Number(b.teamId);
