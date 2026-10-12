@@ -1473,6 +1473,11 @@ function applyTransferSuggestion(sug) {
   startingIds = transferSquadForecast(squad, true).map(p => p.id);
   benchIds = all.filter(p => !startingIds.includes(p.id)).map(p => p.id);
   assignCaptainAndVice(startingIds);
+  try {
+    const prices=sellingPriceRows();
+    for(const move of sug.moves) prices[move.inn.id]={price:move.inn.price,purchasePrice:move.inn.price,confirmedAt:Date.now(),source:'Local plan',gameweek:planningGw()};
+    localStorage.setItem('fpl_selling_'+currentTeamId(),JSON.stringify(prices));
+  } catch (_) {}
   saveSquadLocal();
   const ftInput = document.getElementById('missionFt');
   if (ftInput) ftInput.value = Math.max(0, Number(ftInput.value) - sug.moves.length);
@@ -1522,6 +1527,36 @@ function openTransferConfirmation(sug) {
     else bank = priorBank;
   };
   dialog.showModal();
+}
+
+async function syncOfficialSellingPrices(teamId = currentTeamId()) {
+  try {
+    const response=await fetch('/api/coach',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'selling-prices',teamId}),signal:AbortSignal.timeout(45000)});
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error || 'Official price history could not load.');
+    if(currentTeamId()!==teamId) return null;
+    const rows=sellingPriceRows();
+    for(const id of data.missing) if(rows[id]?.source==='Official public history') delete rows[id];
+    for(const [id,price] of Object.entries(data.prices)) {
+      if(rows[id]?.source==='Local plan'&&rows[id].gameweek===planningGw()) continue;
+      rows[id]={...price,confirmedAt:Date.parse(data.fetchedAt)};
+    }
+    localStorage.setItem('fpl_selling_'+teamId,JSON.stringify(rows));
+    const status=document.getElementById('automaticPriceStatus');
+    if(status) status.textContent=`Automatically calculated ${Object.keys(data.prices).length} selling prices from official FPL records. ${data.warning}`;
+    return data;
+  } catch(error) {
+    const status=document.getElementById('automaticPriceStatus');if(status) status.textContent=error.message+' Your existing confirmed prices remain available.';
+    return null;
+  }
+}
+
+async function applySuggestedTransfer(sug) {
+  if(squadLockedValue && sug.moves.some(m=>!confirmedSellingPrice(m.out))) await syncOfficialSellingPrices();
+  const applied=applyTransferSuggestion(sug);
+  if(applied) logTransferEvent('applied',sug,'Squad suggestion');
+  renderWeeklyStrip();
+  return applied;
 }
 
 // ---------- Render ----------
@@ -1720,7 +1755,7 @@ function recommendTransferFor(playerId) {
         const o = squad.find(p => p.id === +btn.dataset.out);
         const inn = players.find(p => p.id === +btn.dataset.in);
         if (!o || !inn) return;
-        applyTransferSuggestion({ moves: [{ out: o, inn }] });
+        applySuggestedTransfer({ moves: [{ out: o, inn }] });
         saveSquadLocal();
         setStatus(`Transferred ${o.web_name} → ${inn.web_name}`);
       });
@@ -2239,10 +2274,7 @@ function showTransferResults(res) {
   box.querySelectorAll(".apply-tr").forEach(btn => {
     btn.addEventListener("click", () => {
       const sug = res.suggestions[+btn.dataset.idx];
-      logTransferEvent("applied", sug, "accepted in app");
-      applyTransferSuggestion(sug);
-      saveSquadLocal();
-      setStatus("Applied best transfer package locally — mirror on official FPL");
+      applySuggestedTransfer(sug);
     });
   });
 }
@@ -2759,6 +2791,7 @@ async function init(force = false) {
     rememberTeamId(teamId);
     let loaded = await tryLoadUserTeam(teamId);
     window.myfplLoadedTeam = loaded && ["api","local"].includes(loaded.source) ? teamId : null;
+    if(window.myfplLoadedTeam) await syncOfficialSellingPrices(teamId);
     document.dispatchEvent(new Event("myfpl-team-loaded"));
     const tname = (loaded && loaded.teamName) ? loaded.teamName : ("Team " + teamId);
     if (loaded && loaded.source === "api") {
@@ -4675,8 +4708,7 @@ on("wsApplyBtn", "click", () => {
   const sug = window.__weekSug;
   if (!sug) { setStatus("Nothing to apply — hold"); return; }
   if (typeof applyTransferSuggestion === "function") {
-    const applied = applyTransferSuggestion(sug);
-    if (applied !== false && typeof logTransferEvent === "function") logTransferEvent("applied", sug, "weekly strip");
+    applySuggestedTransfer(sug);
   }
   renderWeeklyStrip();
 });
