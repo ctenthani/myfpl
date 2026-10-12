@@ -18,7 +18,7 @@ function transfers(squad, players, ft = 1, hits = 0, filters = null) {
     getSellingPrice: p => p.price, isUnlimitedTransferMode: () => false, transferXp: p => p.xp,
     transferStyle: () => 'optimised', passInFilters: () => true,
     passOutFilters: () => true, $: () => null });
-  vm.runInContext(functionSource('findTransfers'), context);
+  vm.runInContext(functionSource('transferSquadForecast') + '\n' + functionSource('findTransfers'), context);
   return context.findTransfers(ft, hits, filters);
 }
 test('unavailable player cannot be recommended', () => {
