@@ -1261,6 +1261,23 @@ function styleAdjustXp(p, xp) {
 
 function transferXp(p) { return xpOf(p); }
 
+function transferSquadForecast(list, returnXI = false) {
+  if (list.length !== 15) return list.reduce((sum, p) => sum + transferXp(p), 0);
+  const positions = { GKP:[], DEF:[], MID:[], FWD:[] };
+  for (const p of list) positions[p.position].push(p);
+  for (const group of Object.values(positions)) group.sort((a,b)=>transferXp(b)-transferXp(a));
+  let best = -Infinity;
+  let bestXI = [];
+  for (let d=3;d<=5;d++) for(let f=1;f<=3;f++) {
+    const m=10-d-f;
+    if(m<2||m>5||!positions.GKP.length||positions.DEF.length<d||positions.MID.length<m||positions.FWD.length<f)continue;
+    const xi=[positions.GKP[0],...positions.DEF.slice(0,d),...positions.MID.slice(0,m),...positions.FWD.slice(0,f)];
+    const total=xi.reduce((sum,p)=>sum+transferXp(p),0)+Math.max(...xi.map(transferXp));
+    if(total>best){best=total;bestXI=xi;}
+  }
+  return returnXI ? bestXI : best;
+}
+
 function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
   if (!squad.length) {
     return { error: "No squad loaded. Enter Team ID and Refresh, or Edit a full 15." };
@@ -1283,7 +1300,7 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
   targetN = Math.min(targetN, 5);
 
   const squadIds = new Set(squad.map(p => p.id));
-  const currentXp = squad.reduce((s, p) => s + transferXp(p), 0);
+  const currentXp = transferSquadForecast(squad);
   const availableBudget = bank;
 
   let outs = [...squad].sort((a, b) => transferXp(a) - transferXp(b));
@@ -1301,7 +1318,7 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
     if (squadIds.has(inn.id) && !usedOutIds.has(inn.id)) return false;
     if (usedInIds.has(inn.id)) return false;
     if (inn.price > budgetLeft + 0.05) return false;
-    if ((inn.availability ?? 1) < 0.3) return false;
+    if ((inn.availability ?? 1) < 0.75) return false;
     if (transferXp(inn) <= transferXp(out) + 0.05) return false;
     if (!(parseFloat(inn.ep_next) >= 2.0 || (inn.selected_by_percent || 0) >= 5 || (inn.minutes || 0) >= 200 || (filters && filters.playerIn))) return false;
     if (!passInFilters(inn, filters)) return false;
@@ -1351,7 +1368,8 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
     if (!moves.length) return null;
     const hits = unlimited ? 0 : Math.max(0, moves.length - freeTransfers);
     if (hits > maxHits) return null;
-    const gain = moves.reduce((s, m) => s + m.gain, 0);
+    const proposed = squad.map(p => moves.find(m => m.out.id === p.id)?.inn || p);
+    const gain = transferSquadForecast(proposed) - currentXp;
     const costDiff = moves.reduce((s, m) => s + m.inn.price - getSellingPrice(m.out), 0);
     return {
       moves,
@@ -1402,7 +1420,20 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
 }
 
 function applyTransferSuggestion(sug) {
-  if (squadLockedValue && sug.moves.some(m => !confirmedSellingPrice(m.out))) { setStatus("Confirm the outgoing selling price in Weekly plan before applying this transfer locally."); document.querySelector('[data-view="mission"]')?.click(); return false; }
+  if (squad.length !== 15) { setStatus('Load a complete 15-player squad before applying transfers.'); return false; }
+  if (!sug?.moves?.length) { setStatus("No transfer to apply."); return false; }
+  if (squadLockedValue && sug.moves.some(m => !confirmedSellingPrice(m.out))) { openTransferConfirmation(sug); return false; }
+  const preview = [...squad];
+  let nextBank = bank;
+  for (const move of sug.moves) {
+    const index = preview.findIndex(p => p.id === move.out.id);
+    if (index < 0 || !move.inn || preview.some(p => p.id === move.inn.id) || move.inn.position !== preview[index].position) { setStatus("This suggestion is out of date. Build a fresh suggestion."); return false; }
+    nextBank += getSellingPrice(preview[index]) - move.inn.price;
+    preview[index] = move.inn;
+  }
+  const clubs = {};
+  preview.forEach(p => { clubs[p.team_id] = (clubs[p.team_id] || 0) + 1; });
+  if (!Number.isFinite(nextBank) || nextBank < -0.001 || Object.values(clubs).some(n => n > 3)) { setStatus("Transfer cannot be applied: check your selling prices, bank and club limits."); return false; }
 
   for (const m of sug.moves) {
     const idx = squad.findIndex(p => p.id === m.out.id);
@@ -1439,13 +1470,20 @@ function applyTransferSuggestion(sug) {
     if (!drop) break;
     xi[xi.indexOf(drop)] = d;
   }
-  startingIds = xi.slice(0, 11).map(p => p.id);
+  startingIds = transferSquadForecast(squad, true).map(p => p.id);
   benchIds = all.filter(p => !startingIds.includes(p.id)).map(p => p.id);
   assignCaptainAndVice(startingIds);
   saveSquadLocal();
+  const ftInput = document.getElementById('missionFt');
+  if (ftInput) ftInput.value = Math.max(0, Number(ftInput.value) - sug.moves.length);
+  const bankInput = document.getElementById('missionBank');
+  if (bankInput) bankInput.value = bank.toFixed(1);
+  try { const key='myfpl_mission_'+currentTeamId(), prefs=JSON.parse(localStorage.getItem(key)||'{}'); prefs.freeTransfers=Number(ftInput?.value ?? 0); localStorage.setItem(key,JSON.stringify(prefs)); } catch (_) {}
   renderPitch();
   renderPlayerList();
-  setStatus("Transfers applied — viewing updated squad on Pick");
+  window.__weekSug = null;
+  try { localStorage.setItem('fpl_draft_gw_' + currentTeamId(), String(planningGw())); } catch (_) {}
+  setStatus("Saved to your MyFPL squad. Submit the transfers yourself on official FPL.");
   // Return to Pick tab so user sees the changed squad
   const pickBtn = document.querySelector('.nav-btn[data-view="pick"]');
   if (pickBtn) pickBtn.click();
@@ -1454,6 +1492,36 @@ function applyTransferSuggestion(sug) {
     const pick = document.getElementById("view-pick");
     if (pick) pick.classList.add("active");
   }
+  return true;
+}
+
+function openTransferConfirmation(sug) {
+  const dialog = document.getElementById("transferConfirmDialog");
+  const form = document.getElementById("transferConfirmForm");
+  const fields = document.getElementById("transferConfirmPrices");
+  fields.replaceChildren();
+  for (const move of sug.moves) {
+    const label = document.createElement("label");
+    label.textContent = move.out.web_name + " selling price (£m)";
+    const input = document.createElement("input");
+    Object.assign(input, { type:"number", min:"0.1", max:String(move.out.price), step:"0.1", required:true });
+    input.dataset.playerId = move.out.id;
+    input.value = confirmedSellingPrice(move.out) ? getSellingPrice(move.out) : "";
+    label.append(input); fields.append(label);
+  }
+  document.getElementById("transferConfirmBank").value = Number(bank).toFixed(1);
+  form.onsubmit = event => {
+    event.preventDefault();
+    const rows = sellingPriceRows();
+    for (const input of fields.querySelectorAll("input")) rows[input.dataset.playerId] = { price:Number(input.value), confirmedAt:Date.now() };
+    try { localStorage.setItem("fpl_selling_" + currentTeamId(), JSON.stringify(rows)); }
+    catch { setStatus("Could not save prices. Enable browser storage and retry."); return; }
+    const priorBank = bank;
+    bank = Number(document.getElementById("transferConfirmBank").value);
+    if (applyTransferSuggestion(sug)) { logTransferEvent("applied", sug, "Squad confirmation"); dialog.close(); renderWeeklyStrip(); }
+    else bank = priorBank;
+  };
+  dialog.showModal();
 }
 
 // ---------- Render ----------
@@ -2587,6 +2655,8 @@ async function tryLoadUserTeam(teamId) {
   }
 
   syncPlanningGw();
+
+  try { if (localStorage.getItem('fpl_draft_gw_' + teamId) === String(planningGw()) && loadSquadLocal(teamId)) return { source:'local', teamName, playerName, note:'Loaded your saved plan for this gameweek.' }; } catch (_) {}
 
   // Prefer latest picks: next event (if published), then current, then recent finished
   const tryEvents = [];

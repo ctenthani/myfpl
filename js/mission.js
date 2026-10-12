@@ -23,13 +23,39 @@
       const account = await api('account'); window.myfplAccount = account;
       authSession = account.signedIn ? { email:account.email, teamId:account.teamId, plan:account.owner ? 'owner' : account.plan, paidUntil:account.paidUntil } : null;
       updatePlanUI();
+      renderOwnerTeams();
       el('authBtn').textContent = account.signedIn ? 'Sign out' : 'Sign in';
       el('cancelSubscription').classList.toggle('hidden', !account.signedIn || !['pro','ultra'].includes(account.plan));
     } catch { window.myfplAccount = null; el('billingStatus').textContent = 'Verified account service is not available yet. Free preview remains available.'; }
   }
+  function renderOwnerTeams() {
+    const account = window.myfplAccount;
+    el('ownerTeamsPanel').classList.toggle('hidden', !account?.owner);
+    el('ownerTeamSwitchWrap').classList.toggle('hidden', !account?.owner);
+    if (!account?.owner) return;
+    const teams = [{ teamId:account.teamId, label:'Primary team' }, ...(account.teams || []).filter(t=>t.teamId!==account.teamId)];
+    el('ownerTeamSwitch').replaceChildren(...teams.map(t=>new Option((t.label || 'Team')+' · '+t.teamId,t.teamId)));
+    el('ownerTeamSwitch').value=String(currentTeamId());
+    el('ownerTeamList').replaceChildren(...(account.teams || []).map(t=>{
+      const row=document.createElement('p');row.textContent=(t.label||'Team')+' · '+t.teamId+' ';
+      const remove=document.createElement('button');remove.type='button';remove.className='btn btn-outline';remove.textContent='Remove from list';
+      remove.onclick=async()=>{try{await api('account',{action:'saveTeams',teams:account.teams.filter(x=>x.teamId!==t.teamId)});await accountRefresh();}catch(error){el('ownerTeamsStatus').textContent=error.message;}};
+      row.append(remove);return row;
+    }));
+  }
+  el('ownerTeamForm').addEventListener('submit',async event=>{
+    event.preventDefault();const account=window.myfplAccount;if(!account?.owner)return;
+    const teamId=Number(el('ownerNewTeamId').value),label=el('ownerNewTeamLabel').value.trim();
+    try{await api('account',{action:'saveTeams',teams:[...(account.teams||[]).filter(t=>t.teamId!==teamId),{teamId,label}]});await accountRefresh();el('ownerTeamsStatus').textContent='Saved. Switch teams above without signing out.';}
+    catch(error){el('ownerTeamsStatus').textContent=error.message;}
+  });
+  el('ownerTeamSwitch').addEventListener('change',async()=>{
+    saveSquadLocal();el('teamIdInput').value=el('ownerTeamSwitch').value;
+    el('teamIdInput').dispatchEvent(new Event('change'));rememberTeamId(Number(el('ownerTeamSwitch').value));await init(true);
+  });
   el('authBtn').addEventListener('click', async () => {
     if (!window.myfplAccount?.signedIn) { openLogin(); return; }
-    try { await api('account', { action:'logout' }); window.myfplAccount=null; authSession=null; updatePlanUI(); el('authBtn').textContent='Sign in'; } catch(error) { setStatus(error.message); }
+    try { await api('account', { action:'logout' }); window.myfplAccount=null; authSession=null; updatePlanUI(); renderOwnerTeams(); el('authBtn').textContent='Sign in'; } catch(error) { setStatus(error.message); }
   });
   el('loginSubmitBtn').addEventListener('click', async () => {
     const btn=el('loginSubmitBtn'); btn.disabled=true;
@@ -67,7 +93,7 @@
     report=data;
     const league=data.league, rival=league?.rival;
     const stat=(label,value,note)=>`<div class="mission-stat"><small>${escape(label)}</small><strong>${escape(value)}</strong><small>${escape(note)}</small></div>`;
-    const option=(name,move,kicker)=>`<article class="mission-option ${name==='Steady'&&move?'best':''}"><span class="mission-kicker">${escape(kicker)}</span><h3>${name}</h3><div class="option-gain">${move?'+'+move.gain.toFixed(1):'0.0'} <small style="font-size:.8rem">estimated points vs hold</small></div><p>${move?`${escape(move.out.name)} → <strong>${escape(move.in.name)}</strong>`:'Keep your squad and preserve flexibility.'}</p><p class="muted">${move?`${move.hit?'-'+move.hit+' hit included':'No points hit'} · ${money(move.bankAfter)} left`:'No hit · no budget spent'}</p>${move?`<p class="muted">Selling price ${money(move.salePrice)}, as confirmed by you. ${rival?(move.differential?'Incoming player differs from the rival’s published squad.':'Incoming player matches the rival’s published squad.'):'Choose a rival to compare squad ownership.'}</p>`:''}</article>`;
+    const option=(name,move,kicker)=>`<article class="mission-option ${name==='Steady'&&move?'best':''}"><span class="mission-kicker">${escape(kicker)}</span><h3>${name}</h3><div class="option-gain">${move?'+'+move.gain.toFixed(1):'0.0'} <small style="font-size:.8rem">estimated points vs hold</small></div><p>${move?`${escape(move.out.name)} → <strong>${escape(move.in.name)}</strong>`:'Keep your squad and preserve flexibility.'}</p><p class="muted">${move?`${move.hit?'-'+move.hit+' hit included':'No points hit'} · ${money(move.bankAfter)} left · next 3 GWs: +${Number(move.gain3 ?? move.gain).toFixed(1)} estimated pts`:'No hit · no budget spent'}</p>${move?`<p class="muted">Selling price ${money(move.salePrice)}, as confirmed by you. ${rival?(move.differential?'Incoming player differs from the rival’s published squad.':'Incoming player matches the rival’s published squad.'):'Choose a rival to compare squad ownership.'}</p>`:''}</article>`;
     const players=list=>list.map(p=>`<li><strong>${escape(p.name)}</strong> · ${p.xp.toFixed(1)} estimated pts${p.fixtures.length>1?' · double gameweek':!p.fixtures.length?' · blank gameweek':''}${p.chance!=null&&p.chance<100?' · availability '+p.chance+'%':''}</li>`).join('');
     const deadline=new Date(data.deadline).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});
     el('missionReport').innerHTML=`<div class="mission-report-head"><span class="mission-kicker">GW ${data.gameweek} · ${escape(data.team)}</span><h2>Your gameweek decision</h2><p class="muted">Deadline ${escape(deadline)} (your local time). Built ${escape(new Date(data.generatedAt).toLocaleTimeString())} · model ${escape(data.model)}.</p></div><div class="mission-stats">${stat('Mini-league rank',league?.rank?'#'+league.rank:'—',league?.name||'Choose a league')}${stat('Points gap',rival? (rival.gap>0? '+'+rival.gap:rival.gap):'—',rival?`To ${rival.name}`:'Choose a target rival')}${stat('Squad forecast',data.forecast.toFixed(1),'Estimated XI + captain points')}${stat('Captain shortlist',data.captains[0]?.name||'—',data.captains[1]?'Vice option: '+data.captains[1].name:'')}</div>${rival?`<div class="mission-note">Target: <strong>${escape(rival.name)}</strong>, rank #${rival.rank}. ${rival.gap>0?'You trail by '+rival.gap+' points.':rival.gap<0?'You lead this rival by '+Math.abs(rival.gap)+' points.':'You are level on points.'} These are published totals, not live ranks.${rival.captainId?' Their last published captain has player ID '+rival.captainId+'.':''}</div>`:''}<div class="mission-options">${option('Hold',null,'The baseline')}${option('Steady',data.steady,'Highest estimated net gain')}${option('Chase',data.chase,'A rival differential')}</div><div class="mission-lineup"><section class="card"><h3>Starting XI · ${escape(data.formation)}</h3><ul>${players(data.xi)}</ul></section><section class="card"><h3>Captain and vice options</h3><ul>${players(data.captains)}</ul><h3>Bench order</h3><ul>${players(data.bench)}</ul><p class="muted">The reserve goalkeeper is listed separately first; the remaining order applies to outfield substitutes.</p></section></div><div class="mission-note">${data.warnings.map(escape).join('<br>')}</div><p class="muted">This report is advice. Review late team news and submit changes yourself on official FPL.</p>`;
