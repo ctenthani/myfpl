@@ -30,8 +30,12 @@ test('application rechecks a four-point hit when no free transfers remain',()=>{
  assert.equal(h.ctx.applyTransferSuggestion({moves:[{out:squad[2],inn:{...squad[2],id:99,team_id:6,xp:6}}]}),false);
  assert.equal(h.ctx.squad[2].id,3);assert.match(h.status.at(-1),/points hit/);
 });
-test('stale multi-transfer packages cannot be applied',()=>{
+test('unprofitable multi-transfer packages cannot be applied',()=>{
  const h=browser();assert.equal(h.ctx.applyTransferSuggestion({moves:[{out:squad[2],inn:{...squad[2],id:99}},{out:squad[3],inn:{...squad[3],id:100}}]}),false);assert.equal(h.ctx.squad[2].id,3);
+});
+test('a profitable two-transfer package spends two banked free transfers',()=>{
+ const h=browser();h.input.value='2';const moves=[2,3].map((i,n)=>({out:squad[i],inn:{...squad[i],id:99+n,team_id:6,xp:10}}));
+ assert.equal(h.ctx.applyTransferSuggestion({moves}),true);assert.equal(h.input.value,0);assert.equal(h.ctx.squad[2].id,99);assert.equal(h.ctx.squad[3].id,100);assert.match(h.status.at(-1),/no points hit/);
 });
 function accounts(owner){
  const email=owner?'owner@example.invalid':'customer@example.invalid',id=core.userId(email),data={email,teamId:1};let saved=null;

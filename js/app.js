@@ -1290,7 +1290,7 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
     maxHits = 0;
   }
 
-  const targetN = 1; // One gameweek decision: best single transfer or hold.
+  const targetN = Math.min(8,Math.max(1,filters?.numTransfers || freeTransfers+maxHits));
 
   const squadIds = new Set(squad.map(p => p.id));
   const currentXp = transferSquadForecast(squad);
@@ -1414,11 +1414,12 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
 
 function applyTransferSuggestion(sug) {
   if (squad.length !== 15) { setStatus('Load a complete 15-player squad before applying transfers.'); return false; }
-  if (sug?.moves?.length > 1) { setStatus("Build a fresh single-transfer suggestion. Multi-transfer packages are no longer applied."); return false; }
+  if (sug?.moves?.length > 8) { setStatus("Build a fresh transfer package (up to 8 moves)."); return false; }
   if (!sug?.moves?.length) { setStatus("No transfer to apply."); return false; }
   if (squadLockedValue && sug.moves.some(m => !confirmedSellingPrice(m.out))) { openTransferConfirmation(sug); return false; }
   const remainingFT = Number(document.getElementById('missionFt')?.value ?? 0);
-  const planningHit = remainingFT > 0 ? 0 : 4;
+  if(!Number.isInteger(remainingFT)||remainingFT<0||remainingFT>5){setStatus('Confirm 0–5 remaining free transfers before applying.');return false;}
+  const planningHit = 4*Math.max(0,sug.moves.length-remainingFT);
   const preview = [...squad];
   let nextBank = bank;
   for (const move of sug.moves) {
@@ -1485,7 +1486,7 @@ function applyTransferSuggestion(sug) {
   renderPlayerList();
   window.__weekSug = null;
   try { localStorage.setItem('fpl_draft_gw_' + currentTeamId(), String(planningGw())); } catch (_) {}
-  setStatus(`Saved one transfer to your MyFPL squad${planningHit ? " (4-point hit included)" : " (no points hit)"}. Submit it yourself on official FPL.`);
+  setStatus(`Saved ${sug.moves.length} transfer(s) to your MyFPL squad${planningHit ? " ("+planningHit+"-point hit included)" : " (no points hit)"}. Submit it yourself on official FPL.`);
   // Return to Pick tab so user sees the changed squad
   const pickBtn = document.querySelector('.nav-btn[data-view="pick"]');
   if (pickBtn) pickBtn.click();
@@ -1978,12 +1979,23 @@ function populateTeamFilter() {
   sel.dataset.ready = "1";
 }
 
+function syncPlayerPriceRange() {
+  const low=document.getElementById('priceMin'), high=document.getElementById('priceMax');
+  if(!low||!high)return;
+  const previous=Number(high.max), selected=Number(high.value);
+  const ceiling=Math.max(20,Math.ceil(Math.max(...players.map(p=>p.price),0)*10)/10);
+  low.max=high.max=String(ceiling);low.step=high.step='0.1';
+  if(selected>=previous||selected>ceiling)high.value=String(ceiling);
+  const label=document.getElementById('priceRangeLabel');if(label)label.textContent='£'+Number(low.value).toFixed(1)+' – £'+Number(high.value).toFixed(1)+'m';
+}
+
 function renderPlayerList() {
+  syncPlayerPriceRange();
   populateTeamFilter();
   let pos = document.querySelector(".pos-tab.active")?.dataset.pos || "ALL";
   const sort = ($("sortBy") && $("sortBy").value) || "xp";
   const pMin = parseFloat($("priceMin") && $("priceMin").value) || 4;
-  const pMax = parseFloat($("priceMax") && $("priceMax").value) || 15.5;
+  const pMax = parseFloat($("priceMax") && $("priceMax").value) || Math.max(...players.map(p=>p.price),20);
   const q = (($("searchInput") && $("searchInput").value) || "").toLowerCase();
   const affordable = $("affordableOnly") && $("affordableOnly").checked;
   const clubFilter = ($("teamFilter") && $("teamFilter").value) || "";
@@ -2217,7 +2229,7 @@ function showTransferResults(res) {
 
   const ftLabel = res.unlimited
     ? `<div class="tr-ft-banner"><div><strong>Free transfers</strong><div class="muted" style="font-size:0.8rem">Unlimited this gameweek</div></div><div style="font-size:1.4rem">∞</div></div>`
-    : `<div class="tr-ft-banner"><div><strong>Free transfers</strong><div class="muted" style="font-size:0.8rem">${res.freeTransfers} available · one transfer or hold</div></div><div style="font-size:1.4rem">${res.freeTransfers}</div></div>`;
+    : `<div class="tr-ft-banner"><div><strong>Free transfers</strong><div class="muted" style="font-size:0.8rem">${res.freeTransfers} available · packages or hold</div></div><div style="font-size:1.4rem">${res.freeTransfers}</div></div>`;
 
   const hz = parseInt(($("trHorizon") && $("trHorizon").value) || "3", 10) || 3;
   const hzLabel = hz >= 6 ? "GW1–6" : hz === 1 ? "next GW" : "next " + hz + " GWs";
@@ -2281,8 +2293,8 @@ function syncTransferModeUI() {
   const hint = $("trModeHint");
   if (hint) {
     hint.textContent = unlimited
-      ? "Unlimited chip mode: the gameweek recommendation still compares one transfer against holding."
-      : "Recommended: one transfer or hold. Confirm remaining free transfers; any points hit is deducted.";
+      ? "Chip plans need review on official FPL; package suggestions still deduct hits beyond your confirmed free transfers."
+      : "Compare transfer packages against Hold. Confirm 0–5 free transfers; every extra move costs 4 points.";
   }
   if (unlimited && $("hitsInput")) $("hitsInput").value = 0;
   if (unlimited && $("ftInput") && parseInt($("ftInput").value, 10) > 5) $("ftInput").value = 3;
@@ -4671,7 +4683,7 @@ function renderWeeklyStrip() {
   }
   let sug = null;
   try {
-    const res = findTransfers(Number(document.getElementById("missionFt")?.value ?? 0), 1, null);
+    const res = findTransfers(Number(document.getElementById("missionFt")?.value ?? 0), 3, null);
     sug = res && res.suggestions && res.suggestions[0];
     if (sug && (sug.gain == null || sug.gain < 0.35 || !sug.moves.length)) sug = null;
   } catch (_) { sug = null; }
