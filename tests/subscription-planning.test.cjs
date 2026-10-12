@@ -41,6 +41,12 @@ test('blank and unavailable players score zero; double weeks do not duplicate ep
 const squad=Array.from({length:15},(_,i)=>({id:i+1,web_name:'P'+i,team:Math.floor(i/3)+1,element_type:i<2?1:i<7?2:i<12?3:4,now_cost:50,form:'3',ep_next:'3',status:'a',chance_of_playing_next_round:100}));
 const fixtures=Array.from({length:6},(_,i)=>({event:7,team_h:i+1,team_a:20,team_h_difficulty:3,team_a_difficulty:3}));
 const args={elements:squad,fixtures,squadIds:squad.map(p=>p.id),gw:7,bank:0,freeTransfers:1};
+test('packages use banked transfers and justify multiple hits against Hold',()=>{
+ const additions=[{...squad[7],id:99,team:6,ep_next:'9',form:'9'},{...squad[8],id:100,team:6,ep_next:'8',form:'8'}];
+ const input={...args,elements:[...squad,...additions],sellingPrices:Object.fromEntries(squad.map(p=>[p.id,5]))};
+ const free=plan({...input,freeTransfers:5});assert.equal(free.recommendation.size,2);assert.equal(free.recommendation.hit,0);
+ const paid=plan({...input,freeTransfers:0});assert.equal(paid.recommendation.size,2);assert.equal(paid.recommendation.hit,8);assert.ok(paid.recommendation.gain>0);assert.equal(paid.recommendation.moves.length,2);
+});
 test('weekly report enforces legal formation and requires selling prices',()=>{
  const result=plan(args); assert.equal(result.xi.length,11);assert.equal(result.bench.length,4);assert.equal(result.unknownPrices.length,15);assert.equal(result.steady,null);assert.equal(result.chase,null);
  assert.throws(()=>plan({...args,squadIds:Array(15).fill(1)}),/legal squad/);

@@ -24,9 +24,15 @@ function transfers(squad, players, ft = 1, hits = 0, filters = null) {
 test('unavailable player cannot be recommended', () => {
   assert.equal(transfers([player(1, 1)], [player(2, 20, 2, 0)]).suggestions.length, 0);
 });
-test('five free transfers still produce only one recommended move',()=>{
+test('price filters include players above 15.5 and preserve an explicit narrower range',()=>{
+ const low={value:'4'},high={max:'15.5',value:'15.5'},label={};
+ const context=vm.createContext({players:[{price:20.7}],document:{getElementById:id=>id==='priceMin'?low:id==='priceMax'?high:label}});
+ vm.runInContext(functionSource('syncPlayerPriceRange'),context);context.syncPlayerPriceRange();assert.equal(high.max,'20.7');assert.equal(high.value,'20.7');assert.equal(high.step,'0.1');
+ high.value='12';context.syncPlayerPriceRange();assert.equal(high.value,'12');
+});
+test('banked free transfers can fund a profitable multi-player package',()=>{
  const result=transfers([player(1,1,1),player(2,1,2)],[player(3,10,3),player(4,9,4)],5,0);
- assert.ok(result.suggestions.length);assert.ok(result.suggestions.every(s=>s.moves.length===1));
+ assert.ok(result.suggestions.length);assert.equal(result.suggestions[0].moves.length,2);assert.equal(result.suggestions[0].hits,0);
 });
 test('same-club replacement allowed when already owning three', () => {
   const squad = [player(1, 1), player(2, 8), player(3, 8)];
