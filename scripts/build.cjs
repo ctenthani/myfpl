@@ -11,7 +11,7 @@ for (const name of ['fpl.js','votes.js','subscribe.js','members.js','matchday-di
 // Native Request handlers receive Netlify's scoped Blobs context automatically.
 // Preserve the tested legacy handlers behind a small request/response adapter.
 fs.mkdirSync(path.join(functions,'lib','handlers'), { recursive: true });
-for (const name of ['account','billing','paypal-webhook','coach']) {
+for (const name of ['account','billing','paypal-webhook','coach','plans']) {
   const source = fs.readFileSync(path.join(root,'netlify','functions',name+'.js'),'utf8').replaceAll("require('./lib/", "require('../");
   fs.writeFileSync(path.join(functions,'lib','handlers',name+'.cjs'),source);
   fs.writeFileSync(path.join(functions,name+'.mjs'),`import { getStore } from '@netlify/blobs';
