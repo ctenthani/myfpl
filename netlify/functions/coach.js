@@ -46,7 +46,8 @@ exports.handler = async event => {
       const s = core.store(), user = await s.get('user:' + account.sub, { type: 'json' });
       const { entitlement } = require('./lib/paypal-core'); const access = await entitlement(account.sub, s);
       if (!(process.env.OWNER_EMAIL && user?.email === process.env.OWNER_EMAIL.trim().toLowerCase()) && (!['pro', 'ultra'].includes(access.plan) || access.until <= Date.now())) return core.response(402, { error: 'An active Pro or Ultra subscription is required for this report.' });
-      if (Number(user?.teamId) !== teamId) return core.response(403, { error: 'This subscription is linked to another Team ID. Sign in with the team you want to plan.' });
+      const owner = !!process.env.OWNER_EMAIL && user?.email === process.env.OWNER_EMAIL.trim().toLowerCase();
+      if (!owner && Number(user?.teamId) !== teamId) return core.response(403, { error: 'This subscription is linked to another Team ID. Sign in with the team you want to plan.' });
     }
     const [boot, fixtures, entry] = await Promise.all([official('bootstrap-static/', 300000), official('fixtures/', 300000), official(`entry/${teamId}/`)]);
     const next = boot.events.find(e => !e.finished && Date.parse(e.deadline_time) > Date.now());
