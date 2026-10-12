@@ -1282,7 +1282,7 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
   if (!squad.length) {
     return { error: "No squad loaded. Enter Team ID and Refresh, or Edit a full 15." };
   }
-  let unlimited = isUnlimitedTransferMode() || !!(filters && filters.unlimitedCustom);
+  let unlimited = false; // A chip selection is not proof that FPL activated it.
   freeTransfers = Math.max(0, Math.min(5, Math.floor(Number(freeTransfers) || 0)));
   maxHits = Math.max(0, Math.min(3, Math.floor(Number(maxHits) || 0)));
   if (unlimited) {
@@ -1290,14 +1290,7 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
     maxHits = 0;
   }
 
-  // Target number of moves: custom filter wins; else free transfers; unlimited defaults to 3
-  let targetN;
-  if (filters && filters.numTransfers) targetN = filters.numTransfers;
-  else if (unlimited) targetN = Math.min(3, Math.max(1, parseInt(($("ftInput") && $("ftInput").value) || "3", 10) || 3));
-  else targetN = Math.max(1, freeTransfers || 1);
-
-  // Cap search size
-  targetN = Math.min(targetN, 5);
+  const targetN = 1; // One gameweek decision: best single transfer or hold.
 
   const squadIds = new Set(squad.map(p => p.id));
   const currentXp = transferSquadForecast(squad);
@@ -1421,8 +1414,11 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
 
 function applyTransferSuggestion(sug) {
   if (squad.length !== 15) { setStatus('Load a complete 15-player squad before applying transfers.'); return false; }
+  if (sug?.moves?.length > 1) { setStatus("Build a fresh single-transfer suggestion. Multi-transfer packages are no longer applied."); return false; }
   if (!sug?.moves?.length) { setStatus("No transfer to apply."); return false; }
   if (squadLockedValue && sug.moves.some(m => !confirmedSellingPrice(m.out))) { openTransferConfirmation(sug); return false; }
+  const remainingFT = Number(document.getElementById('missionFt')?.value ?? 0);
+  const planningHit = remainingFT > 0 ? 0 : 4;
   const preview = [...squad];
   let nextBank = bank;
   for (const move of sug.moves) {
@@ -1435,6 +1431,7 @@ function applyTransferSuggestion(sug) {
   preview.forEach(p => { clubs[p.team_id] = (clubs[p.team_id] || 0) + 1; });
   if (!Number.isFinite(nextBank) || nextBank < -0.001 || Object.values(clubs).some(n => n > 3)) { setStatus("Transfer cannot be applied: check your selling prices, bank and club limits."); return false; }
 
+  if (transferSquadForecast(preview) - transferSquadForecast(squad) - planningHit <= 0.2) { setStatus('Hold: this transfer does not beat your current XI after the points hit.'); return false; }
   for (const m of sug.moves) {
     const idx = squad.findIndex(p => p.id === m.out.id);
     if (idx >= 0) {
@@ -1483,12 +1480,12 @@ function applyTransferSuggestion(sug) {
   if (ftInput) ftInput.value = Math.max(0, Number(ftInput.value) - sug.moves.length);
   const bankInput = document.getElementById('missionBank');
   if (bankInput) bankInput.value = bank.toFixed(1);
-  try { const key='myfpl_mission_'+currentTeamId(), prefs=JSON.parse(localStorage.getItem(key)||'{}'); prefs.freeTransfers=Number(ftInput?.value ?? 0); localStorage.setItem(key,JSON.stringify(prefs)); } catch (_) {}
+  try { const key='myfpl_mission_'+currentTeamId(), prefs=JSON.parse(localStorage.getItem(key)||'{}'); prefs.freeTransfers=Number(ftInput?.value ?? 0); prefs.freeTransfersConfirmed=true; prefs.gameweek=planningGw(); localStorage.setItem(key,JSON.stringify(prefs)); } catch (_) {}
   renderPitch();
   renderPlayerList();
   window.__weekSug = null;
   try { localStorage.setItem('fpl_draft_gw_' + currentTeamId(), String(planningGw())); } catch (_) {}
-  setStatus("Saved to your MyFPL squad. Submit the transfers yourself on official FPL.");
+  setStatus(`Saved one transfer to your MyFPL squad${planningHit ? " (4-point hit included)" : " (no points hit)"}. Submit it yourself on official FPL.`);
   // Return to Pick tab so user sees the changed squad
   const pickBtn = document.querySelector('.nav-btn[data-view="pick"]');
   if (pickBtn) pickBtn.click();
@@ -2220,7 +2217,7 @@ function showTransferResults(res) {
 
   const ftLabel = res.unlimited
     ? `<div class="tr-ft-banner"><div><strong>Free transfers</strong><div class="muted" style="font-size:0.8rem">Unlimited this gameweek</div></div><div style="font-size:1.4rem">∞</div></div>`
-    : `<div class="tr-ft-banner"><div><strong>Free transfers</strong><div class="muted" style="font-size:0.8rem">${res.freeTransfers} available · recommending best ${res.targetN}</div></div><div style="font-size:1.4rem">${res.freeTransfers}</div></div>`;
+    : `<div class="tr-ft-banner"><div><strong>Free transfers</strong><div class="muted" style="font-size:0.8rem">${res.freeTransfers} available · one transfer or hold</div></div><div style="font-size:1.4rem">${res.freeTransfers}</div></div>`;
 
   const hz = parseInt(($("trHorizon") && $("trHorizon").value) || "3", 10) || 3;
   const hzLabel = hz >= 6 ? "GW1–6" : hz === 1 ? "next GW" : "next " + hz + " GWs";
@@ -2284,8 +2281,8 @@ function syncTransferModeUI() {
   const hint = $("trModeHint");
   if (hint) {
     hint.textContent = unlimited
-      ? "Unlimited mode (GW1 / WC / FH): recommends the best 3-transfer package (change Free transfers to 1 or 2 for fewer)."
-      : "Recommended: best package matching your free transfers. Use Custom to force a different number.";
+      ? "Unlimited chip mode: the gameweek recommendation still compares one transfer against holding."
+      : "Recommended: one transfer or hold. Confirm remaining free transfers; any points hit is deducted.";
   }
   if (unlimited && $("hitsInput")) $("hitsInput").value = 0;
   if (unlimited && $("ftInput") && parseInt($("ftInput").value, 10) > 5) $("ftInput").value = 3;
@@ -2299,7 +2296,7 @@ function renderTransfersUI() {
   populateClubFilter();
   syncTransferModeUI();
   const unlimited = isUnlimitedTransferMode();
-  const ft = unlimited ? 15 : (parseInt($("ftInput").value, 10) || 1);
+  const ft = Number(document.getElementById("missionFt")?.value ?? 0);
   const hits = unlimited ? 0 : (parseInt($("hitsInput").value, 10) || 0);
   showTransferResults(findTransfers(ft, hits, null));
 }
@@ -2311,7 +2308,7 @@ function renderCustomTransfersUI() {
   }
   populateClubFilter();
   const filters = getTransferFilters();
-  const ft = filters.unlimitedCustom ? 15 : (parseInt($("ftInputCustom") && $("ftInputCustom").value, 10) || 1);
+  const ft = Number(document.getElementById("missionFt")?.value ?? 0);
   const hits = filters.unlimitedCustom ? 0 : (parseInt($("hitsInputCustom") && $("hitsInputCustom").value, 10) || 0);
   showTransferResults(findTransfers(ft, hits, filters));
 }
@@ -4660,6 +4657,7 @@ init();
 
 
 function renderWeeklyStrip() {
+  const remaining=document.getElementById('mTransfers');if(remaining)remaining.textContent=String(Number(document.getElementById('missionFt')?.value ?? 0));
   const title = $("wsTitle");
   if (!title) return;
   const gw = planningGw();
@@ -4673,7 +4671,7 @@ function renderWeeklyStrip() {
   }
   let sug = null;
   try {
-    const res = findTransfers(Number(document.getElementById("missionFt")?.value ?? 1), 0, null);
+    const res = findTransfers(Number(document.getElementById("missionFt")?.value ?? 0), 1, null);
     sug = res && res.suggestions && res.suggestions[0];
     if (sug && (sug.gain == null || sug.gain < 0.35 || !sug.moves.length)) sug = null;
   } catch (_) { sug = null; }
