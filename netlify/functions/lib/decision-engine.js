@@ -34,6 +34,9 @@ function plan({ elements, fixtures, squadIds, gw, bank, freeTransfers = 1, selli
   const squad = squadIds.map(id => elements.find(p => p.id === id)).filter(Boolean);
   if (!squadValid(squad)) throw Object.assign(new Error('Confirm a legal squad: 2 goalkeepers, 5 defenders, 5 midfielders, 3 forwards; at most 3 per club.'), { status: 400 });
   const score = p => expected(p, fixtures, gw);
+  const horizonScore = p => [0, 1, 2].reduce((total, offset) => total + expected(offset ? { ...p, ep_next:undefined } : p, fixtures, gw + offset), 0);
+  const horizonLineup = bestLineup(squad, horizonScore);
+  const horizonBaseline = horizonLineup.total + Math.max(...horizonLineup.xi.map(horizonScore));
   const lineup = bestLineup(squad, score);
   const captains = [...lineup.xi].sort((a, b) => score(b) - score(a)).slice(0, 3);
   const describe = p => ({ id: p.id, name: p.web_name, position: p.element_type, team: p.team, price: p.now_cost / 10, xp: round(score(p)), chance: p.chance_of_playing_next_round, fixtures: fixtures.filter(f => f.event === gw && (f.team_h === p.team || f.team_a === p.team)).map(f => ({ home: f.team_h === p.team, opponent: f.team_h === p.team ? f.team_a : f.team_h, difficulty: f.team_h === p.team ? f.team_h_difficulty : f.team_a_difficulty })) });
@@ -50,7 +53,10 @@ function plan({ elements, fixtures, squadIds, gw, bank, freeTransfers = 1, selli
       const nextCaptain = Math.max(...next.xi.map(score));
       const gain = next.total + nextCaptain - lineup.total - score(captains[0]) - hit;
       if (gain <= 0.2) continue;
-      options.push({ out: describe(out), in: describe(inn), hit, gain: round(gain), bankAfter: round(bank + sell - inn.now_cost / 10), salePrice: sell, differential: !rivalIds.includes(inn.id), forecast: round(next.total + nextCaptain) });
+      const horizonNext = bestLineup(squad.map(p => p.id === out.id ? inn : p), horizonScore);
+      const gain3 = horizonNext.total + Math.max(...horizonNext.xi.map(horizonScore)) - horizonBaseline - hit;
+      if (gain3 <= 0) continue;
+      options.push({ out: describe(out), in: describe(inn), hit, gain: round(gain), gain3:round(gain3), bankAfter: round(bank + sell - inn.now_cost / 10), salePrice: sell, differential: !rivalIds.includes(inn.id), forecast: round(next.total + nextCaptain) });
     }
   }
   options.sort((a, b) => b.gain - a.gain || a.in.price - b.in.price);
