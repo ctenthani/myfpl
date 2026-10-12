@@ -9,7 +9,7 @@
     sellingFields();
     let prefs={};try{prefs=JSON.parse(localStorage.getItem(prefsKey())||'{}');}catch{}
     el('missionLeague').replaceChildren(new Option('Start with my team',''),...(window.myfplClassicLeagues||[]).map(l=>new Option(l.name,l.id)));
-    el('missionLeague').value=String(prefs.leagueId||'');el('missionRival').value=prefs.rivalId||'';el('missionFt').value=prefs.freeTransfers??1;
+    el('missionLeague').value=String(prefs.leagueId||'');el('missionFt').value=prefs.freeTransfersConfirmed && prefs.gameweek===planningGw() ? prefs.freeTransfers : 0;
   });
   async function api(path, data) {
     const response = await fetch('/api/' + path, { method: data ? 'POST' : 'GET', credentials:'same-origin', headers: { 'Content-Type':'application/json' }, ...(data ? { body:JSON.stringify(data) } : {}), signal:AbortSignal.timeout(45000) });
@@ -92,28 +92,34 @@
   });
   function render(data) {
     report=data;
-    const league=data.league, rival=league?.rival;
+    const league=data.league, move=data.recommendation;
     const stat=(label,value,note)=>`<div class="mission-stat"><small>${escape(label)}</small><strong>${escape(value)}</strong><small>${escape(note)}</small></div>`;
-    const option=(name,move,kicker)=>`<article class="mission-option ${name==='Steady'&&move?'best':''}"><span class="mission-kicker">${escape(kicker)}</span><h3>${name}</h3><div class="option-gain">${move?'+'+move.gain.toFixed(1):'0.0'} <small style="font-size:.8rem">estimated points vs hold</small></div><p>${move?`${escape(move.out.name)} → <strong>${escape(move.in.name)}</strong>`:'Keep your squad and preserve flexibility.'}</p><p class="muted">${move?`${move.hit?'-'+move.hit+' hit included':'No points hit'} · ${money(move.bankAfter)} left · next 3 GWs: +${Number(move.gain3 ?? move.gain).toFixed(1)} estimated pts`:'No hit · no budget spent'}</p>${move?`<p class="muted">Selling price ${money(move.salePrice)}, from official history or your correction. ${rival?(move.differential?'Incoming player differs from the rival’s published squad.':'Incoming player matches the rival’s published squad.'):'Choose a rival to compare squad ownership.'}</p>`:''}</article>`;
-    const players=list=>list.map(p=>`<li><strong>${escape(p.name)}</strong> · ${p.xp.toFixed(1)} estimated pts${p.fixtures.length>1?' · double gameweek':!p.fixtures.length?' · blank gameweek':''}${p.chance!=null&&p.chance<100?' · availability '+p.chance+'%':''}</li>`).join('');
-    const deadline=new Date(data.deadline).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});
-    el('missionReport').innerHTML=`<div class="mission-report-head"><span class="mission-kicker">GW ${data.gameweek} · ${escape(data.team)}</span><h2>Your gameweek decision</h2><p class="muted">Deadline ${escape(deadline)} (your local time). Built ${escape(new Date(data.generatedAt).toLocaleTimeString())} · model ${escape(data.model)}.</p></div><div class="mission-stats">${stat('Mini-league rank',league?.rank?'#'+league.rank:'—',league?.name||'Choose a league')}${stat('Points gap',rival? (rival.gap>0? '+'+rival.gap:rival.gap):'—',rival?`To ${rival.name}`:'Choose a target rival')}${stat('Squad forecast',data.forecast.toFixed(1),'Estimated XI + captain points')}${stat('Captain shortlist',data.captains[0]?.name||'—',data.captains[1]?'Vice option: '+data.captains[1].name:'')}</div>${rival?`<div class="mission-note">Target: <strong>${escape(rival.name)}</strong>, rank #${rival.rank}. ${rival.gap>0?'You trail by '+rival.gap+' points.':rival.gap<0?'You lead this rival by '+Math.abs(rival.gap)+' points.':'You are level on points.'} These are published totals, not live ranks.${rival.captainId?' Their last published captain has player ID '+rival.captainId+'.':''}</div>`:''}<div class="mission-options">${option('Hold',null,'The baseline')}${option('Steady',data.steady,'Highest estimated net gain')}${option('Chase',data.chase,'A rival differential')}</div><div class="mission-lineup"><section class="card"><h3>Starting XI · ${escape(data.formation)}</h3><ul>${players(data.xi)}</ul></section><section class="card"><h3>Captain and vice options</h3><ul>${players(data.captains)}</ul><h3>Bench order</h3><ul>${players(data.bench)}</ul><p class="muted">The reserve goalkeeper is listed separately first; the remaining order applies to outfield substitutes.</p></section></div><div class="mission-note">${data.warnings.map(escape).join('<br>')}</div><p class="muted">This report is advice. Review late team news and submit changes yourself on official FPL.</p>`;
-    const selected=el('missionLeague').value; el('missionLeague').replaceChildren(new Option('Start with my team',''),...data.leagues.map(l=>new Option(l.name,l.id))); el('missionLeague').value=selected;
+    const players=list=>list.map(p=>`<li><strong>${escape(p.name)}</strong> · ${p.xp.toFixed(1)} estimated pts</li>`).join('');
+    const option=move ? `<article class="mission-option best"><span class="mission-kicker">Best single transfer</span><h3>${escape(move.out.name)} → ${escape(move.in.name)}</h3><div class="option-gain">+${move.gain.toFixed(1)} net estimated points</div><p>${(move.gain+move.hit).toFixed(1)} estimated gain before hit − ${move.hit} hit = ${move.gain.toFixed(1)} net.</p><p>${money(move.bankAfter)} left · one transfer · ${move.hit?'Costs 4 points':'Uses one free transfer'}</p><p>${league?`${Math.round(move.fieldOwnership*100)}% of the ${league.analysed} analysed league opponents own the incoming player.`:'Choose a mini-league for field ownership.'}</p><button id="missionApplyBest" class="btn btn-blue" type="button">Apply this one transfer</button></article>` : `<article class="mission-option best"><span class="mission-kicker">Recommendation</span><h3>Hold this gameweek</h3><p>No affordable single transfer improves the legal XI plus captain forecast enough to cover its points hit.</p></article>`;
+    el('missionReport').innerHTML=`<div class="mission-report-head"><h2>Win the league · GW ${data.gameweek}</h2><p>${escape(data.team)} · deadline ${escape(new Date(data.deadline).toLocaleString())}</p></div><div class="mission-stats">${stat('League rank',league?.rank?'#'+league.rank:'—',league?.name||'Choose a mini-league')}${stat('Gap to first',league?.leader?.gap??'—','Published points; target is first place')}${stat('League coverage',league?league.analysed+' opponents':'—',league?.complete?'All other league managers':'Published field sample')}${stat('Remaining free transfers',data.freeTransfers,'One transfer or hold; hits deducted')}</div>${league?.warning?`<p class="mission-note">${escape(league.warning)}</p>`:''}<div class="mission-lineup"><article class="mission-option"><span class="mission-kicker">Baseline</span><h3>Hold</h3><p>0-point hit · keep your squad and preserve flexibility.</p></article>${option}</div><div class="mission-lineup"><section class="card"><h3>Starting XI · ${escape(data.formation)}</h3><ul>${players(data.xi)}</ul></section><section class="card"><h3>Captain shortlist</h3><ul>${players(data.captains)}</ul><h3>Bench order</h3><ul>${players(data.bench)}</ul></section></div><div class="mission-note">${data.warnings.map(escape).join('<br>')}</div><p>This updates your MyFPL plan. Submit transfers yourself on official FPL.</p>`;
+    if(move) el('missionApplyBest').onclick=async()=>{
+      if(currentTeamId()!==data.teamId){setStatus('Load a fresh plan for this team.');return;}
+      const out=squad.find(p=>p.id===move.out.id),inn=playersForTransfer(move.in.id);
+      if(!out||!inn){setStatus('Squad changed. Build a fresh plan.');return;}
+      await applySuggestedTransfer({moves:[{out,inn}],gain:move.gain,netGain:move.gain,hits:move.hit/4});
+    };
+    const selected=el('missionLeague').value;
+    el('missionLeague').replaceChildren(new Option('Start with my team',''),...data.leagues.map(l=>new Option(l.name,l.id)));el('missionLeague').value=selected;
     if(league) {
-      const key='myfpl_progress_'+currentTeamId(); let history=[];try{history=JSON.parse(localStorage.getItem(key)||'[]');}catch{}
-      const previous=history.filter(x=>x.leagueId===league.id&&x.gw<data.publishedGameweek).sort((a,b)=>b.gw-a.gw)[0];
-      history=history.filter(x=>!(x.leagueId===league.id&&x.gw===data.publishedGameweek)); history.push({leagueId:league.id,gw:data.publishedGameweek,rank:league.rank,gap:rival?.gap,rivalId:rival?.teamId});
+      const key='myfpl_progress_'+currentTeamId();let history=[];try{history=JSON.parse(localStorage.getItem(key)||'[]');}catch{}
+      history.push({leagueId:league.id,gw:data.publishedGameweek,rank:league.rank,gap:league.leader?.gap,target:'first-place'});
       try{localStorage.setItem(key,JSON.stringify(history.slice(-80)));}catch{}
-      const progress=document.createElement('div');progress.className='mission-progress';progress.textContent=previous&&previous.rivalId===rival?.teamId&&Number.isFinite(previous.gap)&&Number.isFinite(rival?.gap)?`Published gap since GW ${previous.gw}: ${previous.gap} → ${rival.gap} points. This tracks results, not proof the app caused the change.`:'Progress baseline saved on this device. Return after the next scored gameweek to compare the published gap.';el('missionReport').append(progress);
     }
   }
+  function playersForTransfer(id) { return players.find(p=>p.id===id); }
+  ['missionFt','ftInput','ftInputCustom'].forEach(id=>el(id)?.addEventListener('input',()=>{const value=Number(el(id).value);['missionFt','ftInput','ftInputCustom'].forEach(other=>{if(el(other))el(other).value=value;});const prefs={freeTransfers:value,freeTransfersConfirmed:true,gameweek:planningGw()};try{localStorage.setItem(prefsKey(),JSON.stringify({...JSON.parse(localStorage.getItem(prefsKey())||'{}'),...prefs}));}catch{}renderWeeklyStrip();}));
   el('missionForm').addEventListener('submit',async event=>{
     event.preventDefault();if(busy)return;
     if(!currentTeamId()){el('missionStatus').textContent='Enter your Team ID above and press Refresh first.';el('teamIdInput').focus();return;}
     busy=true;el('missionBuild').disabled=true;el('missionStatus').textContent='Loading official data and comparing legal options…';
     try{
       const sellingPrices={};for(const p of squad)if(confirmedSellingPrice(p))sellingPrices[p.id]=sellingPriceRows()[p.id].price;
-      const preferences={leagueId:Number(el('missionLeague').value)||null,rivalId:Number(el('missionRival').value)||null,freeTransfers:Number(el('missionFt').value)};
+      const preferences={leagueId:Number(el('missionLeague').value)||null,freeTransfers:Number(el('missionFt').value),freeTransfersConfirmed:true,gameweek:planningGw()};
       const data=await api('coach',{teamId:currentTeamId(),...preferences,bank:el('missionBank').value===''?null:Number(el('missionBank').value),sellingPrices,...(squad.length===15&&window.myfplLoadedTeam===currentTeamId()?{squadIds:squad.map(p=>p.id)}:{})});
       render(data);el('missionStatus').textContent='Plan ready. Review your bank, selling prices and late team news before deciding.';localStorage.setItem(prefsKey(),JSON.stringify(preferences));
     }catch(error){el('missionStatus').textContent=error.message;}
@@ -122,7 +128,7 @@
   el('missionSquad').addEventListener('click',()=>document.querySelector('[data-view="pick"]').click());
   el('missionPricing').addEventListener('click',()=>document.querySelector('[data-view="chips"]').click());
   document.querySelector('[data-view="mission"]').addEventListener('click',sellingFields);
-  el('teamIdInput').addEventListener('change',()=>{report=null;el('missionBank').value='';el('missionLeague').replaceChildren(new Option('Start with my team',''));el('missionRival').value='';el('missionReport').innerHTML='<div class="mission-empty"><h2>Build a fresh plan for this team</h2><p>The previous team’s report has been cleared.</p></div>';});
+  el('teamIdInput').addEventListener('change',()=>{report=null;el('missionBank').value='';el('missionLeague').replaceChildren(new Option('Start with my team',''));el('missionReport').innerHTML='<div class="mission-empty"><h2>Build a fresh plan for this team</h2><p>The previous team’s report has been cleared.</p></div>';});
   document.querySelectorAll('[data-subscribe]').forEach(btn=>btn.addEventListener('click',async()=>{
     if(!window.myfplAccount?.signedIn){openLogin();return;}
     btn.disabled=true;try{const result=await api('billing',{action:'create',plan:btn.dataset.subscribe});location.assign(result.approval);}catch(error){el('billingStatus').textContent=error.message;}finally{btn.disabled=false;}

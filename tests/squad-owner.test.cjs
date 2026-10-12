@@ -25,6 +25,14 @@ test('unaffordable or stale packages do not partially change the squad',()=>{
 test('reserve goalkeeper upgrades do not count as starting XI gains',()=>{
  const h=browser(),initial=h.ctx.transferSquadForecast(h.ctx.squad);h.ctx.squad[1].xp=2;assert.equal(h.ctx.transferSquadForecast(h.ctx.squad),initial);
 });
+test('application rechecks a four-point hit when no free transfers remain',()=>{
+ const h=browser();h.input.value='0';
+ assert.equal(h.ctx.applyTransferSuggestion({moves:[{out:squad[2],inn:{...squad[2],id:99,team_id:6,xp:6}}]}),false);
+ assert.equal(h.ctx.squad[2].id,3);assert.match(h.status.at(-1),/points hit/);
+});
+test('stale multi-transfer packages cannot be applied',()=>{
+ const h=browser();assert.equal(h.ctx.applyTransferSuggestion({moves:[{out:squad[2],inn:{...squad[2],id:99}},{out:squad[3],inn:{...squad[3],id:100}}]}),false);assert.equal(h.ctx.squad[2].id,3);
+});
 function accounts(owner){
  const email=owner?'owner@example.invalid':'customer@example.invalid',id=core.userId(email),data={email,teamId:1};let saved=null;
  const store={getWithMetadata:async()=>({data,etag:'a'}),setJSON:async(k,row,opt)=>{saved=row;assert.equal(opt.onlyIfMatch,'a');return{modified:true};}};

@@ -30,7 +30,7 @@ function squadValid(squad) {
   for (const p of squad) { counts[p.element_type]++; clubs[p.team] = (clubs[p.team] || 0) + 1; }
   return counts[1] === 2 && counts[2] === 5 && counts[3] === 5 && counts[4] === 3 && Object.values(clubs).every(n => n <= 3);
 }
-function plan({ elements, fixtures, squadIds, gw, bank, freeTransfers = 1, sellingPrices = {}, rivalIds = [] }) {
+function plan({ elements, fixtures, squadIds, gw, bank, freeTransfers = 0, sellingPrices = {}, fieldOwnership = {}, fieldSize = 0 }) {
   const squad = squadIds.map(id => elements.find(p => p.id === id)).filter(Boolean);
   if (!squadValid(squad)) throw Object.assign(new Error('Confirm a legal squad: 2 goalkeepers, 5 defenders, 5 midfielders, 3 forwards; at most 3 per club.'), { status: 400 });
   const score = p => expected(p, fixtures, gw);
@@ -56,13 +56,14 @@ function plan({ elements, fixtures, squadIds, gw, bank, freeTransfers = 1, selli
       const horizonNext = bestLineup(squad.map(p => p.id === out.id ? inn : p), horizonScore);
       const gain3 = horizonNext.total + Math.max(...horizonNext.xi.map(horizonScore)) - horizonBaseline - hit;
       if (gain3 <= 0) continue;
-      options.push({ out: describe(out), in: describe(inn), hit, gain: round(gain), gain3:round(gain3), bankAfter: round(bank + sell - inn.now_cost / 10), salePrice: sell, differential: !rivalIds.includes(inn.id), forecast: round(next.total + nextCaptain) });
+      options.push({ out: describe(out), in: describe(inn), hit, gain: round(gain), gain3:round(gain3), bankAfter: round(bank + sell - inn.now_cost / 10), salePrice: sell, fieldOwnership: fieldOwnership[inn.id] || 0, differential: fieldSize > 0 && (fieldOwnership[inn.id] || 0) < 0.5, forecast: round(next.total + nextCaptain) });
     }
   }
   options.sort((a, b) => b.gain - a.gain || a.in.price - b.in.price);
   const best = options[0] || null;
-  const chase = rivalIds.length ? options.find(o => o.differential && o.gain >= (best?.gain || 0) * 0.7) || null : null;
+  const chase = fieldSize ? options.filter(o=>o.differential && o.gain >= (best?.gain||0)*0.85).sort((a,b)=>b.gain*(1-b.fieldOwnership)-a.gain*(1-a.fieldOwnership) || b.gain-a.gain)[0] || null : null;
+  const recommendation = chase || best;
   const bench = squad.filter(p => !lineup.xi.includes(p)).sort((a, b) => (a.element_type === 1 ? -1 : b.element_type === 1 ? 1 : score(b) - score(a)));
-  return { model: 'myfpl-weekly-v1', estimated: true, formation: lineup.formation, forecast: round(lineup.total + score(captains[0])), xi: lineup.xi.map(describe), bench: bench.map(describe), captains: captains.map(describe), hold: { gain: 0, hit: 0 }, steady: best, chase, unknownPrices, warnings: ['Experimental estimates, not guaranteed points. Late news and rotation can change the outcome.', ...(unknownPrices.length ? ['Transfer comparisons exclude players whose selling prices have not been confirmed.'] : [])] };
+  return { model: 'myfpl-league-field-v2', recommendation, estimated: true, formation: lineup.formation, forecast: round(lineup.total + score(captains[0])), xi: lineup.xi.map(describe), bench: bench.map(describe), captains: captains.map(describe), hold: { gain: 0, hit: 0 }, steady: best, chase, unknownPrices, warnings: ['Experimental estimates, not guaranteed points. Late news and rotation can change the outcome.', ...(unknownPrices.length ? ['Transfer comparisons exclude players whose selling prices have not been confirmed.'] : [])] };
 }
 module.exports = { expected, bestLineup, squadValid, plan };
