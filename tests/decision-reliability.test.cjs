@@ -24,6 +24,10 @@ function transfers(squad, players, ft = 1, hits = 0, filters = null) {
 test('unavailable player cannot be recommended', () => {
   assert.equal(transfers([player(1, 1)], [player(2, 20, 2, 0)]).suggestions.length, 0);
 });
+test('five free transfers still produce only one recommended move',()=>{
+ const result=transfers([player(1,1,1),player(2,1,2)],[player(3,10,3),player(4,9,4)],5,0);
+ assert.ok(result.suggestions.length);assert.ok(result.suggestions.every(s=>s.moves.length===1));
+});
 test('same-club replacement allowed when already owning three', () => {
   const squad = [player(1, 1), player(2, 8), player(3, 8)];
   assert.equal(transfers(squad, [player(4, 5)]).suggestions[0].moves[0].inn.id, 4);
