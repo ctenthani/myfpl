@@ -1,5 +1,6 @@
 const core = require('./lib/account-core');
 const { plan } = require('./lib/decision-engine');
+const { reconstruct } = require('./lib/selling-prices');
 const cached = new Map();
 async function official(path, ttl = 60000) {
   const prior = cached.get(path);
@@ -34,13 +35,20 @@ async function leagueContext(entry, teamId, leagueId, rivalId, gw) {
   if (rival) { try { rivalPicks = await official(`entry/${rival.entry}/event/${gw}/picks/`); } catch {} }
   return { id: leagueId, name: data.league?.name || known.name, rank: me.rank, total: me.total, page, rival: rival ? { teamId: rival.entry, name: rival.entry_name, rank: rival.rank, total: rival.total, gap: rival.total - me.total, captainId: rivalPicks?.picks?.find(p => p.is_captain)?.element || null } : null, rivalIds: rivalPicks?.picks?.map(p => p.element) || [] };
 }
+async function sellingPrices(boot, teamId, published, picks) {
+  const [initial, transfers, history] = await Promise.all([
+    official(`entry/${teamId}/event/1/picks/`).catch(error => { if(error.status===502) return { picks:[] }; throw error; }),
+    official(`entry/${teamId}/transfers/`), official(`entry/${teamId}/history/`)
+  ]);
+  return reconstruct({ elements:boot.elements, initialPicks:initial.picks, currentPicks:picks.picks, transfers, chips:history.chips, publishedGameweek:published.id });
+}
 exports.handler = async event => {
   try {
     if (event.httpMethod !== 'POST') return core.response(405, { error: 'Method not allowed.' });
     if (!core.sameOrigin(event)) return core.response(403, { error: 'Open this report in MyFPL.' });
     const b = core.body(event), teamId = Number(b.teamId);
     if (!Number.isSafeInteger(teamId) || teamId <= 0 || teamId > 100000000) return core.response(400, { error: 'Load your FPL Team ID first.' });
-    if (Date.now() >= core.LAUNCH) {
+    if (Date.now() >= core.LAUNCH && b.action !== 'selling-prices') {
       const account = core.session(event);
       if (!account) return core.response(401, { error: 'Verify your email to open your weekly report.' });
       const s = core.store(), user = await s.get('user:' + account.sub, { type: 'json' });
@@ -55,12 +63,15 @@ exports.handler = async event => {
     const published = [...boot.events].filter(e => Date.parse(e.deadline_time) <= Date.now()).sort((a, b) => b.id - a.id)[0];
     if (!published) return core.response(400, { error: 'This team has no published gameweek squad yet.' });
     const picks = await official(`entry/${teamId}/event/${published.id}/picks/`);
+    const automatic = await sellingPrices(boot, teamId, published, picks);
+    if (b.action === 'selling-prices') return core.response(200, { ...automatic, teamId, fetchedAt:new Date().toISOString() });
     const squadIds = Array.isArray(b.squadIds) ? b.squadIds.map(Number) : picks.picks.map(p => p.element);
     const bank = b.bank == null ? (picks.entry_history?.bank || 0) / 10 : Number(b.bank);
     const freeTransfers = Number(b.freeTransfers ?? 1);
     if (!Number.isFinite(bank) || bank < 0 || bank > 100 || !Number.isInteger(freeTransfers) || freeTransfers < 0 || freeTransfers > 5) return core.response(400, { error: 'Confirm bank (0–100m) and free transfers (0–5).' });
     const league = b.leagueId ? await leagueContext(entry, teamId, Number(b.leagueId), Number(b.rivalId) || null, published.id) : null;
-    const report = plan({ elements: boot.elements, fixtures, squadIds, gw: next.id, bank, freeTransfers, sellingPrices: b.sellingPrices || {}, rivalIds: league?.rivalIds || [] });
+    const prices = { ...Object.fromEntries(Object.entries(automatic.prices).map(([id,row])=>[id,row.price])), ...(b.sellingPrices || {}) };
+    const report = plan({ elements: boot.elements, fixtures, squadIds, gw: next.id, bank, freeTransfers, sellingPrices: prices, rivalIds: league?.rivalIds || [] });
     return core.response(200, { ...report, team: entry.name, teamId, gameweek: next.id, deadline: next.deadline_time, publishedGameweek: published.id, generatedAt: new Date().toISOString(), bank, freeTransfers, league, leagues: entry.leagues?.classic?.map(l => ({ id: l.id, name: l.name, rank: l.entry_rank })) || [], warnings: [...report.warnings, `Public picks are from GW ${published.id}; confirm any unpublished transfers and current selling prices on official FPL.`] });
   } catch (error) { return core.response(error.status || 503, { error: error.status ? error.message : 'The weekly report could not load. Retry shortly; your saved squad has not been changed.' }); }
 };
