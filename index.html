@@ -44,6 +44,7 @@
       <label class="tid">Team ID <input type="number" id="teamIdInput" value="" placeholder="Team ID" title="Enter Team ID then Refresh" /></label>
       <button id="refreshBtn" class="btn btn-pink">Refresh</button>
       <button id="authBtn" class="btn btn-cyan">Sign in</button>
+      <label id="ownerTeamSwitchWrap" class="tid hidden">My teams <select id="ownerTeamSwitch" aria-label="Switch saved FPL team"></select></label>
       <button id="installBtn" class="btn btn-outline" type="button">Install App</button>
     </div>
   </header>
@@ -85,6 +86,8 @@
   </div>
 
   <div class="status-line" id="statusBar">Loading FPL data…</div>
+  <dialog id="transferConfirmDialog" aria-labelledby="transferConfirmTitle"><form id="transferConfirmForm"><h2 id="transferConfirmTitle">Confirm and apply transfer</h2><p>Enter selling prices from official FPL Transfers. Your squad stays on this screen.</p><div id="transferConfirmPrices" class="mission-form-grid"></div><label>Current bank (£m)<input id="transferConfirmBank" type="number" min="0" max="100" step="0.1" required></label><p>This saves your MyFPL plan. Submit it yourself on official FPL.</p><button class="btn btn-blue" type="submit">Apply to my squad</button><button class="btn btn-outline" type="button" onclick="document.getElementById('transferConfirmDialog').close()">Cancel</button></form></dialog>
+  <section id="ownerTeamsPanel" class="card hidden"><h2>Your saved FPL teams</h2><p>Switch public FPL Team IDs under your verified owner account. Each team keeps its own squad and league targets.</p><form id="ownerTeamForm"><label>Team ID<input id="ownerNewTeamId" type="number" min="1" max="100000000" required value="5195954"></label><label>Label<input id="ownerNewTeamLabel" maxlength="80" placeholder="Team name"></label><button type="submit" class="btn btn-blue">Save team</button></form><div id="ownerTeamList"></div><p id="ownerTeamsStatus" role="status"></p></section>
   <div class="edit-banner hidden" id="editBanner">
     <strong>Edit mode on</strong> — click a pitch/bench player to remove · click a list player to add ·
     <span id="editStatusInline"></span>
