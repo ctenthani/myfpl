@@ -7,4 +7,5 @@
 /api/billing /.netlify/functions/billing 200
 /api/paypal-webhook /.netlify/functions/paypal-webhook 200
 /api/coach /.netlify/functions/coach 200
+/api/plans /.netlify/functions/plans 200
 /* /index.html 200

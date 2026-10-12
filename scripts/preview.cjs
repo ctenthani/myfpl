@@ -9,7 +9,7 @@ http.createServer(async (req,res) => {
   const url = new URL(req.url,'http://localhost:4178');
   if(url.pathname.startsWith('/api/')) {
    const name=url.pathname.slice(5);
-   if(!['fpl','coach','account','billing','votes','members','subscribe'].includes(name)){res.writeHead(404);res.end();return;}
+   if(!['fpl','coach','account','billing','votes','members','subscribe','plans'].includes(name)){res.writeHead(404);res.end();return;}
    let body='';for await(const chunk of req){body+=chunk;if(body.length>25000)throw Error('Too large');}
    const result=await require('../netlify/functions/'+name+'.js').handler({httpMethod:req.method,headers:req.headers,body,queryStringParameters:Object.fromEntries(url.searchParams)});
    res.writeHead(result.statusCode,result.headers||{});res.end(result.body);return;

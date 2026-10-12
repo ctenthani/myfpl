@@ -1,0 +1,417 @@
+{
+  "season": "2025/26",
+  "generatedAt": "2026-10-12T14:30:14.451Z",
+  "source": "https://github.com/vaastav/Fantasy-Premier-League/blob/master/data/2025-26/gws/merged_gw.csv",
+  "sourceSha256": "0d09f1f1cb1b5520ec8e2f25238aa652efe2a263d8ca7cb2b6538b27bf86727d",
+  "training": {
+    "gameweeks": "6–20",
+    "candidates": [
+      {
+        "weight": 0,
+        "mae": 1.117636248362662,
+        "rmse": 2.125879783059934,
+        "observations": 11328
+      },
+      {
+        "weight": 0.25,
+        "mae": 1.0956968886777736,
+        "rmse": 2.109476300524987,
+        "observations": 11328
+      },
+      {
+        "weight": 0.35,
+        "mae": 1.0887130549215165,
+        "rmse": 2.1083087744882216,
+        "observations": 11328
+      },
+      {
+        "weight": 0.5,
+        "mae": 1.0810705761690715,
+        "rmse": 2.1123631404073655,
+        "observations": 11328
+      },
+      {
+        "weight": 0.75,
+        "mae": 1.0750997490838792,
+        "rmse": 2.1344620342016323,
+        "observations": 11328
+      },
+      {
+        "weight": 1,
+        "mae": 1.0785663841807962,
+        "rmse": 2.1751875040938784,
+        "observations": 11328
+      }
+    ],
+    "selectedWeight": 0.35
+  },
+  "holdout": {
+    "gameweeks": "21–38",
+    "model": {
+      "mae": 1.0326330752309678,
+      "rmse": 2.025111579912381,
+      "observations": 14731
+    },
+    "form": {
+      "mae": 1.021315592967217,
+      "rmse": 2.0749037843909113,
+      "observations": 14731
+    }
+  },
+  "policies": {
+    "hold": {
+      "points": 740,
+      "hits": 0,
+      "transfers": 0,
+      "weeks": [
+        {
+          "gw": 21,
+          "points": 54,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 22,
+          "points": 33,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 23,
+          "points": 36,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 24,
+          "points": 47,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 25,
+          "points": 48,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 26,
+          "points": 38,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 27,
+          "points": 25,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 28,
+          "points": 24,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 29,
+          "points": 33,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 30,
+          "points": 26,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 31,
+          "points": 38,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 32,
+          "points": 34,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 33,
+          "points": 58,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 34,
+          "points": 23,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 35,
+          "points": 51,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 36,
+          "points": 58,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 37,
+          "points": 68,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 38,
+          "points": 46,
+          "hit": 0,
+          "moves": 0
+        }
+      ]
+    },
+    "form": {
+      "points": 822,
+      "hits": 8,
+      "transfers": 20,
+      "weeks": [
+        {
+          "gw": 21,
+          "points": 54,
+          "hit": 0,
+          "moves": 0
+        },
+        {
+          "gw": 22,
+          "points": 42,
+          "hit": 0,
+          "moves": 2
+        },
+        {
+          "gw": 23,
+          "points": 39,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 24,
+          "points": 57,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 25,
+          "points": 28,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 26,
+          "points": 26,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 27,
+          "points": 31,
+          "hit": 4,
+          "moves": 2
+        },
+        {
+          "gw": 28,
+          "points": 37,
+          "hit": 4,
+          "moves": 2
+        },
+        {
+          "gw": 29,
+          "points": 70,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 30,
+          "points": 43,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 31,
+          "points": 36,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 32,
+          "points": 58,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 33,
+          "points": 77,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 34,
+          "points": 48,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 35,
+          "points": 38,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 36,
+          "points": 41,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 37,
+          "points": 46,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 38,
+          "points": 51,
+          "hit": 0,
+          "moves": 1
+        }
+      ]
+    },
+    "model": {
+      "points": 797,
+      "hits": 0,
+      "transfers": 18,
+      "weeks": [
+        {
+          "gw": 21,
+          "points": 49,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 22,
+          "points": 37,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 23,
+          "points": 32,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 24,
+          "points": 55,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 25,
+          "points": 30,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 26,
+          "points": 47,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 27,
+          "points": 30,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 28,
+          "points": 27,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 29,
+          "points": 89,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 30,
+          "points": 40,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 31,
+          "points": 19,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 32,
+          "points": 40,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 33,
+          "points": 49,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 34,
+          "points": 33,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 35,
+          "points": 44,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 36,
+          "points": 51,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 37,
+          "points": 75,
+          "hit": 0,
+          "moves": 1
+        },
+        {
+          "gw": 38,
+          "points": 50,
+          "hit": 0,
+          "moves": 1
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "The historical test excludes the official ep_next blend used by current reports; it validates a restricted underlying-data branch rather than the entire live pipeline.",
+    "Archived transfer availability was unavailable; player eligibility uses earlier observed records.",
+    "Only lagged match data is used; no injury/news/deadline snapshots were available.",
+    "Neutral one-fixture assumption: blanks, doubles and pre-deadline fixture revisions are not reconstructed.",
+    "Policies start from the same past-data-selected £100m squad; market values use the last observed earlier gameweek.",
+    "Replay scores a fixed forecast XI and captain, without automatic substitutes or chips; this is a restricted benchmark, not a mini-league win test.",
+    "Hold keeps its initial squad but chooses XI/captain using lagged form. No weights were selected using holdout results."
+  ]
+}

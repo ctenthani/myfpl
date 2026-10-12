@@ -1,4 +1,5 @@
 const round = value => Math.round(value * 10) / 10;
+const {evidence}=require('./forecast');
 function expected(player, fixtures, gw) {
   const games = fixtures.filter(f => f.event === gw && (f.team_h === player.team || f.team_a === player.team));
   if (!games.length || ['u', 'i', 's', 'n'].includes(player.status) || player.chance_of_playing_next_round === 0) return 0;
@@ -7,8 +8,14 @@ function expected(player, fixtures, gw) {
   const official = Number(player.ep_next);
   const fixtureForm = games.reduce((total, f) => total + form * ({ 1: 1.18, 2: 1.1, 3: 1, 4: 0.9, 5: 0.8 }[f.team_h === player.team ? f.team_h_difficulty : f.team_a_difficulty] || 1), 0);
   // ep_next already covers the next event, including double gameweeks: do not multiply it by fixture count.
+  if(presentUnderlying(player)) {
+    const base=evidence(player).estimate;
+    const adjusted=games.reduce((sum,f)=>sum+base*({1:1.18,2:1.1,3:1,4:0.9,5:0.8}[f.team_h===player.team?f.team_h_difficulty:f.team_a_difficulty]||1),0)*chance;
+    return Math.max(0,Number.isFinite(official)?0.5*official+0.5*adjusted:adjusted);
+  }
   return Math.max(0, (Number.isFinite(official) ? 0.75 * official + 0.25 * fixtureForm : fixtureForm) * chance);
 }
+function presentUnderlying(p){return p.gamesPlayed!=null&&p.expected_goals_per_90!=null;}
 function bestLineup(squad, score) {
   const byPosition = {};
   for (const p of squad) (byPosition[p.element_type] ||= []).push(p);
@@ -41,7 +48,7 @@ function plan({ elements, fixtures, squadIds, gw, bank, freeTransfers = 0, selli
   const horizonBaseline = horizonLineup.total + Math.max(...horizonLineup.xi.map(horizonScore));
   const lineup = bestLineup(squad, score);
   const captains = [...lineup.xi].sort((a, b) => score(b) - score(a)).slice(0, 3);
-  const describe = p => ({ id: p.id, name: p.web_name, position: p.element_type, team: p.team, price: p.now_cost / 10, xp: round(score(p)), chance: p.chance_of_playing_next_round, fixtures: fixtures.filter(f => f.event === gw && (f.team_h === p.team || f.team_a === p.team)).map(f => ({ home: f.team_h === p.team, opponent: f.team_h === p.team ? f.team_a : f.team_h, difficulty: f.team_h === p.team ? f.team_h_difficulty : f.team_a_difficulty })) });
+  const describe = p => ({ id: p.id, name: p.web_name, position: p.element_type, team: p.team, price: p.now_cost / 10, xp: round(score(p)), evidence:evidence(p), chance: p.chance_of_playing_next_round, fixtures: fixtures.filter(f => f.event === gw && (f.team_h === p.team || f.team_a === p.team)).map(f => ({ home: f.team_h === p.team, opponent: f.team_h === p.team ? f.team_a : f.team_h, difficulty: f.team_h === p.team ? f.team_h_difficulty : f.team_a_difficulty })) });
   const options = [];
   const unknownPrices = [];
   const sale = p => sellingPrices[p.id];
@@ -73,7 +80,7 @@ function plan({ elements, fixtures, squadIds, gw, bank, freeTransfers = 0, selli
         const gain3=horizonNext.total+Math.max(...horizonNext.xi.map(horizonScore))-horizonBaseline-hit;
         if(gain3<=0)continue;
         const ownership=moves.reduce((sum,m)=>sum+(fieldOwnership[m.in.id]||0),0)/count;
-        options.push({moves,size:count,out:moves[0].out,in:moves[0].in,hit,gain:round(gain),gain3:round(gain3),bankAfter:round(nextBank),salePrice:moves[0].salePrice,fieldOwnership:ownership,differential:fieldSize>0&&ownership<0.5,forecast:round(forecast)});
+        options.push({moves,size:count,out:moves[0].out,in:moves[0].in,hit,gain:round(gain),gain3:round(gain3),xi:next.xi.map(describe),bench:nextSquad.filter(p=>!next.xi.includes(p)).sort((a,b)=>(a.element_type===1?-1:b.element_type===1?1:score(b)-score(a))).map(describe),captainId:next.xi.slice().sort((a,b)=>score(b)-score(a))[0].id,squadIds:nextSquad.map(p=>p.id),bankAfter:round(nextBank),salePrice:moves[0].salePrice,fieldOwnership:ownership,differential:fieldSize>0&&ownership<0.5,forecast:round(forecast)});
       }
     }
     beam=[...expanded.values()].sort((a,b)=>b.net-a.net||b.bank-a.bank).slice(0,8);
@@ -84,6 +91,6 @@ function plan({ elements, fixtures, squadIds, gw, bank, freeTransfers = 0, selli
   const chase = fieldSize ? options.filter(o=>o.differential && o.gain >= (best?.gain||0)*0.85).sort((a,b)=>b.gain*(1-b.fieldOwnership)-a.gain*(1-a.fieldOwnership) || b.gain-a.gain)[0] || null : null;
   const recommendation = chase || best;
   const bench = squad.filter(p => !lineup.xi.includes(p)).sort((a, b) => (a.element_type === 1 ? -1 : b.element_type === 1 ? 1 : score(b) - score(a)));
-  return { model: 'myfpl-transfer-packages-v3', recommendation, estimated: true, formation: lineup.formation, forecast: round(lineup.total + score(captains[0])), xi: lineup.xi.map(describe), bench: bench.map(describe), captains: captains.map(describe), hold: { gain: 0, hit: 0 }, steady: best, chase, unknownPrices, warnings: ['Experimental estimates, not guaranteed points. Late news and rotation can change the outcome.', ...(unknownPrices.length ? ['Transfer comparisons exclude players whose selling prices have not been confirmed.'] : [])] };
+  return { model: 'myfpl-evidence-v4', recommendation, estimated: true, formation: lineup.formation, forecast: round(lineup.total + score(captains[0])), xi: lineup.xi.map(describe), bench: bench.map(describe), captains: captains.map(describe), hold: { gain: 0, hit: 0 }, steady: best, chase, unknownPrices, warnings: ['Experimental estimates, not guaranteed points. Late news and rotation can change the outcome.', ...(unknownPrices.length ? ['Transfer comparisons exclude players whose selling prices have not been confirmed.'] : [])] };
 }
 module.exports = { expected, bestLineup, squadValid, plan };

@@ -89,3 +89,9 @@
   status = 200
   force = true
 
+
+[[redirects]]
+  from = "/api/plans"
+  to = "/.netlify/functions/plans"
+  status = 200
+  force = true

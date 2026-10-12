@@ -519,6 +519,8 @@ function buildPlayers() {
  * We scale toward realistic GW totals using the components below.
  */
 function expectedPoints(p, hz = 1) {
+  const live=window.myfplEvidenceForecast;
+  if(live?.gameweek===planningGw()&&Date.now()-live.generatedAt<15*60000&&live.players[p.id]&&[1,3].includes(hz))return hz===3?live.players[p.id].xp3:live.players[p.id].xp;
   /**
    * Hybrid model:
    * - Trust official ep_next heavily pre-season / low sample
@@ -1481,7 +1483,7 @@ function applyTransferSuggestion(sug) {
   if (ftInput) ftInput.value = Math.max(0, Number(ftInput.value) - sug.moves.length);
   const bankInput = document.getElementById('missionBank');
   if (bankInput) bankInput.value = bank.toFixed(1);
-  try { const key='myfpl_mission_'+currentTeamId(), prefs=JSON.parse(localStorage.getItem(key)||'{}'); prefs.freeTransfers=Number(ftInput?.value ?? 0); prefs.freeTransfersConfirmed=true; prefs.gameweek=planningGw(); localStorage.setItem(key,JSON.stringify(prefs)); } catch (_) {}
+  try { const key='myfpl_mission_'+currentTeamId(), prefs=JSON.parse(localStorage.getItem(key)||'{}'); prefs.bank=bank; prefs.freeTransfers=Number(ftInput?.value ?? 0); prefs.freeTransfersConfirmed=true; prefs.gameweek=planningGw(); localStorage.setItem(key,JSON.stringify(prefs)); } catch (_) {}
   renderPitch();
   renderPlayerList();
   window.__weekSug = null;
@@ -1495,6 +1497,7 @@ function applyTransferSuggestion(sug) {
     const pick = document.getElementById("view-pick");
     if (pick) pick.classList.add("active");
   }
+  document.dispatchEvent(new Event('myfpl-plan-changed'));
   return true;
 }
 
@@ -2400,10 +2403,20 @@ function renderAITeams() {
 }
 
 function getChipPlan() {
-  try { return JSON.parse(localStorage.getItem("fpl_chip_plan_v1") || "{}"); } catch { return {}; }
+  try {
+    const key="fpl_chip_plan_"+currentTeamId();
+    if(!localStorage.getItem(key)&&localStorage.getItem("fpl_chip_plan_v1")&&!localStorage.getItem("fpl_chip_migrated_team")){
+      const primary=window.myfplAccount?.teamId;
+      if(!primary||Number(primary)===currentTeamId()){
+        localStorage.setItem(key,localStorage.getItem("fpl_chip_plan_v1"));
+        localStorage.setItem("fpl_chip_migrated_team",String(currentTeamId()));
+      }
+    }
+    return JSON.parse(localStorage.getItem(key)||"{}");
+  } catch { return {}; }
 }
 function saveChipPlan(plan) {
-  try { localStorage.setItem("fpl_chip_plan_v1", JSON.stringify(plan)); } catch (_) {}
+  try { localStorage.setItem("fpl_chip_plan_"+currentTeamId(), JSON.stringify(plan)); } catch (_) {}
 }
 
 const CHIP_META = {
@@ -3629,7 +3642,7 @@ function renderTerms() {
     <p>To the fullest extent permitted by law, the operator is not liable for lost FPL points, ranking changes, payment provider outages, or damages arising from reliance on App content. The App is provided “as is”.</p>
 
     <h2>9. Privacy</h2>
-    <p>We store verified account and subscription records on hosting infrastructure. Planning preferences, selling prices and progress history are saved in your browser on this device. Optional Matchday emails require your opt-in. Do not submit passwords for your official FPL account.</p>
+    <p>We store verified account and subscription records on hosting infrastructure. Planning preferences and selling prices are saved on this device. Signed-in managers can also save private plans across devices; first pre-deadline recommendations are stored for outcome scoring. Optional Matchday emails require your opt-in. Do not submit passwords for your official FPL account.</p>
 
     <h2>10. Changes</h2>
     <p>We may update these Terms and the App features at any time. Continued use after changes constitutes acceptance.</p>

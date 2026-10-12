@@ -1,6 +1,8 @@
 const core = require('./lib/account-core');
-const { plan } = require('./lib/decision-engine');
+const { plan,expected } = require('./lib/decision-engine');
 const { reconstruct } = require('./lib/selling-prices');
+const {roadmap}=require('./lib/roadmap');
+const records=require('./lib/team-records');
 const cached = new Map();
 async function official(path, ttl = 60000) {
   const prior = cached.get(path);
@@ -77,14 +79,23 @@ exports.handler = async event => {
     const picks = await official(`entry/${teamId}/event/${published.id}/picks/`);
     const automatic = await sellingPrices(boot, teamId, published, picks);
     if (b.action === 'selling-prices') return core.response(200, { ...automatic, teamId, fetchedAt:new Date().toISOString() });
+    const completed=boot.events.filter(e=>e.finished).length;
+    const projected=boot.elements.map(p=>({...p,gamesPlayed:Math.max(1,completed)}));
+    const historyIds=[...new Set([...picks.picks.map(p=>p.element),...boot.elements.filter(p=>p.status==='a').sort((a,b)=>Number(b.ep_next)-Number(a.ep_next)).slice(0,20).map(p=>p.id)])];
+    for(let index=0;index<historyIds.length;index+=10) await Promise.all(historyIds.slice(index,index+10).map(async id=>{try{const recent=await official(`element-summary/${id}/`,300000);const rows=recent.history.filter(h=>boot.events.find(e=>e.id===h.round)?.finished).slice(-5);const p=projected.find(p=>p.id===id);if(rows.length){p.recentMinutes=rows.reduce((sum,h)=>sum+h.minutes,0)/rows.length;p.recentDataAt=new Date().toISOString();}}catch{}}));
     const squadIds = Array.isArray(b.squadIds) ? b.squadIds.map(Number) : picks.picks.map(p => p.element);
     const bank = b.bank == null ? (picks.entry_history?.bank || 0) / 10 : Number(b.bank);
     const freeTransfers = Number(b.freeTransfers ?? 0);
     if (!Number.isFinite(bank) || bank < 0 || bank > 100 || !Number.isInteger(freeTransfers) || freeTransfers < 0 || freeTransfers > 5) return core.response(400, { error: 'Confirm bank (0–100m) and free transfers (0–5).' });
     const league = b.leagueId ? await leagueContext(entry, teamId, Number(b.leagueId), null, published.id) : null;
     const prices = { ...Object.fromEntries(Object.entries(automatic.prices).map(([id,row])=>[id,row.price])), ...(b.sellingPrices || {}) };
-    const report = plan({ elements: boot.elements, fixtures, squadIds, gw: next.id, bank, freeTransfers, sellingPrices: prices, fieldOwnership: league?.ownership || {}, fieldSize:league?.analysed || 0 });
-    return core.response(200, { ...report, team: entry.name, teamId, gameweek: next.id, deadline: next.deadline_time, publishedGameweek: published.id, generatedAt: new Date().toISOString(), bank, freeTransfers, league, leagues: entry.leagues?.classic?.map(l => ({ id: l.id, name: l.name, rank: l.entry_rank })) || [], warnings: [...report.warnings, `Public picks are from GW ${published.id}; confirm any unpublished transfers and current selling prices on official FPL.`] });
+    const input={ elements:projected, fixtures, squadIds, gw: next.id, bank, freeTransfers, sellingPrices: prices, fieldOwnership: league?.ownership || {}, fieldSize:league?.analysed || 0 };
+    const report=plan(input);
+    const timeline=roadmap(input,boot.events,await official(`entry/${teamId}/history/`));
+    const forecasts=Object.fromEntries(projected.map(p=>[p.id,{xp:expected(p,fixtures,next.id),xp3:[0,1,2].reduce((sum,offset)=>sum+expected(offset?{...p,ep_next:undefined}:p,fixtures,next.id+offset),0)}]));
+    const output={ ...report, forecasts, roadmap:timeline, season:boot.events[0].deadline_time.slice(0,4), team: entry.name, teamId, gameweek: next.id, deadline: next.deadline_time, publishedGameweek: published.id, generatedAt: new Date().toISOString(), bank, freeTransfers, league, leagues: entry.leagues?.classic?.map(l => ({ id: l.id, name: l.name, rank: l.entry_rank })) || [], warnings: [...report.warnings, `Public picks are from GW ${published.id}; confirm any unpublished transfers and current selling prices on official FPL.`] };
+    try{output.journal=await records.record(event,output,squadIds);}catch{output.journal={saved:false,reason:'Could not record before-deadline evidence; retry while the deadline is open.'};}
+    return core.response(200,output);
   } catch (error) { return core.response(error.status || 503, { error: error.status ? error.message : 'The weekly report could not load. Retry shortly; your saved squad has not been changed.' }); }
 };
 exports.leagueContext = leagueContext;
