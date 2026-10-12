@@ -3,3 +3,6 @@ site/
 deploy-functions/
 .netlify/
 .env*
+
+research/
+proof/
