@@ -128,19 +128,20 @@
       const sellingPrices={};for(const p of squad)if(confirmedSellingPrice(p))sellingPrices[p.id]=sellingPriceRows()[p.id].price;
       const preferences={bank:el('missionBank').value===''?null:Number(el('missionBank').value),leagueId:Number(el('missionLeague').value)||null,freeTransfers:Number(el('missionFt').value),freeTransfersConfirmed:true,gameweek:planningGw()};
       const data=await api('coach',{teamId:currentTeamId(),...preferences,bank:el('missionBank').value===''?null:Number(el('missionBank').value),sellingPrices,...(squad.length===15&&window.myfplLoadedTeam===currentTeamId()?{squadIds:squad.map(p=>p.id)}:{})});
-      preferences.gameweek=data.gameweek;if(preferences.bank==null)preferences.bank=data.bank;render(data);el('missionStatus').textContent='Plan ready. Review your bank, selling prices and late team news before deciding.';localStorage.setItem(prefsKey(),JSON.stringify(preferences));saveCloud();
+      if(data.teamId!==currentTeamId())return;preferences.gameweek=data.gameweek;if(preferences.bank==null)preferences.bank=data.bank;render(data);el('missionStatus').textContent='Plan ready. Review your bank, selling prices and late team news before deciding.';localStorage.setItem(prefsKey(),JSON.stringify(preferences));saveCloud();
     }catch(error){el('missionStatus').textContent=error.message;}
     finally{busy=false;el('missionBuild').disabled=false;sellingFields();}
   });
-  let cloudRevision=null,cloudTeam=null,cloudNewer=false;
+  let cloudRevision=null,cloudTeam=null,cloudNewer=false,cloudRestoring=false;
   function snapshot() {
     const parse=k=>{try{return JSON.parse(localStorage.getItem(k)||'null');}catch{return null;}};
     const savedSquad=parse(squadStorageKey(currentTeamId())),preferences=parse(prefsKey())||{};
+    if(preferences.gameweek!==planningGw()){preferences.gameweek=planningGw();preferences.bank=bank;preferences.freeTransfers=0;preferences.freeTransfersConfirmed=false;}
     if(savedSquad&&preferences.bank!=null&&preferences.gameweek===planningGw())savedSquad.bank=preferences.bank;
     return {squad:savedSquad,preferences,sellingPrices:sellingPriceRows(),chips:getChipPlan(),draftGameweek:localStorage.getItem('fpl_draft_gw_'+currentTeamId())};
   }
   async function inspectCloud(){
-    if(!window.myfplAccount?.signedIn||!currentTeamId())return;
+    if(cloudRestoring||!window.myfplAccount?.signedIn||!currentTeamId())return;
     const teamId=currentTeamId();
     try{const row=await api('plans',{action:'load',teamId});if(teamId!==currentTeamId())return;cloudTeam=teamId;cloudRevision=row.revision;const local=snapshot();cloudNewer=!!(row.state&&Date.parse(row.savedAt)>Math.max(Number(local.squad?.savedAt||0)*(local.draftGameweek?1:0),Date.parse(localStorage.getItem('myfpl_cloud_ack_'+teamId)||'1970-01-01')));el('cloudStatus').textContent=row.state?(cloudNewer?'A newer cloud plan is available. Load it to restore this team.':'Cloud revision '+row.revision+' · '+row.savedAt):'No cloud plan yet. Save this device’s plan.';}
     catch(error){el('cloudStatus').textContent=error.message;}
@@ -155,13 +156,14 @@
   }
   el('cloudSave').onclick=()=>saveCloud(true);
   el('cloudLoad').onclick=async()=>{
+    cloudRestoring=true;
     const teamId=currentTeamId();
     try{const row=await api('plans',{action:'load',teamId});if(teamId!==currentTeamId())return;if(!row.state){el('cloudStatus').textContent='No cloud plan for this team.';return;}
       localStorage.setItem('myfpl_before_cloud_'+teamId,JSON.stringify(snapshot()));
       const s=row.state;if(s.squad)localStorage.setItem(squadStorageKey(teamId),JSON.stringify(s.squad));localStorage.setItem(prefsKey(),JSON.stringify(s.preferences));localStorage.setItem('fpl_selling_'+teamId,JSON.stringify(s.sellingPrices));localStorage.setItem('fpl_chip_plan_'+teamId,JSON.stringify(s.chips));
       if(s.draftGameweek)localStorage.setItem('fpl_draft_gw_'+teamId,String(s.draftGameweek));else localStorage.removeItem('fpl_draft_gw_'+teamId);
       cloudRevision=row.revision;cloudTeam=teamId;cloudNewer=false;localStorage.setItem('myfpl_cloud_ack_'+teamId,row.savedAt);if(s.squad&&s.preferences.gameweek===planningGw())localStorage.setItem('fpl_draft_gw_'+teamId,String(planningGw()));await init(true);el('cloudStatus').textContent='Loaded cloud revision '+row.revision+'. Previous local plan backed up on this device.';
-    }catch(error){el('cloudStatus').textContent=error.message;}
+    }catch(error){el('cloudStatus').textContent=error.message;}finally{cloudRestoring=false;}
   };
   document.addEventListener('myfpl-team-loaded',inspectCloud);
   document.addEventListener('myfpl-plan-changed',()=>saveCloud());
