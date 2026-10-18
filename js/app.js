@@ -895,7 +895,7 @@ function optimiseSquad(budget = BUDGET, opts = {}) {
     squadOut = [...xiOrdered, ...benchOut].slice(0, 15);
     realSpent = squadOut.reduce((s, p) => s + p.price, 0);
   }
-  const rankedCap = xiOrdered.slice().sort((a, b) => scoreOf(b) - scoreOf(a));
+  const rankedCap = xiOrdered.slice().sort((a, b) => b.xp - a.xp || a.id-b.id);
   const cap = rankedCap[0]?.id || null;
   const vice = rankedCap[1]?.id || null;
 
@@ -4588,7 +4588,7 @@ function renderWeeklyStrip() {
     sug = res && res.suggestions && res.suggestions[0];
     if (sug && (sug.gain == null || sug.gain < 0.35 || !sug.moves.length)) sug = null;
   } catch (_) { sug = null; }
-  const cap = squad.find(p => p.id === captainId) || squad.filter(p => startingIds.includes(p.id)).sort((a,b)=>xpOf(b)-xpOf(a))[0];
+  const cap = squad.find(p => p.id === captainId) || squad.filter(p => startingIds.includes(p.id)).sort((a,b)=>b.xp-a.xp)[0];
   let chipTxt = "Chip: none";
   try {
     const s = typeof suggestedChipsThisGw === "function" ? suggestedChipsThisGw() : null;

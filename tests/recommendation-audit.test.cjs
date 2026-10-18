@@ -27,3 +27,5 @@ test('browser build executes the same server model for blanks, doubles, availabi
  const c=vm.createContext({window:{}});vm.runInContext(fs.readFileSync('site/js/forecast-model.js','utf8'),c);
  for(const p of [{...squad()[0],gamesPlayed:6,minutes:540,expected_goals_per_90:0.1},{...squad()[8],gamesPlayed:6,minutes:80,expected_goals_per_90:0.5,status:'i'}])for(const gw of [7,12])assert.equal(c.window.MyFPLModel.expected(p,fixtures,gw),expected(p,fixtures,gw));
 });
+
+test('AI rebuild captains also use next-week points, not wildcard or ownership scores',()=>{assert(fn('optimiseSquad').includes('const rankedCap = xiOrdered.slice().sort((a, b) => b.xp - a.xp'));});
