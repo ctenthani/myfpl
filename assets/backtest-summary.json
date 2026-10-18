@@ -1,6 +1,6 @@
 {
   "season": "2025/26",
-  "generatedAt": "2026-10-12T14:30:14.451Z",
+  "generatedAt": "2026-10-18T09:45:28.210Z",
   "source": "https://github.com/vaastav/Fantasy-Premier-League/blob/master/data/2025-26/gws/merged_gw.csv",
   "sourceSha256": "0d09f1f1cb1b5520ec8e2f25238aa652efe2a263d8ca7cb2b6538b27bf86727d",
   "training": {
@@ -290,21 +290,21 @@
       ]
     },
     "model": {
-      "points": 797,
+      "points": 798,
       "hits": 0,
       "transfers": 18,
       "weeks": [
         {
           "gw": 21,
-          "points": 49,
+          "points": 50,
           "hit": 0,
-          "moves": 1
+          "moves": 0
         },
         {
           "gw": 22,
           "points": 37,
           "hit": 0,
-          "moves": 1
+          "moves": 2
         },
         {
           "gw": 23,

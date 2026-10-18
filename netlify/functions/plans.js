@@ -21,7 +21,7 @@ exports.handler=async event=>{try{
     const finished=new Set(boot.events.filter(g=>g.finished&&g.data_checked).map(g=>g.id));
     const season=boot.events[0]?.deadline_time?.slice(0,4);
     const rows=await Promise.all(records.slice(-6).map(async record=>{
-      const row={...record,status:'Awaiting final checked results'};
+      const row={...record,captainName:boot.elements.find(p=>p.id===record.chosen.captain)?.web_name,viceName:boot.elements.find(p=>p.id===record.chosen.vice)?.web_name,status:'Awaiting final checked results'};
       if(record.season===season&&finished.has(record.gameweek)){
         const live=await official(`event/${record.gameweek}/live/`),actual=Object.fromEntries(live.elements.map(p=>[p.id,{minutes:p.stats.minutes,points:p.stats.total_points}]));
         row.recommendedPoints=realised(record.chosen,actual,positions);row.holdPoints=realised(record.base,actual,positions);row.difference=row.recommendedPoints-row.holdPoints;row.forecastError=row.recommendedPoints-record.forecast;row.status='Final player results · hypothetical plan';

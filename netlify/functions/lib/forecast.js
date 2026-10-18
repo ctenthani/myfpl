@@ -1,4 +1,4 @@
-const finite=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback;
+const finite=(value,fallback=0)=>value!=null&&value!==''&&Number.isFinite(Number(value))?Number(value):fallback;
 const calibration=require('./calibration.json');
 function evidence(p) {
   const minutes=Math.max(0,Math.min(90,finite(p.recentMinutes,finite(p.minutes)/Math.max(1,finite(p.gamesPlayed,1)))));

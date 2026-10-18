@@ -9,7 +9,7 @@ function roadmap(input,events,history){
     const move=report.recommendation;
     const blanks=squadIds.filter(id=>!input.fixtures.some(f=>f.event===gw&&(f.team_h===elements.find(p=>p.id===id).team||f.team_a===elements.find(p=>p.id===id).team)));
     const doubles=squadIds.filter(id=>input.fixtures.filter(f=>f.event===gw&&(f.team_h===elements.find(p=>p.id===id).team||f.team_a===elements.find(p=>p.id===id).team)).length>1);
-    const benchForecast=report.bench.reduce((sum,p)=>sum+p.xp,0),captain=report.captains[0];
+    const benchForecast=report.bench.reduce((sum,p)=>sum+p.xp,0),captain=move?move.xi.find(p=>p.id===move.captainId):report.captains[0];
     weeks.push({gameweek:gw,deadline:event.deadline_time,freeBefore:free,action:move?'Transfer package':'Hold',moves:move?.moves||[],hit:move?.hit||0,netGain:move?.gain||0,bankAfter:move?.bankAfter??bank,blankPlayers:blanks.length,doublePlayers:doubles.length,holdForecast:report.forecast,forecast:move?move.forecast-move.hit:report.forecast,benchForecast,captain,freeAfter:Math.min(5,Math.max(0,free-(move?.size||0))+1)});
     if(move){squadIds=move.squadIds;bank=move.bankAfter;for(const m of move.moves)prices[m.in.id]=m.in.price;}
     free=weeks.at(-1).freeAfter;

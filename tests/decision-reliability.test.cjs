@@ -45,8 +45,9 @@ test('fourth player from a club is rejected', () => {
 test('hold beats a transfer whose gain is smaller than the hit', () => {
   assert.equal(transfers([player(1, 1)], [player(2, 3, 2)], 0, 1).suggestions.length, 0);
 });
-test('profitable hit reports net gain', () => {
-  assert.equal(transfers([player(1, 1)], [player(2, 7, 2)], 0, 1).suggestions[0].netGain, 2);
+test('a paid transfer must clear the precautionary margin beyond its hit', () => {
+  assert.equal(transfers([player(1, 1)], [player(2, 7, 2)], 0, 1).suggestions.length, 0);
+  assert.equal(transfers([player(1, 1)], [player(2, 9, 2)], 0, 1).suggestions[0].netGain, 4);
 });
 test('smaller package survives when larger package loses points after hits', () => {
   const result = transfers([player(1, 1, 1), player(2, 4, 2)], [player(3, 6, 3), player(4, 5, 4)], 1, 1, { numTransfers: 2 });

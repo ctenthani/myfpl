@@ -79,10 +79,10 @@ exports.handler = async event => {
     const picks = await official(`entry/${teamId}/event/${published.id}/picks/`);
     const automatic = await sellingPrices(boot, teamId, published, picks);
     if (b.action === 'selling-prices') return core.response(200, { ...automatic, teamId, fetchedAt:new Date().toISOString() });
-    const completed=boot.events.filter(e=>e.finished).length;
-    const projected=boot.elements.map(p=>({...p,gamesPlayed:Math.max(1,completed)}));
-    const historyIds=[...new Set([...picks.picks.map(p=>p.element),...boot.elements.filter(p=>p.status==='a').sort((a,b)=>Number(b.ep_next)-Number(a.ep_next)).slice(0,20).map(p=>p.id)])];
-    for(let index=0;index<historyIds.length;index+=10) await Promise.all(historyIds.slice(index,index+10).map(async id=>{try{const recent=await official(`element-summary/${id}/`,300000);const rows=recent.history.filter(h=>boot.events.find(e=>e.id===h.round)?.finished).slice(-5);const p=projected.find(p=>p.id===id);if(rows.length){p.recentMinutes=rows.reduce((sum,h)=>sum+h.minutes,0)/rows.length;p.recentDataAt=new Date().toISOString();}}catch{}}));
+    const projected=boot.elements.map(p=>({...p,gamesPlayed:Math.max(1,fixtures.filter(f=>f.finished&&(f.team_h===p.team||f.team_a===p.team)).length)}));
+    const historyIds=[...new Set([...picks.picks.map(p=>p.element),...(b.squadIds||[]).map(Number),...projected.filter(p=>p.status==='a').sort((a,b)=>expected(b,fixtures,next.id)-expected(a,fixtures,next.id)).slice(0,40).map(p=>p.id),...boot.elements.filter(p=>p.status==='a').sort((a,b)=>Number(b.ep_next)-Number(a.ep_next)).slice(0,20).map(p=>p.id)])];
+    const missingHistory=[];
+    for(let index=0;index<historyIds.length;index+=10) await Promise.all(historyIds.slice(index,index+10).map(async id=>{try{const recent=await official(`element-summary/${id}/`,300000);const rows=recent.history.filter(h=>boot.events.find(e=>e.id===h.round)?.finished).slice(-5);const p=projected.find(p=>p.id===id);if(rows.length){p.recentMinutes=rows.reduce((sum,h)=>sum+h.minutes,0)/rows.length;p.recentDataAt=new Date().toISOString();}else missingHistory.push(id);}catch{missingHistory.push(id);}}));
     const squadIds = Array.isArray(b.squadIds) ? b.squadIds.map(Number) : picks.picks.map(p => p.element);
     const bank = b.bank == null ? (picks.entry_history?.bank || 0) / 10 : Number(b.bank);
     const freeTransfers = Number(b.freeTransfers ?? 0);
@@ -92,8 +92,8 @@ exports.handler = async event => {
     const input={ elements:projected, fixtures, squadIds, gw: next.id, bank, freeTransfers, sellingPrices: prices, fieldOwnership: league?.ownership || {}, fieldSize:league?.analysed || 0 };
     const report=plan(input);
     const timeline=roadmap(input,boot.events,await official(`entry/${teamId}/history/`));
-    const forecasts=Object.fromEntries(projected.map(p=>[p.id,{xp:expected(p,fixtures,next.id),xp3:[0,1,2].reduce((sum,offset)=>sum+expected(offset?{...p,ep_next:undefined}:p,fixtures,next.id+offset),0)}]));
-    const output={ ...report, forecasts, roadmap:timeline, season:boot.events[0].deadline_time.slice(0,4), team: entry.name, teamId, gameweek: next.id, deadline: next.deadline_time, publishedGameweek: published.id, generatedAt: new Date().toISOString(), bank, freeTransfers, league, leagues: entry.leagues?.classic?.map(l => ({ id: l.id, name: l.name, rank: l.entry_rank })) || [], warnings: [...report.warnings, `Public picks are from GW ${published.id}; confirm any unpublished transfers and current selling prices on official FPL.`] };
+    const forecasts=Object.fromEntries(projected.map(p=>[p.id,{evidence:require('./lib/forecast').evidence(p),xp:expected(p,fixtures,next.id),xp3:[0,1,2].reduce((sum,offset)=>sum+expected(offset?{...p,ep_next:undefined}:p,fixtures,next.id+offset),0)}]));
+    const output={ ...report, forecasts, roadmap:timeline, season:boot.events[0].deadline_time.slice(0,4), team: entry.name, teamId, gameweek: next.id, deadline: next.deadline_time, publishedGameweek: published.id, generatedAt: new Date().toISOString(), bank, freeTransfers, league, leagues: entry.leagues?.classic?.map(l => ({ id: l.id, name: l.name, rank: l.entry_rank })) || [], warnings: [...report.warnings, ...(missingHistory.length?[`Recent match history unavailable for ${missingHistory.length} checked players; their minutes use season averages.`]:[]), 'Captain and XI use the next gameweek only. Whole-league ownership does not override the highest net-points default.', `Public picks are from GW ${published.id}; confirm any unpublished transfers and current selling prices on official FPL.`] };
     try{output.journal=await records.record(event,output,squadIds);}catch{output.journal={saved:false,reason:'Could not record before-deadline evidence; retry while the deadline is open.'};}
     return core.response(200,output);
   } catch (error) { return core.response(error.status || 503, { error: error.status ? error.message : 'The weekly report could not load. Retry shortly; your saved squad has not been changed.' }); }

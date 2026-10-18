@@ -467,7 +467,7 @@ function buildPlayers() {
     else if (p.chance_of_playing_next_round != null)
       availability = Number(p.chance_of_playing_next_round) / 100;
     const pl = {
-      id: p.id, web_name: p.web_name, team_id: p.team,
+      official: p, id: p.id, web_name: p.web_name, team_id: p.team,
       team: team.short_name || "?", team_name: team.name || "?", team_code: team.code || 0,
       position: posMap[p.element_type] || "?", element_type: p.element_type,
       price: p.now_cost / 10, form: parseFloat(p.form) || 0,
@@ -521,119 +521,9 @@ function buildPlayers() {
 function expectedPoints(p, hz = 1) {
   const live=window.myfplEvidenceForecast;
   if(live?.gameweek===planningGw()&&Date.now()-live.generatedAt<15*60000&&live.players[p.id]&&[1,3].includes(hz))return hz===3?live.players[p.id].xp3:live.players[p.id].xp;
-  /**
-   * Hybrid model:
-   * - Trust official ep_next heavily pre-season / low sample
-   * - Do NOT invent attacking upside for fringe players (low mins, low EO, cheap)
-   * - Premiums (price/ownership) get limited structural floors only
-   */
-  const avail = p.availability ?? 1;
-  const mins = p.minutes || 0;
-  const own = p.selected_by_percent || 0;
-  const price = p.price || 4;
-  const ep = parseFloat(p.ep_next) || 0;
-  const form = parseFloat(p.form) || 0;
-
-  // Meaningful playing time only — 1–2 token minutes must NOT count as "played"
-  const realMins = mins >= 90 ? mins : 0;
-  const minsShare = Math.min(1, realMins / (Math.max(currentGw, 1) * 70));
-
-  // Start probability: fringe players stay low
-  let startProb =
-    0.45 * avail +
-    0.30 * minsShare +
-    0.15 * Math.min(own / 25, 1) +
-    0.10 * Math.min(price / 11, 1);
-
-  // FPL ep_next is the best public minutes proxy pre-season
-  if (ep >= 4.5) startProb += 0.20;
-  else if (ep >= 3.5) startProb += 0.12;
-  else if (ep >= 2.5) startProb += 0.05;
-  else if (ep > 0 && ep < 2.0) startProb -= 0.12;
-
-  // Unknown / unused attackers — but trust ownership + FPL ep in preseason
-  if (realMins < 90 && own < 5 && price < 7 && ep < 3) startProb *= 0.45;
-  if (realMins < 90 && own < 2 && price <= 5.5 && ep < 2.5) startProb *= 0.55;
-  // Previous season minutes may be 0 on bootstrap; starts / ppg still carry signal
-  if (realMins < 90 && (p.starts || 0) >= 15) startProb = Math.max(startProb, 0.55 + Math.min(0.25, own / 40));
-  if (realMins < 90 && (p.points_per_game || 0) >= 4) startProb = Math.max(startProb, 0.5);
-
-  startProb = Math.max(0.05, Math.min(0.95, startProb));
-
-  const appearance = 2 * startProb;
-  const goalPts = { GKP: 10, DEF: 6, MID: 5, FWD: 4 }[p.position] || 4;
-
-  let xg90 = p.xg90 || 0;
-  let xa90 = p.xa90 || 0;
-  if (realMins > 200) {
-    if (xg90 < 0.02 && (p.expected_goals || 0) > 0) xg90 = (Number(p.expected_goals) * 90) / realMins;
-    if (xa90 < 0.02 && (p.expected_assists || 0) > 0) xa90 = (Number(p.expected_assists) * 90) / realMins;
-  }
-
-  // Floors ONLY for clearly nailed premiums — never for £4.5–6.0 squad fillers
-  if (realMins < 200) {
-    if (price >= 12 && own >= 15) { xg90 = Math.max(xg90, 0.40); xa90 = Math.max(xa90, 0.12); }
-    else if (price >= 10 && own >= 10) { xg90 = Math.max(xg90, 0.22); xa90 = Math.max(xa90, 0.10); }
-    else if (price >= 8 && own >= 8 && (p.position === "MID" || p.position === "FWD")) {
-      xg90 = Math.max(xg90, 0.12); xa90 = Math.max(xa90, 0.08);
-    }
-    // else: leave xg/xa at true rates (often 0) for fringe players
-  }
-
-  const goalsXP = xg90 * (75 / 90) * goalPts * startProb;
-  const assistsXP = xa90 * (75 / 90) * 3 * startProb;
-
-  let csXP = 0;
-  const fixMulNext = fixtureFactor(p.team_id, currentGw);
-  if (p.position === "GKP" || p.position === "DEF") {
-    const xgc = p.xgc90 || 1.25;
-    let csProb = Math.max(0.04, Math.min(0.55, 0.48 - 0.14 * xgc));
-    csProb *= 0.85 + 0.3 * (fixMulNext - 0.9);
-    if (price >= 5.5 && own >= 5) csProb += 0.03;
-    csXP = csProb * 4 * startProb;
-  } else if (p.position === "MID") {
-    csXP = 0.04 * startProb;
-  }
-
-  const ict = (p.influence || 0) + (p.creativity || 0) + (p.threat || 0);
-  const bonusXP = (realMins > 200 || price >= 9)
-    ? Math.min(1.2, ict / 800 + (price >= 9 ? 0.2 : 0)) * startProb
-    : Math.min(0.35, ict / 1200) * startProb;
-
-  const savesXP = p.position === "GKP" ? 0.5 * startProb : 0;
-  const formXP = Math.min(1.2, form * 0.12);
-
-  const component = appearance + goalsXP + assistsXP + csXP + bonusXP + savesXP + formXP;
-
-  let base;
-  if (form >= 1 || realMins > 400) {
-    // In-season with sample: blend FPL + components
-    base = 0.55 * ep + 0.45 * component;
-  } else if (ep >= 3.5) {
-    // FPL thinks they start — lean on ep, mild components
-    base = 0.65 * ep + 0.35 * component;
-  } else {
-    // Pre-season fringe / low ep: STAY CLOSE to official ep_next
-    // (fixes Dasilva-style £5.0m with 2 mins + ep 1.5 being inflated to 6+)
-    base = 0.75 * ep + 0.25 * Math.min(component, ep + 1.2);
-  }
-
-  // Soft floors only if FPL itself projects a real starter
-  if (ep >= 4) base = Math.max(base, ep * 0.9);
-  else if (ep >= 2.5) base = Math.max(base, ep * 0.85);
-  else base = Math.max(0.2, Math.min(base, Math.max(ep, 0.5) + 0.8));
-
-  base *= fixMulNext;
-  base *= avail;
-
-  if (hz <= 1) return +base.toFixed(3);
-
-  const weights = [1, 0.93, 0.86, 0.8, 0.75];
-  let total = base * weights[0];
-  for (let i = 1; i < hz; i++) {
-    total += base * (weights[i] || 0.7) * fixtureFactor(p.team_id, currentGw + i);
-  }
-  return +total.toFixed(3);
+  if(!window.MyFPLModel)return 0;
+  const raw={...p.official,gamesPlayed:Math.max(1,fixtures.filter(f=>f.finished&&(f.team_h===p.team_id||f.team_a===p.team_id)).length)};
+  return Array.from({length:hz},(_,offset)=>window.MyFPLModel.expected(offset?{...raw,ep_next:undefined}:raw,fixtures,planningGw()+offset)).reduce((a,b)=>a+b,0);
 }
 
 function fixtureFactor(teamId, gw) {
@@ -733,7 +623,7 @@ function assignCaptainAndVice(fromIds) {
   const ranked = ids
     .map(id => players.find(p => p.id === id) || squad.find(p => p.id === id))
     .filter(Boolean)
-    .sort((a, b) => xpOf(b) - xpOf(a));
+    .sort((a, b) => b.xp - a.xp || a.id-b.id);
   captainId = ranked[0]?.id || null;
   viceCaptainId = ranked[1]?.id || null;
   if (viceCaptainId === captainId) viceCaptainId = ranked[2]?.id || null;
@@ -747,7 +637,7 @@ function optimiseLineup() {
   squad.forEach(p => {
     if (byPos[p.position]) byPos[p.position].push(p);
   });
-  Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => xpOf(b) - xpOf(a)));
+  Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => b.xp - a.xp));
 
   if (byPos.GKP.length < 1) return { error: "Need at least 1 goalkeeper in the squad." };
 
@@ -760,13 +650,13 @@ function optimiseLineup() {
     if (byPos.DEF.length < f.DEF || byPos.MID.length < f.MID || byPos.FWD.length < f.FWD) continue;
     const xi = [byPos.GKP[0], ...byPos.DEF.slice(0, f.DEF), ...byPos.MID.slice(0, f.MID), ...byPos.FWD.slice(0, f.FWD)];
     if (xi.length !== 11) continue;
-    const score = xi.reduce((s, p) => s + xpOf(p) * (0.7 + 0.3 * (p.availability ?? 1)), 0);
+    const score = xi.reduce((s, p) => s + p.xp, 0) + Math.max(...xi.map(p=>p.xp));
     if (score > bestScore) { bestScore = score; bestXI = xi; }
   }
   if (!bestXI) {
     // fallback: top XP available under legal min formation
     bestXI = [byPos.GKP[0]];
-    const rest = [...byPos.DEF, ...byPos.MID, ...byPos.FWD].sort((a, b) => xpOf(b) - xpOf(a));
+    const rest = [...byPos.DEF, ...byPos.MID, ...byPos.FWD].sort((a, b) => b.xp - a.xp);
     // ensure min 3 DEF, 2 MID, 1 FWD if possible
     const pick = { DEF: 0, MID: 0, FWD: 0 };
     const chosen = [];
@@ -788,18 +678,16 @@ function optimiseLineup() {
   bench.sort((a, b) => {
     if (a.position === "GKP" && b.position !== "GKP") return -1;
     if (b.position === "GKP" && a.position !== "GKP") return 1;
-    if (focusL === "strongXI") return a.price - b.price || xpOf(b) - xpOf(a);
-    if (focusL === "strongBench") return xpOf(b) - xpOf(a);
-    return xpOf(b) - xpOf(a);
+    if (focusL === "strongBench") return b.xp - a.xp;
+    return b.xp - a.xp;
   });
   startingIds = bestXI.map(p => p.id);
   benchIds = bench.map(p => p.id);
   assignCaptainAndVice(bestXI.map(p => p.id));
   squad = [...bestXI, ...bench];
   enforceValidXI();
-  bank = Math.max(0, BUDGET - squad.reduce((s, p) => s + p.price, 0));
   saveSquadLocal();
-  return { ok: true, xiXp: bestXI.reduce((s, p) => s + xpOf(p), 0) };
+  return { ok: true, xiXp: bestXI.reduce((s, p) => s + p.xp, 0) };
 }
 
 function optimiseSquad(budget = BUDGET, opts = {}) {
@@ -1261,7 +1149,7 @@ function styleAdjustXp(p, xp) {
   return xp;
 }
 
-function transferXp(p) { return xpOf(p); }
+function transferXp(p) { return p.xp; }
 
 function transferSquadForecast(list, returnXI = false) {
   if (list.length !== 15) return list.reduce((sum, p) => sum + transferXp(p), 0);
@@ -1401,7 +1289,7 @@ function findTransfers(freeTransfers = 1, maxHits = 1, filters = null) {
     if (pack) candidates.push(pack);
   }
 
-  const worthwhile = candidates.filter(c => c.netGain > 0.05);
+  const worthwhile = candidates.filter(c => c.netGain > 1+2*Math.max(0,c.size-freeTransfers));
   worthwhile.sort((a, b) => b.netGain - a.netGain || a.size - b.size);
 
   return {
@@ -1434,7 +1322,7 @@ function applyTransferSuggestion(sug) {
   preview.forEach(p => { clubs[p.team_id] = (clubs[p.team_id] || 0) + 1; });
   if (!Number.isFinite(nextBank) || nextBank < -0.001 || Object.values(clubs).some(n => n > 3)) { setStatus("Transfer cannot be applied: check your selling prices, bank and club limits."); return false; }
 
-  if (transferSquadForecast(preview) - transferSquadForecast(squad) - planningHit <= 0.2) { setStatus('Hold: this transfer does not beat your current XI after the points hit.'); return false; }
+  if (transferSquadForecast(preview) - transferSquadForecast(squad) - planningHit <= 1+2*Math.max(0,sug.moves.length-remainingFT)) { setStatus('Hold: this transfer does not clear the points hit and precautionary margin.'); return false; }
   for (const m of sug.moves) {
     const idx = squad.findIndex(p => p.id === m.out.id);
     if (idx >= 0) {
