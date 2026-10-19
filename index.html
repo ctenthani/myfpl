@@ -87,7 +87,7 @@
 
   <div class="status-line" id="statusBar">Loading FPL data…</div>
   <dialog id="transferConfirmDialog" aria-labelledby="transferConfirmTitle"><form id="transferConfirmForm"><h2 id="transferConfirmTitle">Confirm and apply transfer</h2><p>Enter selling prices from official FPL Transfers. Your squad stays on this screen.</p><div id="transferConfirmPrices" class="mission-form-grid"></div><label>Current bank (£m)<input id="transferConfirmBank" type="number" min="0" max="100" step="0.1" required></label><p>This saves your MyFPL plan. Submit it yourself on official FPL.</p><button class="btn btn-blue" type="submit">Apply to my squad</button><button class="btn btn-outline" type="button" onclick="document.getElementById('transferConfirmDialog').close()">Cancel</button></form></dialog>
-  <section id="ownerTeamsPanel" class="card hidden"><h2>Your saved FPL teams</h2><p>Switch public FPL Team IDs under your verified owner account. Each team keeps its own squad and league targets.</p><form id="ownerTeamForm"><label>Team ID<input id="ownerNewTeamId" type="number" min="1" max="100000000" required value="5195954"></label><label>Label<input id="ownerNewTeamLabel" maxlength="80" placeholder="Team name"></label><button type="submit" class="btn btn-blue">Save team</button></form><div id="ownerTeamList"></div><p id="ownerTeamsStatus" role="status"></p></section>
+  <section id="ownerTeamsPanel" class="card hidden"><h2>Your saved FPL teams</h2><p>Switch teams without signing out.</p><form id="ownerTeamForm"><label>Team ID<input id="ownerNewTeamId" type="number" min="1" max="100000000" required value="5195954"></label><label>Label<input id="ownerNewTeamLabel" maxlength="80" placeholder="Team name"></label><button type="submit" class="btn btn-blue">Save team</button></form><div id="ownerTeamList"></div><p id="ownerTeamsStatus" role="status"></p></section>
   <div class="edit-banner hidden" id="editBanner">
     <strong>Edit mode on</strong> — click a pitch/bench player to remove · click a list player to add ·
     <span id="editStatusInline"></span>
@@ -96,11 +96,11 @@
 
 <main id="view-mission" class="view active" aria-labelledby="missionTitle">
   <div class="mission-wrap">
-    <section class="mission-hero"><div class="mission-eyebrow">YOUR MINI-LEAGUE MISSION</div><h1 id="missionTitle">A clear plan.<br>Every gameweek.</h1><p>Know when to hold, who to captain, and how to close the gap. Make the decision with the evidence in front of you.</p><div class="mission-hero-tags"><span>Official FPL data</span><span>Points hits included</span><span>Free preview through November</span></div></section>
-    <section class="card mission-controls" aria-labelledby="missionSetup"><h2 id="missionSetup">Set your target</h2><p class="muted">Load your Team ID above, then choose the whole mini-league you want to win. Confirm remaining free transfers; zero is the safe default. You never need to share your FPL password.</p><form id="missionForm"><div class="mission-form-grid"><label>Classic league<select id="missionLeague"><option value="">Start with my team</option></select></label><div><strong>League goal</strong><p>Beat the whole field. Compare league ownership and your gap to first place.</p></div><label>Free transfers<input id="missionFt" type="number" min="0" max="5" value="0" required></label><label>Current bank (£m)<input id="missionBank" type="number" min="0" max="100" step="0.1" placeholder="From your last published team"></label></div><details id="missionSelling"><summary>Automatic selling prices</summary><p id="automaticPriceStatus" class="muted">Selling prices load automatically from official FPL purchase and transfer history. Unpublished changes may need a correction.</p><button id="refreshSellingPrices" class="btn btn-outline" type="button">Refresh official prices</button><p class="muted">Review calculated prices below. Optional corrections are for changes not yet published by FPL.</p><div id="sellingPriceFields" class="mission-form-grid"><p>Load your team to retrieve official price history.</p></div><button id="saveSellingPrices" class="btn btn-outline" type="button">Save corrections</button></details><div class="mission-actions"><button id="missionBuild" class="btn btn-blue" type="submit">Build my weekly plan</button><button id="missionSquad" class="btn btn-outline" type="button">Review my squad</button></div><p id="missionStatus" class="muted" role="status" aria-live="polite">Start with your public FPL Team ID. Find it in the URL of your Points page.</p></form></section>
-    <section id="missionReport" aria-live="polite"><div class="mission-empty"><span class="mission-empty-icon">↗</span><h2>Your next decision belongs here</h2><p>Get a legal starting XI, captain and vice-captain shortlist, and best transfer package / hold comparison, with points hits included. Add a mini-league to analyse the field.</p></div></section>
-    <section class="card mission-controls"><h2>Across devices</h2><p>Private saves for the selected team under your verified MyFPL account. Your FPL password is never stored.</p><button id="cloudSave" type="button" class="btn btn-blue">Save this device’s plan</button><button id="cloudLoad" type="button" class="btn btn-outline">Load cloud plan</button><p id="cloudStatus" role="status">Sign in to sync.</p></section>
-    <section class="card mission-controls"><h2>Recorded decisions and results</h2><p>The first report for each gameweek is recorded before its deadline. Final player returns replay that plan against Hold, including substitutes, captain and hits.</p><button id="loadDecisionHistory" type="button" class="btn btn-outline">Refresh results</button><div id="decisionHistory"></div></section>
+    <section class="mission-hero"><div class="mission-eyebrow">YOUR MINI-LEAGUE MISSION</div><h1 id="missionTitle">A clear plan.<br>Every gameweek.</h1><p>Captain. Transfer. Hold.</p><div class="mission-hero-tags"><span>Official FPL data</span><span>Points hits included</span><span>Free preview through November</span></div></section>
+    <section class="card mission-controls" aria-labelledby="missionSetup"><h2 id="missionSetup">Set your target</h2><p class="muted">Choose your league. Confirm free transfers and bank.</p><form id="missionForm"><div class="mission-form-grid"><label>Classic league<select id="missionLeague"><option value="">Start with my team</option></select></label><div><strong>League goal</strong><p>Win the whole league.</p></div><label>Free transfers<input id="missionFt" type="number" min="0" max="5" value="0" required></label><label>Current bank (£m)<input id="missionBank" type="number" min="0" max="100" step="0.1" placeholder="From your last published team"></label></div><details id="missionSelling"><summary>Automatic selling prices</summary><p id="automaticPriceStatus" class="muted">Selling prices load automatically from official FPL purchase and transfer history. Unpublished changes may need a correction.</p><button id="refreshSellingPrices" class="btn btn-outline" type="button">Refresh official prices</button><p class="muted">Review calculated prices below. Optional corrections are for changes not yet published by FPL.</p><div id="sellingPriceFields" class="mission-form-grid"><p>Load your team to retrieve official price history.</p></div><button id="saveSellingPrices" class="btn btn-outline" type="button">Save corrections</button></details><div class="mission-actions"><button id="missionBuild" class="btn btn-blue" type="submit">Build my weekly plan</button><button id="missionSquad" class="btn btn-outline" type="button">Review my squad</button></div><p id="missionStatus" class="muted" role="status" aria-live="polite">Start with your public FPL Team ID. Find it in the URL of your Points page.</p></form></section>
+    <section id="missionReport" aria-live="polite"><div class="mission-empty"><span class="mission-empty-icon">↗</span><h2>Your next decision belongs here</h2><p>Build your plan for captain, lineup and transfers.</p></div></section>
+    <section class="card mission-controls"><h2>Across devices</h2><p>Save or restore this team’s plan.</p><button id="cloudSave" type="button" class="btn btn-blue">Save this device’s plan</button><button id="cloudLoad" type="button" class="btn btn-outline">Load cloud plan</button><p id="cloudStatus" role="status">Sign in to sync.</p></section>
+    <section class="card mission-controls"><h2>Recorded decisions and results</h2><p>Compare your recorded plan with the result.</p><button id="loadDecisionHistory" type="button" class="btn btn-outline">Refresh results</button><div id="decisionHistory"></div></section>
     <section class="card mission-controls"><h2>Evidence before promises</h2><div id="backtestEvidence">Loading historical benchmark…</div></section>
     <section class="mission-bottom"><div><h2>Built to help you climb.</h2><p>Track your league, compare the trade-offs and keep control of your team. Predictions are estimates; league wins cannot be guaranteed.</p></div><button id="missionPricing" class="btn btn-blue" type="button">December plans · from $2.49/month</button></section>
   </div>
@@ -195,7 +195,7 @@
         </div>
 
         <div id="trPaneRecommended" class="tr-pane">
-          <p class="muted">Recommended transfers as a single package matching your free transfers. GW1 / Wildcard / Free Hit = unlimited free transfers (no hits).</p>
+          <p class="muted">Best transfer package, with hits included.</p>
           <div class="controls-row">
             <label>Mode
               <select id="trMode">
@@ -292,7 +292,7 @@
     <div class="page-wrap">
       <div class="card">
         <h2>AI Teams</h2>
-        <p class="muted">Alternative strong squads for Wildcard / Free Hit / building from scratch. Optimised for XI points under £100m.</p>
+        <p class="muted">Wildcard and Free Hit squads · £100m budget.</p>
         <div class="controls-row">
           <label>Budget £<input type="number" id="aiBudget" value="100" min="90" max="100" step="0.5" /></label>
           <label>Focus
@@ -317,25 +317,25 @@
     <div class="matchday-grid">
       <section class="md-card">
         <h2>Captain poll · Top 10 prospects</h2>
-        <p class="muted">Automated ranking from predicted points (xG, fixtures, FDR, availability). Tap to set captain on Pick.</p>
+        <p class="muted">Tap a player to set captain.</p>
         <div id="captainPoll" class="poll-list"></div>
       </section>
 
       <section class="md-card">
         <h2>Chip poll</h2>
-        <p class="muted">AI recommendation for this gameweek based on fixtures, blanks/doubles proxy and your squad.</p>
+        <p class="muted">Your chip recommendation this gameweek.</p>
         <div id="chipPoll" class="chip-poll"></div>
       </section>
 
       <section class="md-card md-wide">
         <h2>Fixtures · FDR</h2>
-        <p class="muted">Next gameweek fixtures with difficulty (1 easy → 5 hard). Home / Away shown for each side.</p>
+        <p class="muted">Next fixtures · difficulty 1–5 · home / away.</p>
         <div id="fixtureBoard" class="fixture-board"></div>
       </section>
 
       <section class="md-card md-wide">
         <h2>Live scoring</h2>
-        <p class="muted">How players are earning points during the gameweek (goals, assists, CS, bonus). Updates when FPL publishes live data.</p>
+        <p class="muted">Live player points.</p>
         <div class="md-toolbar">
           <button id="refreshLiveBtn" class="btn btn-pink">Refresh live</button>
           <span id="liveStatus" class="muted"></span>
@@ -345,13 +345,13 @@
 
       <section class="md-card md-wide">
         <h2>xG · Clean sheets · Key metrics</h2>
-        <p class="muted">Highest xG/xA and clean-sheet leaning defenders/GKs for the next GW.</p>
+        <p class="muted">Players to watch next gameweek.</p>
         <div id="metricsBoard" class="metrics-board"></div>
       </section>
 
       <section class="md-card md-wide">
         <h2>Mini-league rival radar</h2>
-        <p class="muted">Enter a classic league ID. We compare your squad to rivals’ last published picks (best after deadline / during GW).</p>
+        <p class="muted">Enter a classic league ID to compare squads.</p>
         <div class="md-toolbar">
           <label>League ID <input type="number" id="rivalLeagueId" placeholder="e.g. 123456" style="width:140px;padding:6px;border-radius:8px;border:1px solid var(--border)" /></label>
           <button id="rivalScanBtn" class="btn btn-blue">Scan rivals</button>
@@ -371,7 +371,7 @@
     <div class="page-wrap">
       <div class="card">
         <h2>Live Rank</h2>
-        <p class="muted">Live mini-league table with expandable teams (player points). Data from the official FPL API.</p>
+        <p class="muted">Live standings · tap a team for points.</p>
         <div class="controls-row" style="margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <label>Team ID <input type="number" id="rankTeamId" value="" placeholder="Team ID" /></label>
           <label>Select league
