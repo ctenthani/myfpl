@@ -1,4 +1,4 @@
-const CACHE = "myfpl-concise-v71";
+const CACHE = "myfpl-products-v72";
 const ASSETS = [
   "/",
   "/index.html",
